@@ -199,6 +199,75 @@ class Azure_Database {
             KEY status (status)
         ) $charset_collate;";
         
+        // TEC Sync History table for tracking sync operations
+        $table_tec_sync_history = $wpdb->prefix . 'azure_tec_sync_history';
+        $sql_tec_sync_history = "CREATE TABLE $table_tec_sync_history (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            tec_event_id bigint(20) UNSIGNED NOT NULL,
+            outlook_event_id varchar(255),
+            sync_direction varchar(20) NOT NULL,
+            sync_action varchar(50) NOT NULL,
+            sync_status varchar(50) NOT NULL,
+            sync_message longtext,
+            data_before longtext,
+            data_after longtext,
+            conflict_resolution varchar(50),
+            sync_timestamp datetime DEFAULT CURRENT_TIMESTAMP,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY tec_event_id (tec_event_id),
+            KEY outlook_event_id (outlook_event_id),
+            KEY sync_direction (sync_direction),
+            KEY sync_status (sync_status),
+            KEY sync_timestamp (sync_timestamp)
+        ) $charset_collate;";
+        
+        // TEC Sync Conflicts table for manual resolution
+        $table_tec_sync_conflicts = $wpdb->prefix . 'azure_tec_sync_conflicts';
+        $sql_tec_sync_conflicts = "CREATE TABLE $table_tec_sync_conflicts (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            tec_event_id bigint(20) UNSIGNED NOT NULL,
+            outlook_event_id varchar(255) NOT NULL,
+            conflict_type varchar(50) NOT NULL,
+            tec_data longtext NOT NULL,
+            outlook_data longtext NOT NULL,
+            resolution_status varchar(50) DEFAULT 'pending',
+            resolution_method varchar(50),
+            resolved_by bigint(20) UNSIGNED,
+            resolved_at datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY tec_event_id (tec_event_id),
+            KEY outlook_event_id (outlook_event_id),
+            KEY resolution_status (resolution_status),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
+        // TEC Sync Queue table for batch processing
+        $table_tec_sync_queue = $wpdb->prefix . 'azure_tec_sync_queue';
+        $sql_tec_sync_queue = "CREATE TABLE $table_tec_sync_queue (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            tec_event_id bigint(20) UNSIGNED NOT NULL,
+            sync_direction varchar(20) NOT NULL,
+            sync_action varchar(50) NOT NULL,
+            priority int(11) DEFAULT 5,
+            status varchar(50) DEFAULT 'pending',
+            attempts int(11) DEFAULT 0,
+            max_attempts int(11) DEFAULT 3,
+            error_message longtext,
+            scheduled_at datetime DEFAULT CURRENT_TIMESTAMP,
+            processed_at datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY tec_event_id (tec_event_id),
+            KEY sync_direction (sync_direction),
+            KEY status (status),
+            KEY priority (priority),
+            KEY scheduled_at (scheduled_at)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
         // Create all tables
@@ -211,6 +280,9 @@ class Azure_Database {
         dbDelta($sql_email_tokens);
         dbDelta($sql_email_logs);
         dbDelta($sql_activity_log);
+        dbDelta($sql_tec_sync_history);
+        dbDelta($sql_tec_sync_conflicts);
+        dbDelta($sql_tec_sync_queue);
         
         // Log successful table creation
         Azure_Logger::info('Azure Plugin database tables created successfully');
@@ -228,7 +300,10 @@ class Azure_Database {
             'email_queue' => $wpdb->prefix . 'azure_email_queue',
             'email_tokens' => $wpdb->prefix . 'azure_email_tokens',
             'email_logs' => $wpdb->prefix . 'azure_email_logs',
-            'activity_log' => $wpdb->prefix . 'azure_activity_log'
+            'activity_log' => $wpdb->prefix . 'azure_activity_log',
+            'tec_sync_history' => $wpdb->prefix . 'azure_tec_sync_history',
+            'tec_sync_conflicts' => $wpdb->prefix . 'azure_tec_sync_conflicts',
+            'tec_sync_queue' => $wpdb->prefix . 'azure_tec_sync_queue'
         );
         
         return isset($tables[$table]) ? $tables[$table] : false;
@@ -317,6 +392,33 @@ class Azure_Database {
         if ($email_queue_table) {
             $wpdb->query($wpdb->prepare(
                 "DELETE FROM {$email_queue_table} WHERE created_at < %s AND status = 'sent'",
+                $date_threshold
+            ));
+        }
+        
+        // Clean up old TEC sync history
+        $tec_sync_history_table = self::get_table_name('tec_sync_history');
+        if ($tec_sync_history_table) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$tec_sync_history_table} WHERE created_at < %s",
+                $date_threshold
+            ));
+        }
+        
+        // Clean up resolved TEC sync conflicts
+        $tec_sync_conflicts_table = self::get_table_name('tec_sync_conflicts');
+        if ($tec_sync_conflicts_table) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$tec_sync_conflicts_table} WHERE created_at < %s AND resolution_status = 'resolved'",
+                $date_threshold
+            ));
+        }
+        
+        // Clean up processed TEC sync queue items
+        $tec_sync_queue_table = self::get_table_name('tec_sync_queue');
+        if ($tec_sync_queue_table) {
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$tec_sync_queue_table} WHERE created_at < %s AND status IN ('completed', 'failed')",
                 $date_threshold
             ));
         }
