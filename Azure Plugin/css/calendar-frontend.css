@@ -1,0 +1,295 @@
+/* Azure Plugin Calendar Frontend Styles */
+
+.azure-calendar-container {
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.azure-calendar-error {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 15px;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    margin: 20px 0;
+}
+
+.azure-calendar-no-events {
+    background: #fff3cd;
+    color: #856404;
+    padding: 15px;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    margin: 20px 0;
+    text-align: center;
+}
+
+/* Events List Styles */
+.azure-events-list {
+    margin: 20px 0;
+}
+
+.azure-events-list.format-list .azure-event-item {
+    border-bottom: 1px solid #eee;
+    padding: 15px 0;
+}
+
+.azure-events-list.format-list .azure-event-item:last-child {
+    border-bottom: none;
+}
+
+.azure-events-list.format-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.azure-events-list.format-grid .azure-event-item {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.azure-events-list.format-compact .azure-event-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.azure-events-list.format-compact .azure-event-item:last-child {
+    border-bottom: none;
+}
+
+.azure-event-item .event-title {
+    margin: 0 0 10px 0;
+    color: #0073aa;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.azure-events-list.format-compact .event-title {
+    font-size: 16px;
+    margin: 0;
+}
+
+.azure-event-item .event-datetime {
+    margin: 8px 0;
+    color: #666;
+    font-weight: 500;
+}
+
+.azure-event-item .event-date {
+    font-weight: bold;
+}
+
+.azure-event-item .event-time {
+    color: #333;
+}
+
+.azure-event-item .event-location {
+    margin: 8px 0;
+    color: #888;
+    font-size: 14px;
+}
+
+.azure-event-item .event-location strong {
+    color: #555;
+}
+
+.azure-event-item .event-description {
+    margin: 10px 0 0 0;
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* FullCalendar Customizations */
+.azure-calendar-container .fc {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.azure-calendar-container .fc-header-toolbar {
+    background: #f8f9fa;
+    padding: 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.azure-calendar-container .fc-button-primary {
+    background-color: #0073aa;
+    border-color: #0073aa;
+}
+
+.azure-calendar-container .fc-button-primary:hover {
+    background-color: #005a87;
+    border-color: #005a87;
+}
+
+.azure-calendar-container .fc-button-primary:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 115, 170, 0.25);
+}
+
+.azure-calendar-container .fc-event {
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+
+.azure-calendar-container .fc-event-title {
+    font-weight: 500;
+}
+
+.azure-calendar-container .fc-daygrid-event {
+    margin: 1px;
+}
+
+.azure-calendar-container .fc-timegrid-event {
+    border-radius: 6px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .azure-events-list.format-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .azure-events-list.format-compact .azure-event-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .azure-calendar-container .fc-header-toolbar {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .azure-calendar-container .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+    }
+    
+    .azure-calendar-container {
+        font-size: 14px;
+    }
+    
+    .azure-event-item .event-title {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .azure-calendar-container {
+        margin: 10px -15px; /* Extend to screen edges on mobile */
+        border-radius: 0;
+    }
+    
+    .azure-events-list {
+        margin: 10px 0;
+    }
+    
+    .azure-event-item .event-title {
+        font-size: 14px;
+    }
+    
+    .azure-event-item .event-datetime,
+    .azure-event-item .event-location,
+    .azure-event-item .event-description {
+        font-size: 13px;
+    }
+}
+
+/* Loading States */
+.azure-calendar-loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.azure-calendar-loading::before {
+    content: "";
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    border-top-color: #0073aa;
+    animation: azure-spin 1s linear infinite;
+    margin-right: 10px;
+    vertical-align: middle;
+}
+
+@keyframes azure-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Accessibility */
+.azure-event-item:focus,
+.azure-calendar-container .fc-event:focus {
+    outline: 2px solid #005fcc;
+    outline-offset: 2px;
+}
+
+/* Print Styles */
+@media print {
+    .azure-calendar-container .fc-header-toolbar {
+        background: none !important;
+        -webkit-print-color-adjust: exact;
+    }
+    
+    .azure-calendar-container .fc-button {
+        display: none !important;
+    }
+    
+    .azure-event-item {
+        break-inside: avoid;
+    }
+}
+
+/* Theme Variations */
+.azure-calendar-container.theme-dark {
+    background: #2c3e50;
+    color: #ecf0f1;
+}
+
+.azure-calendar-container.theme-dark .fc-header-toolbar {
+    background: #34495e;
+    border-bottom-color: #4a5f7a;
+}
+
+.azure-calendar-container.theme-dark .fc-button-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+.azure-calendar-container.theme-dark .fc-event {
+    border-color: #4a5f7a;
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    .azure-calendar-container {
+        border: 2px solid #000;
+    }
+    
+    .azure-event-item .event-title {
+        color: #000;
+        font-weight: bold;
+    }
+    
+    .azure-calendar-error {
+        border: 2px solid #d00;
+        background: #fee;
+    }
+}
+
+

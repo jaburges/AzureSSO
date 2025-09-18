@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTA Office Editor - Configuration Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        .test-result {
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #b8daff; }
+        code { background: #e9ecef; padding: 0.2rem 0.4rem; border-radius: 3px; }
+        .config-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        .config-table th, .config-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .config-table th {
+            background: #e9ecef;
+            font-weight: 600;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin: 0.5rem 0;
+        }
+        button:hover { background: #106ebe; }
+    </style>
+</head>
+<body>
+    <h1>🔧 PTA Office Editor Configuration Test</h1>
+    
+    <p>This page helps you verify that your configuration is correct before using the main application.</p>
+
+    <div class="test-section">
+        <h2>📋 Configuration Status</h2>
+        <div id="config-status">
+            <p>Loading configuration...</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔗 Connectivity Tests</h2>
+        <button onclick="testWordPressAPI()">Test WordPress API</button>
+        <button onclick="testAzureAD()">Test Azure AD Config</button>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>ℹ️ Configuration Values</h2>
+        <table class="config-table" id="config-table">
+            <thead>
+                <tr>
+                    <th>Setting</th>
+                    <th>Value</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Will be populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="test-section">
+        <h2>🚀 Next Steps</h2>
+        <div id="next-steps">
+            <p>Complete the configuration test above to see your next steps.</p>
+        </div>
+    </div>
+
+    <!-- Load configuration -->
+    <script src="config/config.js"></script>
+    
+    <script>
+        // Check if configuration is loaded
+        let configStatus = '';
+        let hasErrors = false;
+
+        function checkConfiguration() {
+            const statusDiv = document.getElementById('config-status');
+            const tableBody = document.querySelector('#config-table tbody');
+            
+            if (typeof APP_CONFIG === 'undefined') {
+                statusDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>❌ Configuration Not Found</strong><br>
+                        The <code>config/config.js</code> file is missing or not loading properly.<br>
+                        Please copy <code>config/config.template.js</code> to <code>config/config.js</code> and update it with your settings.
+                    </div>
+                `;
+                hasErrors = true;
+                return;
+            }
+
+            // Check each configuration value
+            const checks = [
+                {
+                    name: 'Azure Client ID',
+                    value: APP_CONFIG.azure.clientId,
+                    test: (val) => val && val !== 'YOUR_AZURE_CLIENT_ID' && val.length > 10
+                },
+                {
+                    name: 'Azure Authority',
+                    value: APP_CONFIG.azure.authority,
+                    test: (val) => val && val.includes('login.microsoftonline.com') && !val.includes('YOUR_TENANT_ID')
+                },
+                {
+                    name: 'Redirect URI',
+                    value: APP_CONFIG.azure.redirectUri,
+                    test: (val) => val && (val.startsWith('https://') || val.startsWith('http://localhost'))
+                },
+                {
+                    name: 'WordPress Base URL',
+                    value: APP_CONFIG.wordpress.baseUrl,
+                    test: (val) => val && val.startsWith('https://')
+                },
+                {
+                    name: 'WordPress API Base',
+                    value: APP_CONFIG.wordpress.apiBase,
+                    test: (val) => val && val.includes('/wp-json/wp/v2')
+                }
+            ];
+
+            let allGood = true;
+            let tableHtml = '';
+
+            checks.forEach(check => {
+                const isValid = check.test(check.value);
+                if (!isValid) allGood = false;
+                
+                tableHtml += `
+                    <tr>
+                        <td><strong>${check.name}</strong></td>
+                        <td><code>${check.value}</code></td>
+                        <td>${isValid ? '✅ Valid' : '❌ Invalid'}</td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = tableHtml;
+
+            if (allGood) {
+                statusDiv.innerHTML = `
+                    <div class="test-result success">
+                        <strong>✅ Configuration Looks Good</strong><br>
+                        All required settings are present and appear to be valid.
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>❌ Configuration Issues Found</strong><br>
+                        Some settings need to be updated. Check the table below for details.
+                    </div>
+                `;
+                hasErrors = true;
+            }
+        }
+
+        async function testWordPressAPI() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<div class="test-result info">Testing WordPress API...</div>';
+
+            try {
+                const response = await fetch(APP_CONFIG.wordpress.apiBase + '/posts?per_page=1');
+                
+                if (response.ok) {
+                    resultsDiv.innerHTML = `
+                        <div class="test-result success">
+                            <strong>✅ WordPress API Connection Successful</strong><br>
+                            Successfully connected to WordPress REST API.
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="test-result error">
+                            <strong>❌ WordPress API Connection Failed</strong><br>
+                            HTTP ${response.status}: ${response.statusText}<br>
+                            Check your WordPress URL and ensure the REST API is enabled.
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>❌ WordPress API Connection Failed</strong><br>
+                        ${error.message}<br>
+                        Check your WordPress URL and network connectivity.
+                    </div>
+                `;
+            }
+        }
+
+        function testAzureAD() {
+            const resultsDiv = document.getElementById('test-results');
+            
+            if (!APP_CONFIG.azure.clientId || APP_CONFIG.azure.clientId === 'YOUR_AZURE_CLIENT_ID') {
+                resultsDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>❌ Azure AD Configuration Incomplete</strong><br>
+                        Please update the Azure AD settings in your config.js file.
+                    </div>
+                `;
+                return;
+            }
+
+            resultsDiv.innerHTML = `
+                <div class="test-result info">
+                    <strong>ℹ️ Azure AD Configuration Check</strong><br>
+                    Azure AD settings appear to be configured. To test the actual authentication:<br>
+                    1. Ensure your redirect URI is registered in Azure AD<br>
+                    2. Launch the main application and try signing in<br>
+                    3. Check the browser console for any authentication errors
+                </div>
+            `;
+        }
+
+        function updateNextSteps() {
+            const nextStepsDiv = document.getElementById('next-steps');
+            
+            if (hasErrors) {
+                nextStepsDiv.innerHTML = `
+                    <div class="test-result warning">
+                        <strong>⚠️ Fix Configuration Issues First</strong><br>
+                        <ol>
+                            <li>Update your <code>config/config.js</code> file with the correct values</li>
+                            <li>Refresh this page to re-test</li>
+                            <li>Once all tests pass, proceed to the main application</li>
+                        </ol>
+                    </div>
+                `;
+            } else {
+                nextStepsDiv.innerHTML = `
+                    <div class="test-result success">
+                        <strong>🚀 Ready to Launch</strong><br>
+                        <ol>
+                            <li>Register your redirect URI in Azure AD (if not done already)</li>
+                            <li><a href="index.html" target="_blank">Open the PTA Office Editor</a></li>
+                            <li>Sign in with your Azure AD credentials</li>
+                            <li>Start creating content!</li>
+                        </ol>
+                        <br>
+                        <a href="index.html" style="display: inline-block; background: #28a745; color: white; padding: 1rem 2rem; text-decoration: none; border-radius: 6px; margin-top: 1rem;">
+                            Launch PTA Office Editor
+                        </a>
+                    </div>
+                `;
+            }
+        }
+
+        // Run checks when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            checkConfiguration();
+            updateNextSteps();
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+

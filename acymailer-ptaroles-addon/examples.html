@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AcyMailing PTA Roles Add-on - Email Examples</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .example { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .example h3 { margin-top: 0; color: #0066cc; }
+        .code { background: #f5f5f5; padding: 15px; border-radius: 3px; font-family: monospace; white-space: pre-line; }
+        .shortcode { background: #e8f4f8; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>AcyMailing PTA Roles Add-on - Email Examples</h1>
+    <p>These examples show how to use the dynamic text options in your AcyMailing email templates.</p>
+
+    <div class="example">
+        <h3>Example 1: Personal Welcome Email</h3>
+        <p>This email template welcomes users and shows their personal PTA involvement:</p>
+        <div class="code">Subject: Welcome to PTA Communications, {user:name}!
+
+Dear {user:name},
+
+Welcome to our PTA email updates! 
+
+<strong>Your Current PTA Roles:</strong>
+{ptaroles:user_roles_detailed}
+
+You are currently involved in {ptaroles:user_role_count} role(s). Thank you for your dedication to our school community!
+
+We currently have {ptaroles:open_roles_count} volunteer opportunities available. If you're interested in taking on additional roles, please let us know.
+
+Best regards,
+PTA Communications Team</div>
+    </div>
+
+    <div class="example">
+        <h3>Example 2: Monthly Directory Newsletter</h3>
+        <p>A comprehensive newsletter including the full PTA directory:</p>
+        <div class="code">Subject: PTA Directory - {date:format:F Y}
+
+<h2>Monthly PTA Directory Update</h2>
+
+<strong>Quick Stats:</strong>
+• Total PTA Roles: {ptaroles:total_roles}
+• Filled Positions: {ptaroles:filled_roles}
+• Active Volunteers: {ptaroles:volunteer_count}
+• Open Positions: {ptaroles:open_roles_count}
+
+<h3>Executive Board</h3>
+{ptaroles:executive_directory}
+
+<h3>Committee Chairs</h3>
+{ptaroles:committee_chairs}
+
+<h3>Complete Directory</h3>
+{ptaroles:full_directory_detailed}
+
+Thank you to all our volunteers!</div>
+    </div>
+
+    <div class="example">
+        <h3>Example 3: Volunteer Recruitment Email</h3>
+        <p>Targeted email to recruit volunteers for open positions:</p>
+        <div class="code">Subject: Help Needed - {ptaroles:open_roles_count} PTA Positions Available
+
+Dear PTA Family,
+
+We need your help! Our PTA currently has several open positions that are crucial to our school's success.
+
+<strong>Open Positions Needing Volunteers:</strong>
+{ptaroles:open_roles}
+
+<strong>Why Volunteer?</strong>
+• Make a direct impact on your child's education
+• Connect with other parents
+• Contribute to school community
+• Gain valuable experience
+
+{if:user_roles_count > 0}
+<strong>Your Current Involvement:</strong>
+{ptaroles:user_roles}
+
+Thank you for your existing contribution! Even if you're already involved, consider if you can take on one more role.
+{endif}
+
+To volunteer or learn more about these positions, please reply to this email or contact us at pta@school.edu.
+
+Together we make a difference!
+PTA Volunteer Coordinator</div>
+    </div>
+
+    <div class="example">
+        <h3>Example 4: Executive Board Update</h3>
+        <p>Update email specifically for executive board members:</p>
+        <div class="code">Subject: Executive Board Update - {date:format:M j, Y}
+
+Dear Executive Board Members,
+
+Here's our current status update:
+
+<strong>Board Composition:</strong>
+{ptaroles:executive_directory}
+
+<strong>Current Priorities:</strong>
+We have {ptaroles:open_roles_count} positions that need immediate attention:
+{ptaroles:open_roles}
+
+<strong>Volunteer Engagement:</strong>
+• Total active volunteers: {ptaroles:volunteer_count}
+• Filled positions: {ptaroles:filled_roles} out of {ptaroles:total_roles}
+• Fill rate: {math:percentage:{ptaroles:filled_roles}:{ptaroles:total_roles}}%
+
+{if:user_role_count > 1}
+Thank you {user:name} for managing {ptaroles:user_role_count} roles:
+{ptaroles:user_roles}
+{endif}
+
+Next meeting: [DATE] at [TIME]
+Agenda to follow.
+
+Best,
+PTA President</div>
+    </div>
+
+    <div class="example">
+        <h3>Example 5: Simple Directory Card</h3>
+        <p>Clean, simple directory format suitable for printing or quick reference:</p>
+        <div class="code">Subject: PTA Quick Reference Directory
+
+<h2>PTA Directory - Quick Reference</h2>
+
+{ptaroles:full_directory}
+
+<hr>
+<small>
+Total Volunteers: {ptaroles:volunteer_count} | 
+Filled Roles: {ptaroles:filled_roles}/{ptaroles:total_roles} | 
+Open Positions: {ptaroles:open_roles_count}
+</small>
+
+For questions or updates, contact pta@school.edu</div>
+    </div>
+
+    <h2>Available Shortcodes Reference</h2>
+    <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+        <tr style="background: #f5f5f5;">
+            <th>Shortcode</th>
+            <th>Description</th>
+            <th>Output Type</th>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:user_roles}</span></td>
+            <td>User's assigned roles (simple list)</td>
+            <td>Text</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:user_roles_detailed}</span></td>
+            <td>User's roles with descriptions</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:user_role_count}</span></td>
+            <td>Number of user's roles</td>
+            <td>Number</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:open_roles}</span></td>
+            <td>List of open positions</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:open_roles_count}</span></td>
+            <td>Number of open positions</td>
+            <td>Number</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:executive_directory}</span></td>
+            <td>Executive board directory</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:committee_chairs}</span></td>
+            <td>Committee chairs directory</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:full_directory}</span></td>
+            <td>Complete directory (simple)</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:full_directory_detailed}</span></td>
+            <td>Complete directory with descriptions</td>
+            <td>HTML</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:total_roles}</span></td>
+            <td>Total number of roles</td>
+            <td>Number</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:filled_roles}</span></td>
+            <td>Number of filled roles</td>
+            <td>Number</td>
+        </tr>
+        <tr>
+            <td><span class="shortcode">{ptaroles:volunteer_count}</span></td>
+            <td>Total number of volunteers</td>
+            <td>Number</td>
+        </tr>
+    </table>
+
+    <h2>Tips for Using the Add-on</h2>
+    <ul>
+        <li><strong>Test your emails:</strong> Always send test emails to verify the dynamic content appears correctly</li>
+        <li><strong>User-specific content:</strong> Only works for recipients who exist as WordPress users</li>
+        <li><strong>Fallback content:</strong> User-specific shortcodes show "No assigned roles" if the user has no PTA roles</li>
+        <li><strong>Performance:</strong> Organization-wide content (directories, stats) are generated once per campaign</li>
+        <li><strong>Styling:</strong> The HTML output includes CSS classes that you can style in your email templates</li>
+        <li><strong>Mobile-friendly:</strong> The generated content is responsive and works well on mobile devices</li>
+    </ul>
+</body>
+</html>
+
+
+
+
