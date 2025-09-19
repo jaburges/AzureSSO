@@ -124,6 +124,11 @@ class AzurePlugin {
                 'class-email-shortcode.php' => 'Email Shortcode class',
                 'class-email-logger.php' => 'Email Logger class',
                 
+                // TEC Integration functionality
+                'class-tec-integration.php' => 'TEC Integration class',
+                'class-tec-sync-engine.php' => 'TEC Sync Engine class',
+                'class-tec-data-mapper.php' => 'TEC Data Mapper class',
+                
                 // PTA functionality
                 'class-pta-database.php' => 'PTA Database class',
                 // 'class-pta-manager.php' => 'PTA Manager class',  // TEMPORARILY DISABLED FOR DEBUGGING
@@ -233,6 +238,13 @@ class AzurePlugin {
             if (!empty($settings['enable_calendar'])) {
                 $this->init_calendar_components();
                 $log_entry = "**{$timestamp}** ✅ **[INIT]** Calendar components initialized  \n";
+                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+            }
+            
+            // Initialize TEC Integration if enabled
+            if (!empty($settings['enable_tec_integration'])) {
+                $this->init_tec_components();
+                $log_entry = "**{$timestamp}** ✅ **[INIT]** TEC Integration components initialized  \n";
                 file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
@@ -367,6 +379,29 @@ class AzurePlugin {
         }
         if (class_exists('Azure_Calendar_EventsShortcode')) {
             new Azure_Calendar_EventsShortcode();
+        }
+    }
+    
+    private function init_tec_components() {
+        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
+        $timestamp = date('Y-m-d H:i:s');
+        
+        try {
+            if (class_exists('Azure_TEC_Integration')) {
+                file_put_contents($log_file, "**{$timestamp}** ⏳ **[TEC]** Initializing Azure_TEC_Integration  \n", FILE_APPEND | LOCK_EX);
+                Azure_TEC_Integration::get_instance();
+                file_put_contents($log_file, "**{$timestamp}** ✅ **[TEC]** Azure_TEC_Integration initialized successfully  \n", FILE_APPEND | LOCK_EX);
+            } else {
+                file_put_contents($log_file, "**{$timestamp}** ⚠️ **[TEC]** Azure_TEC_Integration class not found  \n", FILE_APPEND | LOCK_EX);
+            }
+        } catch (Error $e) {
+            file_put_contents($log_file, "**{$timestamp}** 💀 **[TEC FATAL]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
+            file_put_contents($log_file, "**{$timestamp}** 📍 **[TEC FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            throw $e;
+        } catch (Exception $e) {
+            file_put_contents($log_file, "**{$timestamp}** ❌ **[TEC ERROR]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
+            file_put_contents($log_file, "**{$timestamp}** 📍 **[TEC ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            throw $e;
         }
     }
     
@@ -588,6 +623,7 @@ class AzurePlugin {
                     'enable_calendar' => false,
                     'enable_email' => false,
                     'enable_pta' => false,
+                    'enable_tec_integration' => false,
                     
                     // Common credentials
                     'use_common_credentials' => true,
@@ -649,7 +685,18 @@ class AzurePlugin {
                     'email_acs_access_key' => '',
                     'email_acs_from_email' => '',
                     'email_acs_display_name' => '',
-                    'email_acs_override_wp_mail' => false
+                    'email_acs_override_wp_mail' => false,
+                    
+                    // TEC Integration specific settings
+                    'tec_outlook_calendar_id' => 'primary',
+                    'tec_default_venue' => 'School Campus',
+                    'tec_default_organizer' => 'PTSA',
+                    'tec_organizer_email' => get_option('admin_email'),
+                    'tec_sync_frequency' => 'hourly',
+                    'tec_conflict_resolution' => 'outlook_wins',
+                    'tec_include_event_url' => true,
+                    'tec_event_footer' => '',
+                    'tec_default_category' => 'School Event'
                 );
                 update_option('azure_plugin_settings', $default_settings);
                 Azure_Logger::info('Default settings created');
