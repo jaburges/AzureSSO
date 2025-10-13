@@ -35,6 +35,11 @@ class Azure_Admin {
         add_action('wp_ajax_azure_export_settings', array($this, 'ajax_export_settings'));
         add_action('wp_ajax_azure_import_settings', array($this, 'ajax_import_settings'));
         add_action('wp_ajax_azure_get_recent_activity', array($this, 'ajax_get_recent_activity'));
+        
+        // Debug: Log that admin AJAX handlers are registered
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::debug('Admin: All AJAX handlers registered successfully', 'Admin');
+        }
     }
     
     public function admin_menu() {
@@ -167,14 +172,40 @@ class Azure_Admin {
     }
     
     public function enqueue_admin_scripts($hook) {
-        if (strpos($hook, 'azure-plugin') === false) {
+        // Check if we're on any Azure Plugin admin page - be very permissive
+        $is_azure_page = (
+            strpos($hook, 'azure-plugin') !== false ||
+            strpos($hook, 'azure_plugin') !== false ||
+            strpos($hook, 'azure-') !== false ||
+            (isset($_GET['page']) && strpos($_GET['page'], 'azure') !== false)
+        );
+        
+        if (!$is_azure_page) {
             return;
         }
         
-        wp_enqueue_script('jquery');
-        wp_enqueue_style('azure-plugin-admin', AZURE_PLUGIN_URL . 'css/admin.css', array(), AZURE_PLUGIN_VERSION);
-        wp_enqueue_script('azure-plugin-admin', AZURE_PLUGIN_URL . 'js/admin.js', array('jquery'), AZURE_PLUGIN_VERSION);
+        // Use timestamp for cache busting during development/debugging
+        $cache_version = AZURE_PLUGIN_VERSION . '.' . time();
         
+        wp_enqueue_script('jquery');
+        wp_enqueue_style('azure-plugin-admin', AZURE_PLUGIN_URL . 'css/admin.css', array(), $cache_version);
+        wp_enqueue_script('azure-plugin-admin', AZURE_PLUGIN_URL . 'js/admin.js', array('jquery'), $cache_version);
+        
+        // Load page-specific CSS files
+        $current_page = isset($_GET['page']) ? $_GET['page'] : '';
+        
+        switch ($current_page) {
+            case 'azure-plugin-backup':
+                wp_enqueue_style('azure-backup-frontend', AZURE_PLUGIN_URL . 'css/backup-frontend.css', array(), $cache_version);
+                break;
+            case 'azure-plugin-email':
+                wp_enqueue_style('azure-email-frontend', AZURE_PLUGIN_URL . 'css/email-frontend.css', array(), $cache_version);
+                break;
+            case 'azure-plugin-calendar':
+                wp_enqueue_style('azure-calendar-frontend', AZURE_PLUGIN_URL . 'css/calendar-frontend.css', array(), $cache_version);
+                break;
+        }
+
         wp_localize_script('azure-plugin-admin', 'azure_plugin_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('azure_plugin_nonce')
@@ -463,16 +494,23 @@ class Azure_Admin {
     }
     
     public function ajax_toggle_module() {
+        // Security checks for AJAX requests
         if (!current_user_can('manage_options')) {
+            Azure_Logger::warning('Admin: Unauthorized access attempt from user ' . get_current_user_id());
             wp_send_json_error('Unauthorized access - insufficient permissions');
+            return;
         }
         
         if (!wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            Azure_Logger::warning('Admin: Invalid nonce in AJAX request from user ' . get_current_user_id());
             wp_send_json_error('Unauthorized access - invalid nonce');
+            return;
         }
         
         if (!isset($_POST['module']) || !isset($_POST['enabled'])) {
+            Azure_Logger::warning('Admin: Missing required parameters in toggle_module AJAX request');
             wp_send_json_error('Missing required parameters');
+            return;
         }
         
         $module = sanitize_text_field($_POST['module']);
@@ -777,7 +815,11 @@ class Azure_Admin {
     }
     
     public function ajax_refresh_logs() {
+        // Debug: Log that AJAX handler was called
+        Azure_Logger::debug('Admin: ajax_refresh_logs called', 'Admin');
+        
         if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            Azure_Logger::error('Admin: ajax_refresh_logs unauthorized access', 'Admin');
             wp_send_json_error('Unauthorized access');
         }
         
@@ -987,4 +1029,3 @@ class Azure_Admin {
         }
     }
 }
-?>

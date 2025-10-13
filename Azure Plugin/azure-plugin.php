@@ -6,7 +6,7 @@
  * Version: 1.1
  * Author: Jamie Burgess
  * License: GPL v2 or later
- * Text Domain: microsoft-wp
+ * Text Domain: azure-plugin
  */
 
 // Prevent direct access
@@ -51,21 +51,19 @@ class AzurePlugin {
         file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
         
         try {
-            add_action('init', array($this, 'init'));
-            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** Added init action  \n";
+            // Register hooks - these can be registered immediately
+            $log_entry = "**{$timestamp}** ⏳ **[CONSTRUCT]** Registering WordPress hooks  \n";
             file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
+            // Use plugins_loaded for initialization to ensure WordPress is ready
+            add_action('plugins_loaded', array($this, 'load_dependencies'), 5);
+            add_action('init', array($this, 'init'), 10);
+            
+            // Activation/deactivation hooks must be registered immediately
             register_activation_hook(__FILE__, array($this, 'activate'));
-            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** Added activation hook  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            
             register_deactivation_hook(__FILE__, array($this, 'deactivate'));
-            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** Added deactivation hook  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
-            // Load dependencies early but don't instantiate classes yet
-            add_action('plugins_loaded', array($this, 'load_dependencies'));
-            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** Added plugins_loaded action  \n";
+            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** WordPress hooks registered successfully  \n";
             file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
             $log_entry = "**{$timestamp}** 🎉 **[CONSTRUCT]** Plugin constructor completed successfully  \n";
@@ -90,13 +88,16 @@ class AzurePlugin {
         try {
             $write_log("🔄 **[LOAD]** Loading plugin dependencies");
             
-            // Common utilities
-            $files = array(
+            // Common utilities - CRITICAL FILES
+            $critical_files = array(
                 'class-logger.php' => 'Logger class',
                 'class-database.php' => 'Database class',
                 'class-admin.php' => 'Admin class',
-                'class-settings.php' => 'Settings class',
-                
+                'class-settings.php' => 'Settings class'
+            );
+            
+            // Optional feature files
+            $optional_files = array(
                 // SSO functionality
                 'class-sso-auth.php' => 'SSO Auth class',
                 'class-sso-shortcode.php' => 'SSO Shortcode class',
@@ -124,26 +125,63 @@ class AzurePlugin {
                 'class-email-shortcode.php' => 'Email Shortcode class',
                 'class-email-logger.php' => 'Email Logger class',
                 
-                // TEC Integration functionality
+                // TEC Integration functionality - FULL PRODUCTION VERSION (duplicate method fixed)
+                // 'class-tec-integration-test.php' => 'TEC Integration TEST class',
                 'class-tec-integration.php' => 'TEC Integration class',
                 'class-tec-sync-engine.php' => 'TEC Sync Engine class',
                 'class-tec-data-mapper.php' => 'TEC Data Mapper class',
+                // 'class-tec-integration-minimal.php' => 'MINIMAL TEC Integration class',
                 
                 // PTA functionality
                 'class-pta-database.php' => 'PTA Database class',
-                // 'class-pta-manager.php' => 'PTA Manager class',  // TEMPORARILY DISABLED FOR DEBUGGING
+                'class-pta-manager.php' => 'PTA Manager class',  // ENABLED FOR DEBUGGING
                 'class-pta-sync-engine.php' => 'PTA Sync Engine class',
                 'class-pta-groups-manager.php' => 'PTA Groups Manager class',
                 'class-pta-shortcode.php' => 'PTA Shortcode class',
                 'class-pta-beaver-builder.php' => 'PTA Beaver Builder class'
             );
             
-            foreach ($files as $file => $description) {
+            // Load critical files first - these must succeed
+            foreach ($critical_files as $file => $description) {
+                $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
+                $write_log("⏳ **[LOAD CRITICAL]** Loading {$description}: {$file}");
+                
+                if (!file_exists($file_path)) {
+                    $error_msg = "Critical file not found: {$file_path}";
+                    $write_log("💀 **[LOAD CRITICAL ERROR]** {$error_msg}");
+                    throw new Exception($error_msg);
+                }
+                
+                try {
+                    require_once $file_path;
+                    $write_log("✅ **[LOAD CRITICAL]** {$description} loaded successfully");
+                } catch (ParseError $e) {
+                    $error_msg = "Parse error in critical file {$file}: " . $e->getMessage();
+                    $write_log("💀 **[LOAD CRITICAL PARSE ERROR]** {$error_msg}");
+                    $write_log("📍 **[PARSE ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    throw new Exception($error_msg);
+                } catch (Error $e) {
+                    $error_msg = "Fatal error in critical file {$file}: " . $e->getMessage();
+                    $write_log("💀 **[LOAD CRITICAL FATAL ERROR]** {$error_msg}");
+                    $write_log("📍 **[FATAL ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    throw new Exception($error_msg);
+                } catch (Exception $e) {
+                    $error_msg = "Error loading critical file {$file}: " . $e->getMessage();
+                    $write_log("❌ **[LOAD CRITICAL ERROR]** {$error_msg}");
+                    $write_log("📍 **[ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    throw new Exception($error_msg);
+                }
+            }
+            
+            // Load optional files - failures are logged but don't stop loading
+            $missing_optional_files = array();
+            foreach ($optional_files as $file => $description) {
                 $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
                 $write_log("⏳ **[LOAD]** Loading {$description}: {$file}");
                 
                 if (!file_exists($file_path)) {
-                    $write_log("⚠️ **[LOAD WARNING]** File not found: {$file_path}");
+                    $write_log("⚠️ **[LOAD WARNING]** Optional file not found: {$file_path}");
+                    $missing_optional_files[] = $file;
                     continue;
                 }
                 
@@ -151,18 +189,22 @@ class AzurePlugin {
                     require_once $file_path;
                     $write_log("✅ **[LOAD]** {$description} loaded successfully");
                 } catch (ParseError $e) {
-                    $write_log("💀 **[LOAD PARSE ERROR]** Parse error in {$file}: " . $e->getMessage());
+                    $write_log("💀 **[LOAD PARSE ERROR]** Parse error in optional file {$file}: " . $e->getMessage());
                     $write_log("📍 **[PARSE ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    throw $e;
+                    $missing_optional_files[] = $file;
                 } catch (Error $e) {
-                    $write_log("💀 **[LOAD FATAL ERROR]** Fatal error in {$file}: " . $e->getMessage());
+                    $write_log("💀 **[LOAD FATAL ERROR]** Fatal error in optional file {$file}: " . $e->getMessage());
                     $write_log("📍 **[FATAL ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    throw $e;
+                    $missing_optional_files[] = $file;
                 } catch (Exception $e) {
-                    $write_log("❌ **[LOAD ERROR]** Error loading {$file}: " . $e->getMessage());
+                    $write_log("❌ **[LOAD ERROR]** Error loading optional file {$file}: " . $e->getMessage());
                     $write_log("📍 **[ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    throw $e;
+                    $missing_optional_files[] = $file;
                 }
+            }
+            
+            if (!empty($missing_optional_files)) {
+                $write_log("⚠️ **[LOAD SUMMARY]** " . count($missing_optional_files) . " optional files failed to load: " . implode(', ', $missing_optional_files));
             }
             
             $write_log("🎉 **[LOAD]** All dependencies loaded successfully");
@@ -181,6 +223,11 @@ class AzurePlugin {
         file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
         
         try {
+            // Initialize logger first if not already initialized
+            if (class_exists('Azure_Logger') && !Azure_Logger::is_initialized()) {
+                Azure_Logger::init();
+            }
+            
             // Only initialize if we're loaded and dependencies are available
             if (!class_exists('Azure_Logger')) {
                 $log_entry = "**{$timestamp}** ⚠️ **[INIT]** Logger class not found, exiting init  \n";
@@ -241,8 +288,8 @@ class AzurePlugin {
                 file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize TEC Integration if enabled
-            if (!empty($settings['enable_tec_integration'])) {
+            // Initialize TEC Integration
+            if ($settings['enable_tec_integration'] ?? false) {
                 $this->init_tec_components();
                 $log_entry = "**{$timestamp}** ✅ **[INIT]** TEC Integration components initialized  \n";
                 file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
@@ -463,15 +510,14 @@ class AzurePlugin {
                 Azure_Logger::warning('PTA: Azure_PTA_Database class not found');
             }
             
-            // TEMPORARILY DISABLED FOR DEBUGGING - PTA Manager still has parse errors
-            // if (class_exists('Azure_PTA_Manager')) {
-            //     Azure_Logger::loading('Initializing Azure_PTA_Manager', 'PTA');
-            //     Azure_PTA_Manager::get_instance();
-            //     Azure_Logger::complete('Azure_PTA_Manager initialized successfully', 'PTA');
-            // } else {
-            //     Azure_Logger::warning('PTA: Azure_PTA_Manager class not found');
-            // }
-            Azure_Logger::warning('PTA: Azure_PTA_Manager temporarily disabled for debugging');
+            // Initialize PTA Manager - RE-ENABLED AFTER SUCCESSFUL DEBUGGING
+            if (class_exists('Azure_PTA_Manager')) {
+                Azure_Logger::loading('Initializing Azure_PTA_Manager', 'PTA');
+                Azure_PTA_Manager::get_instance();
+                Azure_Logger::complete('Azure_PTA_Manager initialized successfully', 'PTA');
+            } else {
+                Azure_Logger::warning('PTA: Azure_PTA_Manager class not found');
+            }
             
             if (class_exists('Azure_PTA_Sync_Engine')) {
                 Azure_Logger::loading('Initializing Azure_PTA_Sync_Engine', 'PTA');
@@ -594,15 +640,26 @@ class AzurePlugin {
             
             $write_log("⏳ **[STEP 6]** Creating database tables");
             // Create database tables
-            Azure_Logger::info('Creating database tables');
-            Azure_Database::create_tables();
-            Azure_Logger::info('Database tables created successfully');
+            try {
+                Azure_Logger::info('Creating database tables');
+                Azure_Database::create_tables();
+                Azure_Logger::info('Database tables created successfully');
+            } catch (Exception $e) {
+                $write_log("❌ **[STEP 6 ERROR]** Failed to create main tables: " . $e->getMessage());
+                throw new Exception("Database table creation failed: " . $e->getMessage());
+            }
             
             // Create PTA database tables
             if (class_exists('Azure_PTA_Database')) {
-                Azure_Logger::info('Creating PTA database tables');
-                Azure_PTA_Database::create_tables();
-                Azure_Logger::info('PTA database tables created successfully');
+                try {
+                    Azure_Logger::info('Creating PTA database tables');
+                    Azure_PTA_Database::create_tables();
+                    Azure_Logger::info('PTA database tables created successfully');
+                } catch (Exception $e) {
+                    $write_log("❌ **[STEP 6 ERROR]** Failed to create PTA tables: " . $e->getMessage());
+                    Azure_Logger::error('Failed to create PTA database tables: ' . $e->getMessage());
+                    // Continue with activation but log the error
+                }
             }
             
             $write_log("✅ **[STEP 6]** Database tables created");
@@ -832,5 +889,3 @@ try {
     $log_entry = "**{$timestamp}** 📍 **[MAIN FATAL FILE]** " . $e->getFile() . " line " . $e->getLine() . "  \n";
     file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
 }
-
-?>

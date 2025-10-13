@@ -23,52 +23,118 @@ class Azure_TEC_Integration {
     }
     
     public function __construct() {
-        // Check if The Events Calendar is active
-        if (!$this->is_tec_active()) {
-            add_action('admin_notices', array($this, 'tec_dependency_notice'));
-            return;
+        error_log('TEC Integration: 🚀 CONSTRUCTOR STARTED');
+        
+        try {
+            error_log('TEC Integration: Step 1 - Checking Azure_Logger availability');
+            if (!class_exists('Azure_Logger')) {
+                error_log('TEC Integration: ❌ Azure_Logger not available - exiting constructor');
+                return;
+            }
+            error_log('TEC Integration: ✅ Step 1 - Azure_Logger available');
+            Azure_Logger::info('TEC Integration: Constructor started with Azure_Logger available', 'TEC');
+            
+            error_log('TEC Integration: Step 2 - Checking TEC plugin active');
+            if (!$this->is_tec_active()) {
+                error_log('TEC Integration: ℹ️ Step 2 - TEC not active, adding admin notice');
+                add_action('admin_notices', array($this, 'tec_dependency_notice'));
+                Azure_Logger::info('TEC Integration: The Events Calendar not active, showing dependency notice', 'TEC');
+                error_log('TEC Integration: ✅ Step 2 - TEC dependency notice added successfully');
+                return;
+            }
+            error_log('TEC Integration: ✅ Step 2 - TEC is active');
+            Azure_Logger::info('TEC Integration: The Events Calendar is active, proceeding with initialization', 'TEC');
+            
+            error_log('TEC Integration: Step 3 - Calling init_components()');
+            $this->init_components();
+            error_log('TEC Integration: ✅ Step 3 - init_components() completed');
+            
+            error_log('TEC Integration: Step 4 - Calling register_hooks()');
+            $this->register_hooks();
+            error_log('TEC Integration: ✅ Step 4 - register_hooks() completed');
+            
+            error_log('TEC Integration: Step 5 - Checking if admin area');
+            if (is_admin()) {
+                error_log('TEC Integration: Step 5a - In admin area, calling init_admin()');
+                $this->init_admin();
+                error_log('TEC Integration: ✅ Step 5a - init_admin() completed');
+            } else {
+                error_log('TEC Integration: ℹ️ Step 5 - Not in admin area, skipping init_admin()');
+            }
+            
+            error_log('TEC Integration: 🎉 CONSTRUCTOR COMPLETED SUCCESSFULLY');
+            Azure_Logger::info('TEC Integration: Initialization completed successfully', 'TEC');
+            
+        } catch (Exception $e) {
+            error_log('TEC Integration: 💥 EXCEPTION in constructor: ' . $e->getMessage());
+            error_log('TEC Integration: Exception trace: ' . $e->getTraceAsString());
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::fatal('TEC Integration: Constructor Exception: ' . $e->getMessage(), 'TEC');
+            }
+        } catch (Error $e) {
+            error_log('TEC Integration: 💀 FATAL ERROR in constructor: ' . $e->getMessage());
+            error_log('TEC Integration: Error trace: ' . $e->getTraceAsString());
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::fatal('TEC Integration: Constructor Fatal Error: ' . $e->getMessage(), 'TEC');
+            }
         }
-        
-        Azure_Logger::info('TEC Integration: Initializing The Events Calendar integration', 'TEC');
-        
-        // Initialize components
-        $this->init_components();
-        
-        // Register WordPress hooks
-        $this->register_hooks();
-        
-        // Initialize admin interface
-        if (is_admin()) {
-            $this->init_admin();
-        }
-        
-        Azure_Logger::info('TEC Integration: Initialization completed successfully', 'TEC');
     }
     
     /**
      * Check if The Events Calendar plugin is active
      */
     private function is_tec_active() {
-        return class_exists('Tribe__Events__Main');
+        error_log('TEC Integration: 🔍 Checking if TEC plugin is active...');
+        $is_active = class_exists('Tribe__Events__Main');
+        if ($is_active) {
+            error_log('TEC Integration: ✅ TEC plugin is active (Tribe__Events__Main class found)');
+        } else {
+            error_log('TEC Integration: ⚠️ TEC plugin is NOT active (Tribe__Events__Main class not found)');
+        }
+        return $is_active;
     }
     
     /**
      * Initialize components
      */
     private function init_components() {
-        // Load settings
-        $this->settings = Azure_Settings::get_settings();
+        error_log('TEC Integration: 🔧 INIT_COMPONENTS STARTED');
         
-        // Initialize sync engine if classes are available
-        if (class_exists('Azure_TEC_Sync_Engine')) {
-            $this->sync_engine = new Azure_TEC_Sync_Engine();
-            Azure_Logger::debug('TEC Integration: Sync engine initialized', 'TEC');
-        }
-        
-        // Initialize data mapper if classes are available
-        if (class_exists('Azure_TEC_Data_Mapper')) {
-            $this->data_mapper = new Azure_TEC_Data_Mapper();
-            Azure_Logger::debug('TEC Integration: Data mapper initialized', 'TEC');
+        try {
+            error_log('TEC Integration: init_components Step 1 - Loading settings');
+            $this->settings = Azure_Settings::get_all_settings();
+            error_log('TEC Integration: ✅ init_components Step 1 - Settings loaded successfully');
+            
+            error_log('TEC Integration: init_components Step 2 - Checking for Azure_TEC_Sync_Engine class');
+            if (class_exists('Azure_TEC_Sync_Engine')) {
+                error_log('TEC Integration: init_components Step 2a - Azure_TEC_Sync_Engine found, creating instance');
+                $this->sync_engine = new Azure_TEC_Sync_Engine();
+                error_log('TEC Integration: ✅ init_components Step 2a - Sync engine created successfully');
+                Azure_Logger::debug('TEC Integration: Sync engine initialized', 'TEC');
+            } else {
+                error_log('TEC Integration: ℹ️ init_components Step 2 - Azure_TEC_Sync_Engine class not found (expected - not loaded yet)');
+            }
+            
+            error_log('TEC Integration: init_components Step 3 - Checking for Azure_TEC_Data_Mapper class');
+            if (class_exists('Azure_TEC_Data_Mapper')) {
+                error_log('TEC Integration: init_components Step 3a - Azure_TEC_Data_Mapper found, creating instance');
+                $this->data_mapper = new Azure_TEC_Data_Mapper();
+                error_log('TEC Integration: ✅ init_components Step 3a - Data mapper created successfully');
+                Azure_Logger::debug('TEC Integration: Data mapper initialized', 'TEC');
+            } else {
+                error_log('TEC Integration: ℹ️ init_components Step 3 - Azure_TEC_Data_Mapper class not found (expected - not loaded yet)');
+            }
+            
+            error_log('TEC Integration: ✅ INIT_COMPONENTS COMPLETED SUCCESSFULLY');
+            
+        } catch (Exception $e) {
+            error_log('TEC Integration: 💥 EXCEPTION in init_components: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: init_components Exception: ' . $e->getMessage(), 'TEC');
+            throw $e;
+        } catch (Error $e) {
+            error_log('TEC Integration: 💀 FATAL ERROR in init_components: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: init_components Fatal Error: ' . $e->getMessage(), 'TEC');
+            throw $e;
         }
     }
     
@@ -76,40 +142,76 @@ class Azure_TEC_Integration {
      * Register WordPress hooks for TEC events
      */
     private function register_hooks() {
-        // TEC event lifecycle hooks
-        add_action('save_post_tribe_events', array($this, 'sync_tec_event_to_outlook'), 20, 2);
-        add_action('before_delete_post', array($this, 'delete_outlook_event_from_tec'));
-        add_action('tribe_events_update_meta', array($this, 'handle_tec_meta_update'), 10, 3);
+        error_log('TEC Integration: 🔗 REGISTER_HOOKS STARTED');
         
-        // TEC event status change hooks
-        add_action('transition_post_status', array($this, 'handle_post_status_change'), 10, 3);
-        
-        // Scheduled sync hooks
-        add_action('azure_tec_sync_from_outlook', array($this, 'scheduled_sync_from_outlook'));
-        
-        // Admin hooks
-        add_action('add_meta_boxes', array($this, 'add_sync_metabox'));
-        add_filter('manage_tribe_events_posts_columns', array($this, 'add_sync_status_column'));
-        add_action('manage_tribe_events_posts_custom_column', array($this, 'display_sync_status_column'), 10, 2);
-        
-        Azure_Logger::debug('TEC Integration: WordPress hooks registered', 'TEC');
+        try {
+            error_log('TEC Integration: register_hooks Step 1 - Adding TEC event lifecycle hooks');
+            add_action('save_post_tribe_events', array($this, 'sync_tec_event_to_outlook'), 20, 2);
+            add_action('before_delete_post', array($this, 'delete_outlook_event_from_tec'));
+            add_action('tribe_events_update_meta', array($this, 'handle_tec_meta_update'), 10, 3);
+            error_log('TEC Integration: ✅ register_hooks Step 1 - TEC lifecycle hooks added');
+            
+            error_log('TEC Integration: register_hooks Step 2 - Adding status change hooks');
+            add_action('transition_post_status', array($this, 'handle_post_status_change'), 10, 3);
+            error_log('TEC Integration: ✅ register_hooks Step 2 - Status change hooks added');
+            
+            error_log('TEC Integration: register_hooks Step 3 - Adding scheduled sync hooks');
+            add_action('azure_tec_sync_from_outlook', array($this, 'scheduled_sync_from_outlook'));
+            error_log('TEC Integration: ✅ register_hooks Step 3 - Scheduled sync hooks added');
+            
+            error_log('TEC Integration: register_hooks Step 4 - Adding admin hooks');
+            add_action('add_meta_boxes', array($this, 'add_sync_metabox'));
+            add_filter('manage_tribe_events_posts_columns', array($this, 'add_sync_status_column'));
+            add_action('manage_tribe_events_posts_custom_column', array($this, 'display_sync_status_column'), 10, 2);
+            error_log('TEC Integration: ✅ register_hooks Step 4 - Admin hooks added');
+            
+            error_log('TEC Integration: ✅ REGISTER_HOOKS COMPLETED SUCCESSFULLY');
+            Azure_Logger::debug('TEC Integration: WordPress hooks registered', 'TEC');
+            
+        } catch (Exception $e) {
+            error_log('TEC Integration: 💥 EXCEPTION in register_hooks: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: register_hooks Exception: ' . $e->getMessage(), 'TEC');
+            throw $e;
+        } catch (Error $e) {
+            error_log('TEC Integration: 💀 FATAL ERROR in register_hooks: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: register_hooks Fatal Error: ' . $e->getMessage(), 'TEC');
+            throw $e;
+        }
     }
     
     /**
      * Initialize admin interface
      */
     private function init_admin() {
-        // Add TEC settings to admin menu
-        add_action('admin_menu', array($this, 'add_admin_menu'), 20);
+        error_log('TEC Integration: 🎛️ INIT_ADMIN STARTED');
         
-        // Enqueue admin scripts and styles
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
-        
-        // AJAX handlers
-        add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_manual_sync'));
-        add_action('wp_ajax_azure_tec_bulk_sync', array($this, 'ajax_bulk_sync'));
-        add_action('wp_ajax_azure_tec_break_sync', array($this, 'ajax_break_sync'));
-        add_action('wp_ajax_azure_tec_get_sync_status', array($this, 'ajax_get_sync_status'));
+        try {
+            error_log('TEC Integration: init_admin Step 1 - Adding admin menu');
+            add_action('admin_menu', array($this, 'add_admin_menu'), 20);
+            error_log('TEC Integration: ✅ init_admin Step 1 - Admin menu action added');
+            
+            error_log('TEC Integration: init_admin Step 2 - Adding admin scripts enqueue action');
+            add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+            error_log('TEC Integration: ✅ init_admin Step 2 - Admin scripts enqueue action added');
+            
+            error_log('TEC Integration: init_admin Step 3 - Adding AJAX handlers');
+            add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_manual_sync'));
+            add_action('wp_ajax_azure_tec_bulk_sync', array($this, 'ajax_bulk_sync'));
+            add_action('wp_ajax_azure_tec_break_sync', array($this, 'ajax_break_sync'));
+            add_action('wp_ajax_azure_tec_get_sync_status', array($this, 'ajax_get_sync_status'));
+            error_log('TEC Integration: ✅ init_admin Step 3 - AJAX handlers added');
+            
+            error_log('TEC Integration: ✅ INIT_ADMIN COMPLETED SUCCESSFULLY');
+            
+        } catch (Exception $e) {
+            error_log('TEC Integration: 💥 EXCEPTION in init_admin: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: init_admin Exception: ' . $e->getMessage(), 'TEC');
+            throw $e;
+        } catch (Error $e) {
+            error_log('TEC Integration: 💀 FATAL ERROR in init_admin: ' . $e->getMessage());
+            Azure_Logger::fatal('TEC Integration: init_admin Fatal Error: ' . $e->getMessage(), 'TEC');
+            throw $e;
+        }
     }
     
     /**
@@ -417,7 +519,7 @@ class Azure_TEC_Integration {
      * Check if sync is enabled
      */
     private function is_sync_enabled() {
-        $settings = Azure_Settings::get_settings();
+        $settings = Azure_Settings::get_all_settings();
         return !empty($settings['enable_tec_integration']) && !empty($settings['enable_calendar']);
     }
     
@@ -567,9 +669,9 @@ class Azure_TEC_Integration {
     }
     
     /**
-     * Clean up sync metadata for deleted events
+     * Clean up orphaned sync metadata for deleted events
      */
-    public static function cleanup_sync_metadata() {
+    public static function cleanup_orphaned_sync_metadata() {
         global $wpdb;
         
         Azure_Logger::info('TEC Integration: Starting cleanup of orphaned sync metadata', 'TEC');
@@ -739,5 +841,141 @@ class Azure_TEC_Integration {
         $result = $wpdb->insert($queue_table, $data, $formats);
         
         return $result ? $wpdb->insert_id : false;
+    }
+    
+    /**
+     * Initialize sync metadata for existing TEC events (Task 1.7)
+     * One-time setup for sites with pre-existing events
+     */
+    public function initialize_existing_events_for_sync($force = false) {
+        Azure_Logger::info('TEC Integration: Starting initialization of existing TEC events for sync', 'TEC');
+        
+        $meta_query = array(
+            array(
+                'key' => '_outlook_sync_status',
+                'compare' => 'NOT EXISTS'
+            )
+        );
+        
+        // If force is true, reinitialize all events
+        if ($force) {
+            $meta_query = array();
+            Azure_Logger::info('TEC Integration: Force initialization - processing all TEC events', 'TEC');
+        }
+        
+        $existing_events = get_posts(array(
+            'post_type' => 'tribe_events',
+            'posts_per_page' => -1,
+            'post_status' => array('publish', 'private', 'draft'),
+            'meta_query' => $meta_query
+        ));
+        
+        $initialized_count = 0;
+        $skipped_count = 0;
+        
+        foreach ($existing_events as $event) {
+            // Check if event already has sync metadata (unless force)
+            if (!$force && get_post_meta($event->ID, '_outlook_sync_status', true)) {
+                $skipped_count++;
+                continue;
+            }
+            
+            // Initialize sync metadata
+            update_post_meta($event->ID, '_outlook_sync_status', 'pending');
+            update_post_meta($event->ID, '_outlook_last_sync', '');
+            update_post_meta($event->ID, '_sync_direction', 'not_synced');
+            
+            // Don't set _outlook_event_id - will be added when first synced to Outlook
+            
+            $initialized_count++;
+            
+            Azure_Logger::debug("TEC Integration: Initialized sync metadata for event {$event->ID}: {$event->post_title}", 'TEC');
+        }
+        
+        Azure_Logger::info("TEC Integration: Initialization complete - {$initialized_count} events initialized, {$skipped_count} skipped", 'TEC');
+        
+        return array(
+            'initialized' => $initialized_count,
+            'skipped' => $skipped_count,
+            'total_processed' => count($existing_events)
+        );
+    }
+    
+    /**
+     * Clean up sync metadata (Task 1.8)
+     * Remove our sync metadata from TEC events
+     */
+    public function cleanup_sync_metadata($delete_outlook_events = false) {
+        Azure_Logger::info('TEC Integration: Starting cleanup of sync metadata', 'TEC');
+        
+        global $wpdb;
+        
+        // Get all TEC events with our sync metadata
+        $events_with_sync_data = get_posts(array(
+            'post_type' => 'tribe_events',
+            'posts_per_page' => -1,
+            'post_status' => 'any',
+            'meta_query' => array(
+                array(
+                    'key' => '_outlook_sync_status',
+                    'compare' => 'EXISTS'
+                )
+            )
+        ));
+        
+        $cleaned_count = 0;
+        $outlook_deleted_count = 0;
+        
+        foreach ($events_with_sync_data as $event) {
+            // Optionally delete from Outlook first
+            if ($delete_outlook_events) {
+                $outlook_event_id = get_post_meta($event->ID, '_outlook_event_id', true);
+                if ($outlook_event_id && $this->sync_engine) {
+                    try {
+                        $result = $this->sync_engine->delete_outlook_event($outlook_event_id);
+                        if ($result) {
+                            $outlook_deleted_count++;
+                            Azure_Logger::debug("TEC Integration: Deleted Outlook event {$outlook_event_id} for TEC event {$event->ID}", 'TEC');
+                        }
+                    } catch (Exception $e) {
+                        Azure_Logger::warning("TEC Integration: Failed to delete Outlook event {$outlook_event_id}: " . $e->getMessage(), 'TEC');
+                    }
+                }
+            }
+            
+            // Remove all our sync metadata
+            delete_post_meta($event->ID, '_outlook_event_id');
+            delete_post_meta($event->ID, '_outlook_sync_status');
+            delete_post_meta($event->ID, '_outlook_last_sync');
+            delete_post_meta($event->ID, '_sync_conflict_resolution');
+            delete_post_meta($event->ID, '_sync_direction');
+            delete_post_meta($event->ID, '_outlook_sync_message');
+            
+            $cleaned_count++;
+            
+            Azure_Logger::debug("TEC Integration: Cleaned sync metadata for event {$event->ID}: {$event->post_title}", 'TEC');
+        }
+        
+        // Clean up any orphaned sync metadata (shouldn't happen, but just in case)
+        $orphaned_metadata = $wpdb->query("
+            DELETE pm FROM {$wpdb->postmeta} pm
+            LEFT JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+            WHERE pm.meta_key IN (
+                '_outlook_event_id', 
+                '_outlook_sync_status', 
+                '_outlook_last_sync', 
+                '_sync_conflict_resolution', 
+                '_sync_direction',
+                '_outlook_sync_message'
+            ) AND (p.ID IS NULL OR p.post_type != 'tribe_events')
+        ");
+        
+        Azure_Logger::info("TEC Integration: Cleanup complete - {$cleaned_count} events cleaned, {$outlook_deleted_count} Outlook events deleted, {$orphaned_metadata} orphaned metadata removed", 'TEC');
+        
+        return array(
+            'cleaned_events' => $cleaned_count,
+            'outlook_events_deleted' => $outlook_deleted_count,
+            'orphaned_metadata_removed' => $orphaned_metadata
+        );
     }
 }

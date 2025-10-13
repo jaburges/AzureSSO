@@ -293,6 +293,15 @@ jQuery(document).ready(function($) {
         var button = $(this);
         button.prop('disabled', true).html('<span class="spinner is-active"></span> Refreshing...');
         
+        // Debug: Check if azure_plugin_ajax is available
+        console.log('System Logs Debug: azure_plugin_ajax object:', typeof azure_plugin_ajax !== 'undefined' ? azure_plugin_ajax : 'undefined');
+        
+        if (typeof azure_plugin_ajax === 'undefined') {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Refresh Logs');
+            alert('JavaScript not loaded properly. Please refresh the page.');
+            return;
+        }
+        
         var level_filter = $('#log-level-filter').val() || '';
         var module_filter = $('#module-filter').val() || '';
         
@@ -304,7 +313,26 @@ jQuery(document).ready(function($) {
         }, function(response) {
             button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Refresh Logs');
             
-            if (response.success) {
+            // Debug: Log the full response
+            console.log('System Logs AJAX Response:', response);
+            console.log('Response type:', typeof response);
+            
+            // Parse JSON if response is a string
+            if (typeof response === 'string') {
+                try {
+                    response = JSON.parse(response);
+                    console.log('JSON parsed successfully:', response);
+                } catch (e) {
+                    console.log('JSON parse failed:', e);
+                    alert('❌ Invalid JSON response from server');
+                    return;
+                }
+            }
+            
+            console.log('Response success:', response ? response.success : 'response is null/undefined');
+            console.log('Response data:', response ? response.data : 'response is null/undefined');
+            
+            if (response && response.success) {
                 $('#log-content').html(response.data.html);
                 $('.stat-card:last-child .stat-number').text(response.data.count);
                 
@@ -312,11 +340,21 @@ jQuery(document).ready(function($) {
                 var logViewer = $('#log-content')[0];
                 logViewer.scrollTop = logViewer.scrollHeight;
             } else {
-                alert('❌ Failed to refresh logs: ' + (response.data || 'Unknown error'));
+                var errorMsg = 'Unknown error';
+                if (response && response.data) {
+                    errorMsg = response.data;
+                } else if (response) {
+                    errorMsg = 'Invalid response format';
+                } else {
+                    errorMsg = 'No response from server';
+                }
+                alert('❌ Failed to refresh logs: ' + errorMsg);
             }
-        }).fail(function() {
+        }).fail(function(jqXHR, textStatus, errorThrown) {
             button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Refresh Logs');
-            alert('❌ Network error while refreshing logs');
+            console.log('System Logs AJAX Failed:', {jqXHR: jqXHR, textStatus: textStatus, errorThrown: errorThrown});
+            console.log('Response Text:', jqXHR.responseText);
+            alert('❌ Network error while refreshing logs: ' + textStatus + ' - ' + errorThrown);
         });
     });
     

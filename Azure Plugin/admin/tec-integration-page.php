@@ -13,7 +13,7 @@ if (!current_user_can('manage_options')) {
 }
 
 // Get current settings
-$settings = Azure_Settings::get_settings();
+$settings = Azure_Settings::get_all_settings();
 $tec_integration = Azure_TEC_Integration::get_instance();
 
 // Handle form submission
@@ -51,7 +51,7 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['azure_tec_nonce'], 'azure
         }
         
         // Refresh settings
-        $settings = Azure_Settings::get_settings();
+        $settings = Azure_Settings::get_all_settings();
     } else {
         echo '<div class="notice notice-error"><p>Failed to save TEC Integration settings.</p></div>';
     }
@@ -417,6 +417,153 @@ jQuery(document).ready(function($) {
                 }
             });
         }
+        // Handle conflict resolution (Task 3.8)
+        $('.resolve-conflict').click(function() {
+            var conflictId = $(this).data('conflict-id');
+            var resolution = $(this).data('resolution');
+            var button = $(this);
+            
+            if (!confirm('Are you sure you want to resolve this conflict with: ' + resolution + '?')) {
+                return;
+            }
+            
+            button.prop('disabled', true).html('<span class="spinner is-active"></span> Resolving...');
+            
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'azure_tec_resolve_conflict',
+                conflict_id: conflictId,
+                resolution: resolution,
+                nonce: azure_plugin_ajax.nonce
+            }, function(response) {
+                if (response.success) {
+                    alert('✅ Conflict resolved successfully!');
+                    location.reload();
+                } else {
+                    alert('❌ Failed to resolve conflict: ' + response.data);
+                    button.prop('disabled', false).html(button.data('original-text'));
+                }
+            }).fail(function() {
+                alert('❌ Network error occurred');
+                button.prop('disabled', false).html(button.data('original-text'));
+            });
+        });
+        
+        // Handle maintenance actions (Tasks 1.7, 1.8, 2.8)
+        $('.maintenance-action').click(function() {
+            var action = $(this).data('action');
+            var button = $(this);
+            var confirmMessage = 'Are you sure you want to perform this action?';
+            
+            if (action === 'cleanup_sync_metadata') {
+                confirmMessage = 'WARNING: This will remove ALL sync metadata from TEC events. They will no longer be connected to Outlook events. Continue?';
+            }
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            var originalText = button.html();
+            button.prop('disabled', true).html('<span class="spinner is-active"></span> Processing...');
+            
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'azure_tec_maintenance',
+                maintenance_action: action,
+                nonce: azure_plugin_ajax.nonce
+            }, function(response) {
+                button.prop('disabled', false).html(originalText);
+                
+                if (response.success) {
+                    var message = response.data.message || 'Action completed successfully';
+                    if (response.data.details) {
+                        message += '\n\nDetails:\n' + response.data.details;
+                    }
+                    alert('✅ ' + message);
+                    
+                    // Refresh page for certain actions
+                    if (action === 'initialize_existing_events' || action === 'cleanup_sync_metadata') {
+                        location.reload();
+                    }
+                } else {
+                    alert('❌ ' + response.data);
+                }
+            }).fail(function() {
+                button.prop('disabled', false).html(originalText);
+                alert('❌ Network error occurred');
+            });
+        });
+        
+        // Store original button text for conflict resolution
+        $('.resolve-conflict').each(function() {
+            $(this).data('original-text', $(this).html());
+        });
     };
 });
 </script>
+
+<!-- Add conflict resolution and maintenance sections above this script -->
+<div style="margin-top: 30px;">
+    <!-- Conflict Resolution Section (Task 3.7) -->
+    <div class="tec-section">
+        <h3>🚨 Sync Conflicts</h3>
+        
+        <?php
+        global $wpdb;
+        $conflicts_table = Azure_Database::get_table_name('tec_sync_conflicts');
+        
+        if ($conflicts_table && $wpdb->get_var("SHOW TABLES LIKE '{$conflicts_table}'")) {
+            $conflicts = $wpdb->get_results("SELECT * FROM {$conflicts_table} WHERE resolution_status = 'pending' ORDER BY created_at DESC LIMIT 10");
+            
+            if ($conflicts) {
+                echo '<div class="notice notice-warning"><p>You have ' . count($conflicts) . ' sync conflicts that need resolution.</p></div>';
+                
+                foreach ($conflicts as $conflict) {
+                    $tec_event = get_post($conflict->tec_event_id);
+                    echo '<div class="conflict-item" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">';
+                    echo '<h4>Event: ' . ($tec_event ? esc_html($tec_event->post_title) : 'Unknown Event') . '</h4>';
+                    echo '<p><strong>Conflict Type:</strong> ' . esc_html($conflict->conflict_type) . '</p>';
+                    echo '<p><strong>Outlook Event ID:</strong> ' . esc_html($conflict->outlook_event_id) . '</p>';
+                    
+                    echo '<div class="conflict-actions">';
+                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="outlook_wins">Use Outlook Version</button> ';
+                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="tec_wins">Use TEC Version</button> ';
+                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="manual">Resolve Manually</button>';
+                    echo '</div>';
+                    echo '</div>';
+                }
+            } else {
+                echo '<p style="color: green;">✅ No sync conflicts - all events are synchronized properly.</p>';
+            }
+        } else {
+            echo '<p style="color: orange;">⚠️ Conflicts table not available. Conflicts will be logged to the system logs.</p>';
+        }
+        ?>
+    </div>
+    
+    <!-- Maintenance Actions Section (Tasks 1.7, 1.8, 2.8) -->
+    <div class="tec-section">
+        <h3>🔧 Maintenance Actions</h3>
+        
+        <div class="maintenance-actions" style="display: grid; gap: 20px;">
+            <div>
+                <button type="button" class="button button-primary maintenance-action" data-action="initialize_existing_events">
+                    Initialize Existing TEC Events for Sync
+                </button>
+                <p class="description">Prepare existing TEC events for synchronization with Outlook. This is a one-time setup for sites with pre-existing events.</p>
+            </div>
+            
+            <div>
+                <button type="button" class="button maintenance-action" data-action="retry_failed_syncs">
+                    Retry Failed Syncs
+                </button>
+                <p class="description">Attempt to re-sync events that previously failed with exponential backoff.</p>
+            </div>
+            
+            <div>
+                <button type="button" class="button button-secondary maintenance-action" data-action="cleanup_sync_metadata" style="color: #d63638;">
+                    Clean Up Sync Metadata
+                </button>
+                <p class="description"><strong>Warning:</strong> Remove all sync metadata from TEC events. This will not delete the events themselves, but they will no longer be connected to Outlook events.</p>
+            </div>
+        </div>
+    </div>
+</div>

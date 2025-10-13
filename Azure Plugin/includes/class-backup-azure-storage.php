@@ -374,11 +374,18 @@ class Azure_Backup_Storage {
             }
         }
         
-        // Build string to sign
+        // Build string to sign - Azure Storage requires empty string for 0 content length
+        $content_length_value = '';
+        if (isset($headers['Content-Length'])) {
+            $content_length_value = $headers['Content-Length'];
+        } else if ($content_length > 0) {
+            $content_length_value = $content_length;
+        }
+        
         $string_to_sign = $method . "\n" .
                          (isset($headers['Content-Encoding']) ? $headers['Content-Encoding'] : '') . "\n" .
                          (isset($headers['Content-Language']) ? $headers['Content-Language'] : '') . "\n" .
-                         (isset($headers['Content-Length']) ? $headers['Content-Length'] : $content_length) . "\n" .
+                         $content_length_value . "\n" .
                          (isset($headers['Content-MD5']) ? $headers['Content-MD5'] : '') . "\n" .
                          (isset($headers['Content-Type']) ? $headers['Content-Type'] : '') . "\n" .
                          (isset($headers['Date']) ? $headers['Date'] : '') . "\n" .
@@ -431,11 +438,18 @@ class Azure_Backup_Storage {
             }
         }
         
-        // Build string to sign
+        // Build string to sign - Azure Storage requires empty string for 0 content length
+        $content_length_value = '';
+        if (isset($headers['Content-Length'])) {
+            $content_length_value = $headers['Content-Length'];
+        } else if ($content_length > 0) {
+            $content_length_value = $content_length;
+        }
+        
         $string_to_sign = $method . "\n" .
                          (isset($headers['Content-Encoding']) ? $headers['Content-Encoding'] : '') . "\n" .
                          (isset($headers['Content-Language']) ? $headers['Content-Language'] : '') . "\n" .
-                         (isset($headers['Content-Length']) ? $headers['Content-Length'] : $content_length) . "\n" .
+                         $content_length_value . "\n" .
                          (isset($headers['Content-MD5']) ? $headers['Content-MD5'] : '') . "\n" .
                          (isset($headers['Content-Type']) ? $headers['Content-Type'] : '') . "\n" .
                          (isset($headers['Date']) ? $headers['Date'] : '') . "\n" .
@@ -446,6 +460,11 @@ class Azure_Backup_Storage {
                          (isset($headers['Range']) ? $headers['Range'] : '') . "\n" .
                          $canonical_headers .
                          $canonical_resource;
+        
+        // Debug: Log the string to sign for troubleshooting
+        Azure_Logger::debug('Backup Storage: String to sign: ' . str_replace("\n", "\\n", $string_to_sign));
+        Azure_Logger::debug('Backup Storage: Canonical resource: ' . $canonical_resource);
+        Azure_Logger::debug('Backup Storage: Canonical headers: ' . str_replace("\n", "\\n", $canonical_headers));
         
         // Generate signature
         $signature = base64_encode(hash_hmac('sha256', $string_to_sign, base64_decode($storage_key), true));

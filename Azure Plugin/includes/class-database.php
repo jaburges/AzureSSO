@@ -35,9 +35,12 @@ class Azure_Database {
         $table_backup_jobs = $wpdb->prefix . 'azure_backup_jobs';
         $sql_backup_jobs = "CREATE TABLE $table_backup_jobs (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
+            backup_id varchar(255) NOT NULL,
             job_name varchar(255) NOT NULL,
             backup_types longtext,
             status varchar(50) DEFAULT 'pending',
+            progress int(11) DEFAULT 0,
+            message longtext,
             file_path varchar(500),
             file_size bigint(20) DEFAULT 0,
             azure_blob_name varchar(500),
@@ -47,6 +50,7 @@ class Azure_Database {
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
+            UNIQUE KEY backup_id (backup_id),
             KEY status (status),
             KEY created_at (created_at)
         ) $charset_collate;";
@@ -424,4 +428,3 @@ class Azure_Database {
         }
     }
 }
-?>

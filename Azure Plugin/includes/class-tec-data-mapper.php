@@ -15,7 +15,7 @@ class Azure_TEC_Data_Mapper {
     private $default_organizer;
     
     public function __construct() {
-        $this->settings = Azure_Settings::get_settings();
+        $this->settings = Azure_Settings::get_all_settings();
         $this->default_venue = $this->settings['tec_default_venue'] ?? 'School Campus';
         $this->default_organizer = $this->settings['tec_default_organizer'] ?? 'PTSA';
         
@@ -506,5 +506,175 @@ class Azure_TEC_Data_Mapper {
         // For now, return basic structure
         
         return $stats;
+    }
+    
+    /**
+     * Map TEC recurring events to Outlook recurrence patterns (Task 2.3)
+     */
+    public function map_tec_recurrence_to_outlook($tec_event_id) {
+        // Check if TEC Pro is active and event is recurring
+        if (!function_exists('tribe_is_recurring_event') || !tribe_is_recurring_event($tec_event_id)) {
+            return null; // Not a recurring event
+        }
+        
+        Azure_Logger::debug("TEC Data Mapper: Mapping recurring event {$tec_event_id} to Outlook pattern", 'TEC');
+        
+        try {
+            // Get TEC recurrence data
+            $recurrence_meta = get_post_meta($tec_event_id, '_EventRecurrence', true);
+            
+            if (!$recurrence_meta || !is_array($recurrence_meta)) {
+                return null;
+            }
+            
+            $recurrence_type = $recurrence_meta['type'] ?? 'none';
+            $end_type = $recurrence_meta['end-type'] ?? 'never';
+            $end_count = $recurrence_meta['end-count'] ?? null;
+            $end_date = $recurrence_meta['end'] ?? null;
+            
+            $outlook_pattern = array(
+                'type' => $this->convert_tec_recurrence_type($recurrence_type, $recurrence_meta),
+                'interval' => intval($recurrence_meta['custom']['interval'] ?? 1)
+            );
+            
+            // Add type-specific pattern details
+            switch ($recurrence_type) {
+                case 'Daily':
+                    // Daily pattern is simple, just interval
+                    break;
+                    
+                case 'Weekly':
+                    $days_of_week = $recurrence_meta['custom']['week']['day'] ?? array();
+                    if (!empty($days_of_week)) {
+                        $outlook_pattern['daysOfWeek'] = $this->convert_tec_days_to_outlook($days_of_week);
+                    }
+                    break;
+                    
+                case 'Monthly':
+                    if (isset($recurrence_meta['custom']['month']['same-day'])) {
+                        $outlook_pattern['type'] = 'relativeMonthly';
+                        $outlook_pattern['daysOfWeek'] = array($this->get_day_of_week_from_date($tec_event_id));
+                        $outlook_pattern['index'] = $this->get_week_of_month_from_date($tec_event_id);
+                    } else {
+                        $outlook_pattern['dayOfMonth'] = intval(date('j', strtotime(get_post_meta($tec_event_id, '_EventStartDate', true))));
+                    }
+                    break;
+                    
+                case 'Yearly':
+                    $start_date = get_post_meta($tec_event_id, '_EventStartDate', true);
+                    $outlook_pattern['month'] = intval(date('n', strtotime($start_date)));
+                    $outlook_pattern['dayOfMonth'] = intval(date('j', strtotime($start_date)));
+                    break;
+            }
+            
+            // Set recurrence range (end condition)
+            $outlook_range = array(
+                'type' => 'noEnd', // default
+                'startDate' => date('Y-m-d', strtotime(get_post_meta($tec_event_id, '_EventStartDate', true)))
+            );
+            
+            switch ($end_type) {
+                case 'On':
+                    if ($end_date) {
+                        $outlook_range['type'] = 'endDate';
+                        $outlook_range['endDate'] = date('Y-m-d', strtotime($end_date));
+                    }
+                    break;
+                    
+                case 'After':
+                    if ($end_count && $end_count > 0) {
+                        $outlook_range['type'] = 'numbered';
+                        $outlook_range['numberOfOccurrences'] = intval($end_count);
+                    }
+                    break;
+            }
+            
+            $recurrence = array(
+                'pattern' => $outlook_pattern,
+                'range' => $outlook_range
+            );
+            
+            Azure_Logger::debug("TEC Data Mapper: Mapped recurrence pattern: " . json_encode($recurrence), 'TEC');
+            
+            return $recurrence;
+            
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Data Mapper: Error mapping recurrence for event {$tec_event_id}: " . $e->getMessage(), 'TEC');
+            return null;
+        }
+    }
+    
+    /**
+     * Convert TEC recurrence type to Outlook pattern type
+     */
+    private function convert_tec_recurrence_type($tec_type, $meta) {
+        switch ($tec_type) {
+            case 'Daily':
+                return 'daily';
+            case 'Weekly':
+                return 'weekly';
+            case 'Monthly':
+                return isset($meta['custom']['month']['same-day']) ? 'relativeMonthly' : 'absoluteMonthly';
+            case 'Yearly':
+                return 'absoluteYearly';
+            default:
+                return 'daily';
+        }
+    }
+    
+    /**
+     * Convert TEC days of week to Outlook format
+     */
+    private function convert_tec_days_to_outlook($tec_days) {
+        $day_mapping = array(
+            '1' => 'monday',
+            '2' => 'tuesday', 
+            '3' => 'wednesday',
+            '4' => 'thursday',
+            '5' => 'friday',
+            '6' => 'saturday',
+            '7' => 'sunday'
+        );
+        
+        $outlook_days = array();
+        foreach ($tec_days as $day) {
+            if (isset($day_mapping[$day])) {
+                $outlook_days[] = $day_mapping[$day];
+            }
+        }
+        
+        return $outlook_days;
+    }
+    
+    /**
+     * Get day of week from TEC event start date
+     */
+    private function get_day_of_week_from_date($tec_event_id) {
+        $start_date = get_post_meta($tec_event_id, '_EventStartDate', true);
+        $day_number = date('N', strtotime($start_date)); // 1 = Monday, 7 = Sunday
+        
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+        return $days[$day_number - 1];
+    }
+    
+    /**
+     * Get week of month from TEC event start date
+     */
+    private function get_week_of_month_from_date($tec_event_id) {
+        $start_date = get_post_meta($tec_event_id, '_EventStartDate', true);
+        $day_of_month = date('j', strtotime($start_date));
+        
+        // Calculate week of month (first, second, third, fourth, last)
+        if ($day_of_month <= 7) {
+            return 'first';
+        } elseif ($day_of_month <= 14) {
+            return 'second';
+        } elseif ($day_of_month <= 21) {
+            return 'third';
+        } elseif ($day_of_month <= 28) {
+            return 'fourth';
+        } else {
+            return 'last';
+        }
     }
 }

@@ -157,25 +157,7 @@ class Azure_PTA_Manager {
         return $role;
     }
     
-    /**
-     * Get user assignments (roles for a specific user)
-     */
-    public function get_user_assignments($user_id) {
-        global $wpdb;
-        $assignments_table = Azure_PTA_Database::get_table_name('role_assignments');
-        $roles_table = Azure_PTA_Database::get_table_name('roles');
-        $dept_table = Azure_PTA_Database::get_table_name('departments');
-        
-        $sql = "SELECT ra.*, r.name as role_name, r.description as role_description, 
-                       d.name as department_name, r.id as role_id
-                FROM $assignments_table ra 
-                JOIN $roles_table r ON ra.role_id = r.id 
-                JOIN $dept_table d ON r.department_id = d.id
-                WHERE ra.user_id = %d 
-                ORDER BY d.name, r.name";
-        
-        return $wpdb->get_results($wpdb->prepare($sql, $user_id));
-    }
+    // REMOVED: Duplicate get_user_assignments method - keeping the more advanced version below
     
     /**
      * Get role assignments
@@ -423,15 +405,7 @@ class Azure_PTA_Manager {
         }
     }
     
-    /**
-     * Get role by ID
-     */
-    public function get_role($role_id) {
-        global $wpdb;
-        $table = Azure_PTA_Database::get_table_name('roles');
-        
-        return $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $role_id));
-    }
+    // REMOVED: Duplicate get_role method - keeping the more advanced version above
     
     /**
      * Get department by ID

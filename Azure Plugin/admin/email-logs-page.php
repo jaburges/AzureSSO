@@ -359,6 +359,16 @@ jQuery(document).ready(function($) {
         $('.logs-loading').show();
         $('#email-logs-table').hide();
         
+        // Debug: Check if azure_plugin_ajax is available
+        console.log('Email Logs Debug: azure_plugin_ajax object:', typeof azure_plugin_ajax !== 'undefined' ? azure_plugin_ajax : 'undefined');
+        
+        if (typeof azure_plugin_ajax === 'undefined') {
+            $('.logs-loading').hide();
+            $('#email-logs-table').show();
+            $('.logs-message').html('<div class="error">JavaScript not loaded properly. Please refresh the page.</div>');
+            return;
+        }
+        
         $.post(azure_plugin_ajax.ajax_url, {
             action: 'azure_get_email_logs',
             page: currentPage,
@@ -373,15 +383,44 @@ jQuery(document).ready(function($) {
             $('.logs-loading').hide();
             $('#email-logs-table').show();
             
-            if (response.success) {
+            // Debug: Log the full response
+            console.log('Email Logs AJAX Response:', response);
+            console.log('Response type:', typeof response);
+            
+            // Parse JSON if response is a string
+            if (typeof response === 'string') {
+                try {
+                    response = JSON.parse(response);
+                    console.log('JSON parsed successfully:', response);
+                } catch (e) {
+                    console.log('JSON parse failed:', e);
+                    alert('❌ Invalid JSON response from server');
+                    return;
+                }
+            }
+            
+            console.log('Response success:', response ? response.success : 'response is null/undefined');
+            console.log('Response data:', response ? response.data : 'response is null/undefined');
+            
+            if (response && response.success) {
                 renderEmailLogs(response.data);
             } else {
-                alert('❌ Failed to load email logs: ' + response.data);
+                var errorMsg = 'Unknown error';
+                if (response && response.data) {
+                    errorMsg = response.data;
+                } else if (response) {
+                    errorMsg = 'Invalid response format';
+                } else {
+                    errorMsg = 'No response from server';
+                }
+                alert('❌ Failed to load email logs: ' + errorMsg);
             }
-        }).fail(function() {
+        }).fail(function(jqXHR, textStatus, errorThrown) {
             $('.logs-loading').hide();
             $('#email-logs-table').show();
-            alert('❌ Network error occurred');
+            console.log('Email Logs AJAX Failed:', {jqXHR: jqXHR, textStatus: textStatus, errorThrown: errorThrown});
+            console.log('Response Text:', jqXHR.responseText);
+            alert('❌ Network error occurred: ' + textStatus + ' - ' + errorThrown);
         });
     }
     

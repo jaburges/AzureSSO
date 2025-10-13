@@ -43,6 +43,11 @@ class Azure_Email_Logger {
         add_action('wp_ajax_azure_bulk_delete_email_logs', array($this, 'ajax_bulk_delete_email_logs'));
         add_action('wp_ajax_azure_clear_email_logs', array($this, 'ajax_clear_email_logs'));
         add_action('wp_ajax_azure_resend_email', array($this, 'ajax_resend_email'));
+        
+        // Debug: Log that AJAX handlers are registered
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::debug('Email Logger: AJAX handlers registered successfully', 'EmailLogger');
+        }
     }
     
     /**
@@ -271,7 +276,15 @@ class Azure_Email_Logger {
      * Get email logs (AJAX)
      */
     public function ajax_get_email_logs() {
+        // Debug: Log that AJAX handler was called
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::debug('Email Logger: ajax_get_email_logs called', 'EmailLogger');
+        }
+        
         if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::error('Email Logger: ajax_get_email_logs unauthorized access', 'EmailLogger');
+            }
             wp_send_json_error('Unauthorized');
         }
         

@@ -26,7 +26,7 @@ class Azure_TEC_Sync_Engine {
         }
         
         // Get default calendar ID from settings
-        $settings = Azure_Settings::get_settings();
+        $settings = Azure_Settings::get_all_settings();
         $this->calendar_id = $settings['tec_outlook_calendar_id'] ?? 'primary';
         
         Azure_Logger::debug('TEC Sync Engine: Initialized with calendar ID: ' . $this->calendar_id, 'TEC');
@@ -378,7 +378,7 @@ class Azure_TEC_Sync_Engine {
      * Resolve sync conflict
      */
     private function resolve_sync_conflict($tec_event_id, $outlook_event) {
-        $settings = Azure_Settings::get_settings();
+        $settings = Azure_Settings::get_all_settings();
         $resolution_strategy = $settings['tec_conflict_resolution'] ?? 'outlook_wins';
         
         Azure_Logger::info("TEC Sync Engine: Resolving conflict for event {$tec_event_id} using strategy: {$resolution_strategy}", 'TEC');
@@ -545,5 +545,162 @@ class Azure_TEC_Sync_Engine {
         );
         
         return $stats;
+    }
+    
+    /**
+     * Retry failed sync attempts (Task 2.8)
+     * Implement exponential backoff for failed syncs
+     */
+    public function retry_failed_syncs($max_retries = 3) {
+        Azure_Logger::info('TEC Sync Engine: Starting retry of failed sync attempts', 'TEC');
+        
+        // Get events with error status or excessive pending time
+        $failed_events = get_posts(array(
+            'post_type' => 'tribe_events',
+            'posts_per_page' => 50, // Limit to prevent overwhelming
+            'post_status' => array('publish', 'private'),
+            'meta_query' => array(
+                'relation' => 'OR',
+                array(
+                    'key' => '_outlook_sync_status',
+                    'value' => 'error'
+                ),
+                array(
+                    'key' => '_outlook_sync_status',
+                    'value' => 'pending',
+                    'meta_query' => array(
+                        array(
+                            'key' => '_outlook_last_sync_attempt',
+                            'value' => date('Y-m-d H:i:s', strtotime('-1 hour')),
+                            'compare' => '<'
+                        )
+                    )
+                )
+            )
+        ));
+        
+        $retry_count = 0;
+        $success_count = 0;
+        $skip_count = 0;
+        
+        foreach ($failed_events as $event) {
+            $event_id = $event->ID;
+            
+            // Check retry count
+            $current_retries = get_post_meta($event_id, '_outlook_sync_retries', true) ?: 0;
+            
+            if ($current_retries >= $max_retries) {
+                // Mark as permanently failed
+                update_post_meta($event_id, '_outlook_sync_status', 'failed_permanent');
+                update_post_meta($event_id, '_outlook_sync_message', 'Max retries exceeded');
+                $skip_count++;
+                Azure_Logger::warning("TEC Sync Engine: Event {$event_id} exceeded max retries ({$max_retries})", 'TEC');
+                continue;
+            }
+            
+            // Implement exponential backoff
+            $backoff_minutes = pow(2, $current_retries) * 5; // 5, 10, 20 minutes
+            $last_attempt = get_post_meta($event_id, '_outlook_last_sync_attempt', true);
+            
+            if ($last_attempt && strtotime($last_attempt) > strtotime("-{$backoff_minutes} minutes")) {
+                // Still in backoff period
+                $skip_count++;
+                continue;
+            }
+            
+            // Record retry attempt
+            update_post_meta($event_id, '_outlook_sync_retries', $current_retries + 1);
+            update_post_meta($event_id, '_outlook_last_sync_attempt', current_time('mysql'));
+            
+            // Attempt sync
+            try {
+                $result = $this->sync_tec_to_outlook($event_id);
+                
+                if ($result) {
+                    // Success - reset retry count
+                    delete_post_meta($event_id, '_outlook_sync_retries');
+                    delete_post_meta($event_id, '_outlook_last_sync_attempt');
+                    $success_count++;
+                    Azure_Logger::info("TEC Sync Engine: Successfully retried sync for event {$event_id}", 'TEC');
+                } else {
+                    // Failed again
+                    update_post_meta($event_id, '_outlook_sync_status', 'error');
+                    update_post_meta($event_id, '_outlook_sync_message', 'Retry failed');
+                    $retry_count++;
+                }
+                
+            } catch (Exception $e) {
+                // Exception occurred
+                update_post_meta($event_id, '_outlook_sync_status', 'error');
+                update_post_meta($event_id, '_outlook_sync_message', 'Retry exception: ' . $e->getMessage());
+                $retry_count++;
+                Azure_Logger::error("TEC Sync Engine: Retry failed for event {$event_id}: " . $e->getMessage(), 'TEC');
+            }
+        }
+        
+        Azure_Logger::info("TEC Sync Engine: Retry complete - {$success_count} succeeded, {$retry_count} failed, {$skip_count} skipped", 'TEC');
+        
+        return array(
+            'processed' => count($failed_events),
+            'success' => $success_count,
+            'failed' => $retry_count,
+            'skipped' => $skip_count
+        );
+    }
+    
+    /**
+     * Handle API rate limiting (Task 3.13)
+     * Implement rate limiting and throttling for Graph API calls
+     */
+    public function handle_rate_limiting($response_headers = array()) {
+        // Check for rate limit headers from Microsoft Graph API
+        if (isset($response_headers['Retry-After'])) {
+            $retry_after = intval($response_headers['Retry-After']);
+            Azure_Logger::warning("TEC Sync Engine: Rate limited, waiting {$retry_after} seconds", 'TEC');
+            
+            // Store rate limit info for future requests
+            update_option('azure_tec_rate_limit_until', time() + $retry_after);
+            
+            return $retry_after;
+        }
+        
+        // Check for throttling headers
+        if (isset($response_headers['X-RateLimit-Remaining'])) {
+            $remaining = intval($response_headers['X-RateLimit-Remaining']);
+            
+            if ($remaining < 10) {
+                // Very low on requests, implement delay
+                $delay = min(60, (10 - $remaining) * 2); // Up to 60 seconds
+                Azure_Logger::info("TEC Sync Engine: Low rate limit remaining ({$remaining}), adding {$delay}s delay", 'TEC');
+                
+                update_option('azure_tec_throttle_delay', $delay);
+                return $delay;
+            }
+        }
+        
+        return 0; // No delay needed
+    }
+    
+    /**
+     * Check if we should delay requests due to rate limiting
+     */
+    public function should_delay_request() {
+        // Check if we're currently rate limited
+        $rate_limit_until = get_option('azure_tec_rate_limit_until', 0);
+        if ($rate_limit_until && time() < $rate_limit_until) {
+            return $rate_limit_until - time();
+        }
+        
+        // Check if we should throttle
+        $throttle_delay = get_option('azure_tec_throttle_delay', 0);
+        if ($throttle_delay) {
+            // Gradually reduce throttle delay
+            $new_delay = max(0, $throttle_delay - 5);
+            update_option('azure_tec_throttle_delay', $new_delay);
+            
+            return $throttle_delay;
+        }
+        
+        return 0;
     }
 }

@@ -13,6 +13,10 @@ class Azure_Logger {
     private static $max_file_size = 20971520; // 20MB in bytes
     private static $initialized = false;
     
+    public static function is_initialized() {
+        return self::$initialized;
+    }
+    
     public static function init() {
         if (self::$initialized) {
             return;
@@ -374,7 +378,3 @@ class Azure_Logger {
         );
     }
 }
-
-// Auto-initialize
-Azure_Logger::init();
-?>

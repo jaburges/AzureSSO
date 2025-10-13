@@ -292,38 +292,7 @@ input:checked + .slider:before {
     }
 }
 
-/* Backup specific styles */
-.backup-jobs-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-}
-
-.backup-jobs-table th,
-.backup-jobs-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid #ddd;
-}
-
-.backup-jobs-table th {
-    background: #f9f9f9;
-    font-weight: bold;
-}
-
-.backup-progress {
-    width: 100%;
-    height: 20px;
-    background: #f0f0f0;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.backup-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #0073aa, #005a87);
-    transition: width 0.3s ease;
-}
+/* Backup styles moved to backup-frontend.css */
 
 /* Calendar specific styles */
 .calendar-preview {

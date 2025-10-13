@@ -1,6 +1,27 @@
 <?php
 /**
  * PTA Shortcode handler for Azure Plugin
+ * 
+ * TEAM MEMBERS INSPIRED LAYOUT USAGE:
+ * 
+ * Basic Team Cards Layout:
+ * [pta-roles-directory layout="team-cards" columns="3"]
+ * 
+ * Advanced Team Cards with Custom Options:
+ * [pta-roles-directory layout="team-cards" columns="4" department="communications" 
+ *  show_avatars="true" show_contact="true" avatar_size="80" description="true"]
+ * 
+ * Layout Options:
+ * - grid: Traditional grid cards (default)
+ * - list: Simple list view
+ * - cards: Enhanced cards with borders
+ * - team-cards: Team Members plugin inspired with circular avatars
+ * 
+ * Team Cards Specific Options:
+ * - show_avatars: true/false (show user avatars)
+ * - show_contact: true/false (show email/phone links)
+ * - avatar_size: number (avatar size in pixels, default 80)
+ * - columns: 1-5 (responsive: desktop full, tablet 2, mobile 1)
  */
 
 if (!defined('ABSPATH')) {
@@ -49,7 +70,7 @@ class Azure_PTA_Shortcode {
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
-        wp_enqueue_style('pta-shortcodes', AZURE_PLUGIN_URL . 'assets/pta-shortcodes.css', array(), AZURE_PLUGIN_VERSION);
+        wp_enqueue_style('pta-roles-frontend', AZURE_PLUGIN_URL . 'css/pta-roles-frontend.css', array(), AZURE_PLUGIN_VERSION);
         wp_enqueue_script('pta-shortcodes', AZURE_PLUGIN_URL . 'assets/pta-shortcodes.js', array('jquery'), AZURE_PLUGIN_VERSION, true);
     }
     
@@ -68,10 +89,13 @@ class Azure_PTA_Shortcode {
             'department' => '',
             'description' => false,
             'status' => 'all', // all, open, filled, partial
-            'columns' => 2,
+            'columns' => 3,
             'show_count' => true,
             'show_vp' => false,
-            'layout' => 'grid' // grid, list, cards
+            'layout' => 'grid', // grid, list, cards, team-cards
+            'show_avatars' => true,
+            'show_contact' => true,
+            'avatar_size' => 80
         ), $atts);
         
         // Get roles
@@ -384,31 +408,118 @@ class Azure_PTA_Shortcode {
      * Helper methods for rendering
      */
     private function render_roles_directory($roles, $atts) {
-        $columns = max(1, min(6, intval($atts['columns'])));
+        $columns = max(1, min(5, intval($atts['columns'])));
         $layout = $atts['layout'];
         
         $output = '<div class="pta-roles-directory pta-layout-' . esc_attr($layout) . '" data-columns="' . $columns . '">';
         
         foreach ($roles as $role) {
             $status = $this->get_role_status($role);
-            $output .= '<div class="pta-role-item pta-status-' . esc_attr($status) . '">';
-            $output .= '<h4 class="pta-role-name">' . esc_html($role->name) . '</h4>';
             
-            if ($atts['show_count']) {
-                $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
+            if ($layout === 'team-cards') {
+                $output .= $this->render_team_card($role, $atts, $status);
+            } else {
+                // Original grid/list/cards layout
+                $output .= '<div class="pta-role-item pta-status-' . esc_attr($status) . '">';
+                $output .= '<h4 class="pta-role-name">' . esc_html($role->name) . '</h4>';
+                
+                if ($atts['show_count']) {
+                    $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
+                }
+                
+                if ($atts['description'] && $role->description) {
+                    $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
+                }
+                
+                $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
+                $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
+                $output .= '</div>';
             }
-            
-            if ($atts['description'] && $role->description) {
-                $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
-            }
-            
-            $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
-            $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
-            $output .= '</div>';
         }
         
         $output .= '</div>';
         return $output;
+    }
+    
+    /**
+     * Render team member style card (Team Members plugin inspired)
+     */
+    private function render_team_card($role, $atts, $status) {
+        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . '">';
+        
+        // Get first assigned user for avatar (or show placeholder)
+        $assigned_user = null;
+        if (!empty($role->assignments)) {
+            $assigned_user = get_user_by('ID', $role->assignments[0]->user_id);
+        }
+        
+        // Avatar/Photo section
+        if ($atts['show_avatars'] && $assigned_user) {
+            $avatar_url = get_avatar_url($assigned_user->ID, array('size' => intval($atts['avatar_size'])));
+            $output .= '<div class="pta-role-avatar" style="background-image: url(' . esc_url($avatar_url) . ');"></div>';
+        } else {
+            // Placeholder avatar with initials or icon
+            $initials = $this->get_role_initials($role->name);
+            $output .= '<div class="pta-role-avatar">' . esc_html($initials) . '</div>';
+        }
+        
+        // Text content section
+        $output .= '<div class="pta-role-textblock">';
+        
+        // Role name
+        $output .= '<h4 class="pta-role-name">' . esc_html($role->name) . '</h4>';
+        
+        // Department
+        $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
+        
+        // Assignment count
+        if ($atts['show_count']) {
+            $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
+        }
+        
+        // Description
+        if ($atts['description'] && $role->description) {
+            $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
+        }
+        
+        // Contact links section
+        if ($atts['show_contact'] && $assigned_user) {
+            $output .= '<div class="pta-role-contacts">';
+            
+            // Email link
+            if ($assigned_user->user_email) {
+                $output .= '<a href="mailto:' . esc_attr($assigned_user->user_email) . '" class="pta-role-contact-link" title="Email ' . esc_attr($assigned_user->display_name) . '">@</a>';
+            }
+            
+            // Phone link (if available in user meta)
+            $phone = get_user_meta($assigned_user->ID, 'phone', true);
+            if ($phone) {
+                $output .= '<a href="tel:' . esc_attr($phone) . '" class="pta-role-contact-link" title="Call ' . esc_attr($assigned_user->display_name) . '">📞</a>';
+            }
+            
+            $output .= '</div>';
+        }
+        
+        $output .= '</div>'; // Close text block
+        
+        // Status badge
+        $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
+        
+        $output .= '</div>'; // Close role item
+        
+        return $output;
+    }
+    
+    /**
+     * Generate initials from role name for placeholder avatars
+     */
+    private function get_role_initials($name) {
+        $words = explode(' ', trim($name));
+        if (count($words) >= 2) {
+            return strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
+        } else {
+            return strtoupper(substr($name, 0, 2));
+        }
     }
     
     private function render_role_card($role, $atts) {
