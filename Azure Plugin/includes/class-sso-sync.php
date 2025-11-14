@@ -511,4 +511,3 @@ class Azure_SSO_Sync {
         );
     }
 }
-?>

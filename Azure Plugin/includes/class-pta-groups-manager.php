@@ -979,4 +979,3 @@ class Azure_PTA_Groups_Manager {
         return $wpdb->get_results($sql);
     }
 }
-?>

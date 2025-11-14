@@ -272,6 +272,89 @@ class Azure_Database {
             KEY scheduled_at (scheduled_at)
         ) $charset_collate;";
         
+        // TEC Calendar Mappings table for Outlook calendar to TEC category mappings
+        $table_tec_calendar_mappings = $wpdb->prefix . 'azure_tec_calendar_mappings';
+        $sql_tec_calendar_mappings = "CREATE TABLE $table_tec_calendar_mappings (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            outlook_calendar_id varchar(255) NOT NULL,
+            outlook_calendar_name varchar(255) NOT NULL,
+            tec_category_id bigint(20) UNSIGNED,
+            tec_category_name varchar(255) NOT NULL,
+            sync_enabled tinyint(1) DEFAULT 1,
+            schedule_enabled tinyint(1) DEFAULT 0,
+            schedule_frequency varchar(20) DEFAULT 'hourly',
+            schedule_lookback_days int(11) DEFAULT 30,
+            schedule_lookahead_days int(11) DEFAULT 365,
+            last_sync datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY outlook_calendar_id (outlook_calendar_id),
+            KEY sync_enabled (sync_enabled),
+            KEY schedule_enabled (schedule_enabled),
+            KEY last_sync (last_sync)
+        ) $charset_collate;";
+        
+        // OneDrive Media Files table for file mappings
+        $table_onedrive_files = $wpdb->prefix . 'azure_onedrive_files';
+        $sql_onedrive_files = "CREATE TABLE $table_onedrive_files (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            attachment_id bigint(20) UNSIGNED,
+            onedrive_id varchar(255) NOT NULL,
+            onedrive_path text NOT NULL,
+            file_name varchar(255) NOT NULL,
+            file_size bigint(20) UNSIGNED NOT NULL,
+            mime_type varchar(100),
+            public_url text,
+            download_url text,
+            thumbnail_url text,
+            folder_year varchar(4),
+            last_modified datetime,
+            sync_status varchar(20) DEFAULT 'synced',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY onedrive_id (onedrive_id),
+            KEY attachment_id (attachment_id),
+            KEY folder_year (folder_year),
+            KEY sync_status (sync_status)
+        ) $charset_collate;";
+        
+        // OneDrive Media Sync Queue table for batch operations
+        $table_onedrive_sync_queue = $wpdb->prefix . 'azure_onedrive_sync_queue';
+        $sql_onedrive_sync_queue = "CREATE TABLE $table_onedrive_sync_queue (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            operation varchar(50) NOT NULL,
+            file_id bigint(20) UNSIGNED,
+            local_path text,
+            onedrive_path text,
+            status varchar(20) DEFAULT 'pending',
+            retry_count int(11) DEFAULT 0,
+            error_message text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY status (status),
+            KEY file_id (file_id)
+        ) $charset_collate;";
+        
+        // OneDrive Media Tokens table for OAuth tokens
+        $table_onedrive_tokens = $wpdb->prefix . 'azure_onedrive_tokens';
+        $sql_onedrive_tokens = "CREATE TABLE $table_onedrive_tokens (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            user_email varchar(320) NOT NULL,
+            access_token longtext NOT NULL,
+            refresh_token longtext,
+            token_type varchar(50) DEFAULT 'Bearer',
+            expires_at datetime NOT NULL,
+            scope longtext,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_email (user_email),
+            KEY expires_at (expires_at)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
         // Create all tables
@@ -287,6 +370,10 @@ class Azure_Database {
         dbDelta($sql_tec_sync_history);
         dbDelta($sql_tec_sync_conflicts);
         dbDelta($sql_tec_sync_queue);
+        dbDelta($sql_tec_calendar_mappings);
+        dbDelta($sql_onedrive_files);
+        dbDelta($sql_onedrive_sync_queue);
+        dbDelta($sql_onedrive_tokens);
         
         // Log successful table creation
         Azure_Logger::info('Azure Plugin database tables created successfully');
@@ -307,7 +394,11 @@ class Azure_Database {
             'activity_log' => $wpdb->prefix . 'azure_activity_log',
             'tec_sync_history' => $wpdb->prefix . 'azure_tec_sync_history',
             'tec_sync_conflicts' => $wpdb->prefix . 'azure_tec_sync_conflicts',
-            'tec_sync_queue' => $wpdb->prefix . 'azure_tec_sync_queue'
+            'tec_sync_queue' => $wpdb->prefix . 'azure_tec_sync_queue',
+            'tec_calendar_mappings' => $wpdb->prefix . 'azure_tec_calendar_mappings',
+            'onedrive_files' => $wpdb->prefix . 'azure_onedrive_files',
+            'onedrive_sync_queue' => $wpdb->prefix . 'azure_onedrive_sync_queue',
+            'onedrive_tokens' => $wpdb->prefix . 'azure_onedrive_tokens'
         );
         
         return isset($tables[$table]) ? $tables[$table] : false;

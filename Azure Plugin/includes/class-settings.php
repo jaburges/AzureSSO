@@ -57,9 +57,16 @@ class Azure_Settings {
             error_log("Azure Plugin Settings Debug: Current option value: " . json_encode($current_option));
             
             // Check if the issue is the option already has the same value
-            if ($current_option === $settings) {
+            // WordPress returns false if value hasn't changed, which is actually success
+            if (is_array($current_option) && isset($current_option[$key]) && $current_option[$key] == $value) {
+                error_log("Azure Plugin Settings Debug: Setting '{$key}' already has value '{$value}' - this is normal");
+                return true;
+            }
+            
+            // Also check if entire settings array matches
+            if ($current_option === $settings || serialize($current_option) === serialize($settings)) {
                 error_log("Azure Plugin Settings Debug: Option already has the same value - this is normal");
-                return true; // WordPress returns false if value hasn't changed
+                return true;
             }
             
             // Try alternative approaches to fix the issue
@@ -137,6 +144,20 @@ class Azure_Settings {
                     'client_id' => self::get_setting('pta_client_id', ''),
                     'client_secret' => self::get_setting('pta_client_secret', ''),
                     'tenant_id' => self::get_setting('pta_tenant_id', 'common')
+                );
+            
+            case 'onedrive_media':
+                return array(
+                    'client_id' => self::get_setting('onedrive_media_client_id', ''),
+                    'client_secret' => self::get_setting('onedrive_media_client_secret', ''),
+                    'tenant_id' => self::get_setting('onedrive_media_tenant_id', 'common')
+                );
+            
+            case 'tec':
+                return array(
+                    'client_id' => self::get_setting('tec_client_id', ''),
+                    'client_secret' => self::get_setting('tec_client_secret', ''),
+                    'tenant_id' => self::get_setting('tec_tenant_id', 'common')
                 );
             
             default:
@@ -239,6 +260,10 @@ class Azure_Settings {
             'enable_email' => false,
             'enable_pta' => false,
             
+            // Debug settings
+            'debug_mode' => false,
+            'debug_modules' => array(), // Empty = all modules, or specific: ['SSO', 'Calendar', 'TEC', ...]
+            
             // Common credentials
             'use_common_credentials' => true,
             'common_client_id' => '',
@@ -254,6 +279,7 @@ class Azure_Settings {
             'sso_auto_create_users' => true,
             'sso_default_role' => 'subscriber',
             'sso_show_on_login_page' => true,
+            'sso_login_button_text' => 'Sign in with WilderPTSA Email',
             'sso_use_custom_role' => false,
             'sso_custom_role_name' => 'AzureAD',
             'sso_sync_enabled' => false,
@@ -266,6 +292,10 @@ class Azure_Settings {
             'backup_storage_account' => '',
             'backup_storage_key' => '',
             'backup_container_name' => 'wordpress-backups',
+            // New field names (with _name and _key suffixes)
+            'backup_storage_account_name' => '',
+            'backup_storage_account_key' => '',
+            'backup_storage_container_name' => 'wordpress-backups',
             'backup_types' => array('content', 'media', 'plugins', 'themes'),
             'backup_retention_days' => 30,
             'backup_max_execution_time' => 300,
@@ -279,6 +309,10 @@ class Azure_Settings {
             'calendar_client_id' => '',
             'calendar_client_secret' => '',
             'calendar_tenant_id' => '',
+            'calendar_embed_user_email' => '',
+            'calendar_embed_mailbox_email' => '',
+            'calendar_embed_enabled_calendars' => array(),
+            'calendar_embed_timezones' => array(),
             'calendar_default_timezone' => 'America/New_York',
             'calendar_default_view' => 'month',
             'calendar_default_color_theme' => 'blue',
@@ -315,7 +349,37 @@ class Azure_Settings {
             'pta_auto_provision' => true,
             'pta_delete_azure_users' => true,
             'pta_welcome_email_enabled' => true,
-            'pta_license_sku' => 'O365_BUSINESS_ESSENTIALS'
+            'pta_license_sku' => 'O365_BUSINESS_ESSENTIALS',
+            
+            // TEC Calendar Sync specific settings
+            'tec_calendar_user_email' => '',
+            'tec_calendar_mailbox_email' => '',
+            'tec_sync_schedule_enabled' => false,
+            'tec_sync_schedule_frequency' => 'hourly',
+            'tec_sync_lookback_days' => 30,
+            'tec_sync_lookahead_days' => 365,
+            
+            // OneDrive Media specific settings
+            'onedrive_media_client_id' => '',
+            'onedrive_media_client_secret' => '',
+            'onedrive_media_tenant_id' => 'common',
+            'onedrive_media_storage_type' => 'onedrive',
+            'onedrive_media_sharepoint_site_url' => '',
+            'onedrive_media_site_id' => '',
+            'onedrive_media_drive_id' => '',
+            'onedrive_media_drive_name' => '',
+            'onedrive_media_base_folder' => 'WordPress Media',
+            'onedrive_media_use_year_folders' => true,
+            'onedrive_media_auto_sync' => false,
+            'onedrive_media_sync_frequency' => 'hourly',
+            'onedrive_media_sync_direction' => 'two_way',
+            'onedrive_media_sharing_link_type' => 'anonymous',
+            'onedrive_media_link_expiration' => 'never',
+            'onedrive_media_cdn_optimization' => true,
+            'onedrive_media_show_badge' => true,
+            'onedrive_media_keep_local_copies' => false,
+            'onedrive_media_max_file_size' => 4294967296,
+            'onedrive_media_chunk_size' => 10485760
         );
     }
     
@@ -332,6 +396,7 @@ class Azure_Settings {
         $sensitive_keys = array(
             'common_client_secret', 'sso_client_secret', 'backup_client_secret',
             'calendar_client_secret', 'email_client_secret', 'pta_client_secret',
+            'onedrive_media_client_secret',
             'backup_storage_key', 'email_hve_password', 'email_acs_access_key'
         );
         

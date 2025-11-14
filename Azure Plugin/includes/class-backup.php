@@ -973,6 +973,3 @@ class Azure_Backup {
         wp_send_json_success($output);
     }
 }
-?>
-
-

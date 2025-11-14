@@ -43,23 +43,48 @@ class Azure_Logger {
     
     /**
      * Standard logging methods
+     * Note: $context can be either an array or a string (for backward compatibility)
+     * If string is passed, it's treated as a module name and converted to context array
      */
     public static function info($message, $context = array()) {
+        $context = self::normalize_context($context);
         self::log('INFO', $message, $context, '✅');
     }
     
     public static function error($message, $context = array()) {
+        $context = self::normalize_context($context);
         self::log('ERROR', $message, $context, '❌');
     }
     
     public static function warning($message, $context = array()) {
+        $context = self::normalize_context($context);
         self::log('WARNING', $message, $context, '⚠️');
     }
     
     public static function debug($message, $context = array()) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
+            $context = self::normalize_context($context);
             self::log('DEBUG', $message, $context, '🔍');
         }
+    }
+    
+    /**
+     * Normalize context parameter to always be an array
+     * Handles backward compatibility where context was passed as a string (module name)
+     */
+    private static function normalize_context($context) {
+        // If context is a string, treat it as a module name (backward compatibility)
+        if (is_string($context)) {
+            return array('module' => $context);
+        }
+        
+        // If context is already an array, return as-is
+        if (is_array($context)) {
+            return $context;
+        }
+        
+        // If context is something else (null, etc.), return empty array
+        return array();
     }
     
     /**
@@ -221,9 +246,117 @@ class Azure_Logger {
             // Delete oldest files, keep only 5 most recent
             $files_to_delete = array_slice($backup_files, 0, -5);
             foreach ($files_to_delete as $file) {
-                unlink($file);
+                @unlink($file);
             }
         }
+    }
+    
+    /**
+     * Scheduled cleanup - called daily by WP-Cron
+     * Deletes backup logs older than 30 days
+     * Cleans up database activity logs older than 90 days
+     */
+    public static function scheduled_cleanup() {
+        try {
+            // Delete backup logs older than 30 days
+            $log_dir = dirname(self::$log_file);
+            $backup_files = glob($log_dir . '/logs-backup-*.md');
+            $thirty_days_ago = strtotime('-30 days');
+            
+            $deleted_count = 0;
+            foreach ($backup_files as $file) {
+                if (filemtime($file) < $thirty_days_ago) {
+                    if (@unlink($file)) {
+                        $deleted_count++;
+                    }
+                }
+            }
+            
+            if ($deleted_count > 0) {
+                self::info('Cleaned up old log backups', array(
+                    'module' => 'Logger',
+                    'deleted_count' => $deleted_count
+                ));
+            }
+            
+            // Clean up database activity logs older than 90 days
+            if (!class_exists('Azure_Database')) {
+                return;
+            }
+            
+            global $wpdb;
+            $activity_table = Azure_Database::get_table_name('activity');
+            
+            if (!$activity_table) {
+                return;
+            }
+            
+            $ninety_days_ago = date('Y-m-d H:i:s', strtotime('-90 days'));
+            
+            $deleted_rows = $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$activity_table} WHERE created_at < %s",
+                $ninety_days_ago
+            ));
+            
+            if ($deleted_rows > 0) {
+                self::info('Cleaned up old database activity logs', array(
+                    'module' => 'Logger',
+                    'deleted_rows' => $deleted_rows
+                ));
+            }
+            
+        } catch (Exception $e) {
+            self::error('Failed to run scheduled cleanup: ' . $e->getMessage(), array(
+                'module' => 'Logger'
+            ));
+        }
+    }
+    
+    /**
+     * Check if debug logging is enabled for a specific module
+     * 
+     * @param string $module Module name (SSO, Calendar, TEC, etc.)
+     * @return bool True if debug is enabled for this module
+     */
+    public static function is_debug_enabled($module = '') {
+        if (!defined('WP_DEBUG') || !WP_DEBUG) {
+            return false;
+        }
+        
+        // If no specific module or Azure_Settings not available, allow all
+        if (empty($module) || !class_exists('Azure_Settings')) {
+            return true;
+        }
+        
+        $debug_mode = Azure_Settings::get_setting('debug_mode', false);
+        if (!$debug_mode) {
+            return false;
+        }
+        
+        $debug_modules = Azure_Settings::get_setting('debug_modules', array());
+        
+        // If no specific modules selected, debug all
+        if (empty($debug_modules)) {
+            return true;
+        }
+        
+        return in_array($module, $debug_modules);
+    }
+    
+    /**
+     * Log debug message only if module debugging is enabled
+     * 
+     * @param string $module Module name (SSO, Calendar, TEC, etc.)
+     * @param string $message Log message
+     * @param array $context Additional context
+     */
+    public static function debug_module($module, $message, $context = array()) {
+        if (!self::is_debug_enabled($module)) {
+            return;
+        }
+        
+        $context['module'] = $module;
+        self::debug($message, $context);
     }
     
     /**

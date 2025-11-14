@@ -733,4 +733,3 @@ class Azure_Backup_Storage {
         }
     }
 }
-?>

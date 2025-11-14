@@ -3,18 +3,35 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Get calendar authentication status
-$auth_status = array('authenticated' => false);
-if (class_exists('Azure_Calendar_Auth')) {
+// Get plugin settings
+$settings = Azure_Settings::get_all_settings();
+
+// Get calendar user email (who authenticates) and mailbox email (shared mailbox to access)
+$calendar_user_email = $settings['calendar_embed_user_email'] ?? '';
+$calendar_mailbox_email = $settings['calendar_embed_mailbox_email'] ?? '';
+$calendar_authenticated = false;
+
+// Check authentication status for the user
+if (!empty($calendar_user_email) && class_exists('Azure_Calendar_Auth')) {
+    try {
     $auth = new Azure_Calendar_Auth();
-    $auth_status = $auth->get_auth_status();
+        $calendar_authenticated = $auth->has_valid_user_token($calendar_user_email);
+    } catch (Exception $e) {
+        // Silently handle error
+        $calendar_authenticated = false;
+    }
 }
 
-// Get user calendars if authenticated
-$user_calendars = array();
-if ($auth_status['authenticated'] && class_exists('Azure_Calendar_GraphAPI')) {
+// Get calendars from the shared mailbox if authenticated
+$mailbox_calendars = array();
+if ($calendar_authenticated && !empty($calendar_mailbox_email) && class_exists('Azure_Calendar_GraphAPI')) {
+    try {
     $graph_api = new Azure_Calendar_GraphAPI();
-    $user_calendars = $graph_api->get_calendars();
+        $mailbox_calendars = $graph_api->get_user_calendars($calendar_mailbox_email);
+    } catch (Exception $e) {
+        // Silently handle error
+        $mailbox_calendars = array();
+    }
 }
 
 // Handle auth success message
@@ -22,129 +39,201 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Calendar Settings</h1>
+    <h1>Azure Plugin - Calendar Embed</h1>
     
-    <!-- Module Toggle Section -->
-    <div class="module-status-section">
-        <h2>Module Status</h2>
-        <div class="module-toggle-card">
-            <div class="module-info">
-                <h3><span class="dashicons dashicons-calendar-alt"></span> Calendar Embed Module</h3>
-                <p>Embed Microsoft Outlook calendars in your website</p>
+    <div class="azure-calendar-dashboard">
+        <!-- Module Toggle Section -->
+        <div class="module-status-section">
+            <h2>Calendar Embed Module Status</h2>
+            <div class="module-toggle-card">
+                <div class="module-info">
+                    <h3><span class="dashicons dashicons-calendar-alt"></span> Calendar Embed Module</h3>
+                    <p>Embed Microsoft Outlook calendars in your website using shortcodes</p>
+                </div>
+                <div class="module-control">
+                    <label class="switch">
+                        <input type="checkbox" class="calendar-module-toggle" <?php checked(Azure_Settings::is_module_enabled('calendar')); ?> />
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-status"><?php echo Azure_Settings::is_module_enabled('calendar') ? 'Enabled' : 'Disabled'; ?></span>
+                </div>
             </div>
-            <div class="module-control">
-                <label class="switch">
-                    <input type="checkbox" class="calendar-module-toggle" <?php checked(Azure_Settings::is_module_enabled('calendar')); ?> />
-                    <span class="slider"></span>
-                </label>
-                <span class="toggle-status"><?php echo Azure_Settings::is_module_enabled('calendar') ? 'Enabled' : 'Disabled'; ?></span>
+            <?php if (!Azure_Settings::is_module_enabled('calendar')): ?>
+            <div class="notice notice-warning inline">
+                <p><strong>Calendar module is disabled.</strong> Enable it above or in the <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>">main settings</a> to use calendar functionality.</p>
             </div>
+            <?php endif; ?>
         </div>
-        <?php if (!Azure_Settings::is_module_enabled('calendar')): ?>
-        <div class="notice notice-warning inline">
-            <p><strong>Calendar module is disabled.</strong> Enable it above or in the <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>">main settings</a> to use calendar functionality.</p>
-        </div>
-        <?php endif; ?>
-    </div>
     
     <?php if ($show_auth_success): ?>
     <div class="notice notice-success is-dismissible">
-        <p><strong>Success!</strong> Calendar authorization completed successfully. You can now manage your calendars below.</p>
+        <p><strong>Success!</strong> Calendar authorization completed successfully. You can now manage calendars below.</p>
     </div>
     <?php endif; ?>
     
     <div class="azure-calendar-dashboard">
-        <!-- Authentication Status -->
+        <!-- Shared Mailbox Authentication -->
         <div class="calendar-auth-section">
-            <h2>Authentication Status</h2>
+            <h2><span class="step-number">1</span> Shared Mailbox Authentication</h2>
+            <p class="description">Authenticate with your Microsoft 365 account to access a shared mailbox's calendars.</p>
             
-            <div class="auth-status-card">
-                <?php if ($auth_status['authenticated']): ?>
-                    <?php if (isset($auth_status['expired']) && $auth_status['expired']): ?>
-                    <div class="auth-status warning">
-                        <span class="dashicons dashicons-warning"></span>
-                        <div class="auth-info">
-                            <strong>Token Expired</strong>
-                            <p>Your access token has expired. Please re-authorize to continue using calendar features.</p>
-                            <p><small>Expired: <?php echo esc_html($auth_status['expires_at']); ?></small></p>
-                        </div>
-                        <div class="auth-actions">
-                            <button type="button" class="button button-primary authorize-calendar">
-                                Re-authorize Calendar Access
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label for="calendar_embed_user_email">Your M365 Account</label>
+                    </th>
+                    <td>
+                        <input type="email" 
+                               id="calendar_embed_user_email" 
+                               name="calendar_embed_user_email" 
+                               value="<?php echo esc_attr($calendar_user_email); ?>"
+                               placeholder="jamie@wilderptsa.net" 
+                               class="regular-text">
+                        <p class="description">Your Microsoft 365 email address (the account you'll sign in with)</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="calendar_embed_mailbox_email">Shared Mailbox Email</label>
+                    </th>
+                    <td>
+                        <input type="email" 
+                               id="calendar_embed_mailbox_email" 
+                               name="calendar_embed_mailbox_email" 
+                               value="<?php echo esc_attr($calendar_mailbox_email); ?>"
+                               placeholder="calendar@wilderptsa.net" 
+                               class="regular-text">
+                        <p class="description">The shared mailbox email you have delegated access to</p>
+                        <button type="button" class="button button-primary" id="save-calendar-emails">
+                            <span class="dashicons dashicons-saved"></span> Save Settings
                             </button>
-                        </div>
-                    </div>
-                    <?php else: ?>
-                    <div class="auth-status success">
-                        <span class="dashicons dashicons-yes-alt"></span>
-                        <div class="auth-info">
-                            <strong>Authenticated</strong>
-                            <p>Calendar access is working properly.</p>
-                            <p><small>Expires: <?php echo esc_html($auth_status['expires_at']); ?> (<?php echo esc_html($auth_status['expires_in_hours']); ?> hours)</small></p>
-                        </div>
-                        <div class="auth-actions">
-                            <button type="button" class="button test-calendar-connection">
-                                Test Connection
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Authentication Status</th>
+                    <td>
+                        <div class="auth-status-display">
+                            <?php if ($calendar_authenticated): ?>
+                                <span class="status-badge status-success">
+                                    <span class="dashicons dashicons-yes-alt"></span> Authenticated as <?php echo esc_html($calendar_user_email); ?>
+                                </span>
+                                <p class="description">Accessing calendars from: <strong><?php echo esc_html($calendar_mailbox_email); ?></strong></p>
+                                <div class="auth-actions-inline">
+                                    <button type="button" class="button" id="refresh-mailbox-calendars">
+                                        <span class="dashicons dashicons-update"></span> Refresh Calendars
                             </button>
-                            <button type="button" class="button button-secondary revoke-calendar-auth">
+                                    <button type="button" class="button button-secondary" id="calendar-reauth">
+                                        Re-authenticate
+                                    </button>
+                                    <button type="button" class="button button-link-delete" id="revoke-calendar-auth">
                                 Revoke Access
                             </button>
                         </div>
-                    </div>
-                    <?php endif; ?>
                 <?php else: ?>
-                <div class="auth-status error">
-                    <span class="dashicons dashicons-dismiss"></span>
-                    <div class="auth-info">
-                        <strong>Not Authenticated</strong>
-                        <p>You need to authorize access to your Microsoft calendars before you can use calendar features.</p>
-                    </div>
-                    <div class="auth-actions">
-                        <button type="button" class="button button-primary authorize-calendar">
-                            Authorize Calendar Access
+                                <span class="status-badge status-error">
+                                    <span class="dashicons dashicons-dismiss"></span> Not authenticated
+                                </span>
+                                <div class="auth-actions-inline">
+                                    <?php if (!empty($calendar_user_email) && !empty($calendar_mailbox_email)): ?>
+                                    <button type="button" class="button button-primary" id="calendar-auth">
+                                        <span class="dashicons dashicons-admin-network"></span> Authenticate Calendar
                         </button>
-                    </div>
+                                    <?php else: ?>
+                                    <p class="description">Please enter and save the shared mailbox email above, then authenticate.</p>
+                                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
             </div>
+                    </td>
+                </tr>
+            </table>
         </div>
         
-        <!-- Available Calendars -->
-        <?php if (!empty($user_calendars)): ?>
+        <!-- Available Calendars from Mailbox -->
+        <?php if ($calendar_authenticated): ?>
         <div class="calendar-list-section">
-            <h2>Your Calendars</h2>
+            <h2><span class="step-number">2</span> Available Calendars from Mailbox</h2>
+            <p class="description">Select which calendars from <?php echo esc_html($calendar_mailbox_email); ?> you want to enable for embedding.</p>
             
+            <?php if (!empty($mailbox_calendars)): ?>
             <div class="calendars-grid">
-                <?php foreach ($user_calendars as $calendar): ?>
+                <?php foreach ($mailbox_calendars as $calendar): ?>
                 <div class="calendar-item" data-calendar-id="<?php echo esc_attr($calendar['id']); ?>">
                     <div class="calendar-header">
+                        <div class="calendar-title-section">
                         <h3><?php echo esc_html($calendar['name']); ?></h3>
+                            <label class="calendar-enable-toggle">
+                                <input type="checkbox" 
+                                       class="calendar-embed-toggle" 
+                                       data-calendar-id="<?php echo esc_attr($calendar['id']); ?>"
+                                       data-calendar-name="<?php echo esc_attr($calendar['name']); ?>"
+                                       <?php checked(in_array($calendar['id'], $settings['calendar_embed_enabled_calendars'] ?? [])); ?> />
+                                <span>Enable for embedding</span>
+                            </label>
+                        </div>
                         <div class="calendar-actions">
-                            <button type="button" class="button button-small preview-calendar" data-calendar-id="<?php echo esc_attr($calendar['id']); ?>">
+                            <button type="button" class="button button-small preview-calendar" 
+                                    data-calendar-id="<?php echo esc_attr($calendar['id']); ?>"
+                                    data-user-email="<?php echo esc_attr($calendar_user_email); ?>">
                                 Preview
-                            </button>
-                            <button type="button" class="button button-small sync-calendar" data-calendar-id="<?php echo esc_attr($calendar['id']); ?>">
-                                Sync
                             </button>
                         </div>
                     </div>
                     
                     <div class="calendar-info">
-                        <p><strong>ID:</strong> <code><?php echo esc_html($calendar['id']); ?></code></p>
-                        <?php if (isset($calendar['description'])): ?>
+                        <p><strong>Calendar ID:</strong> <code class="selectable-text"><?php echo esc_html($calendar['id']); ?></code></p>
+                        <?php if (isset($calendar['description']) && !empty($calendar['description'])): ?>
                         <p><strong>Description:</strong> <?php echo esc_html($calendar['description']); ?></p>
                         <?php endif; ?>
                         
+                        <div class="calendar-settings-form">
+                            <div class="calendar-timezone-setting">
+                                <label>
+                                    <strong>Default Timezone:</strong>
+                                    <select class="calendar-timezone-select" data-calendar-id="<?php echo esc_attr($calendar['id']); ?>">
+                                        <?php
+                                        $current_tz = $settings['calendar_timezone_' . $calendar['id']] ?? 'America/New_York';
+                                        $timezones = array(
+                                            'America/New_York' => 'Eastern Time',
+                                            'America/Chicago' => 'Central Time',
+                                            'America/Denver' => 'Mountain Time',
+                                            'America/Los_Angeles' => 'Pacific Time',
+                                            'America/Phoenix' => 'Arizona',
+                                            'America/Anchorage' => 'Alaska',
+                                            'Pacific/Honolulu' => 'Hawaii',
+                                            'UTC' => 'UTC',
+                                        );
+                                        foreach ($timezones as $tz_value => $tz_label):
+                                        ?>
+                                            <option value="<?php echo esc_attr($tz_value); ?>" <?php selected($current_tz, $tz_value); ?>>
+                                                <?php echo esc_html($tz_label); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                            </div>
+                            
+                            <button type="button" class="button button-primary save-calendar-settings" 
+                                    data-calendar-id="<?php echo esc_attr($calendar['id']); ?>"
+                                    data-calendar-name="<?php echo esc_attr($calendar['name']); ?>">
+                                <span class="dashicons dashicons-saved"></span> Save Calendar Settings
+                            </button>
+                        </div>
+                        
                         <div class="calendar-shortcodes">
-                            <h4>Shortcodes for this calendar:</h4>
+                            <h4>Shortcodes for embedding:</h4>
                             <div class="shortcode-examples">
                                 <div class="shortcode">
                                     <label>Calendar View:</label>
-                                    <input type="text" readonly value='[azure_calendar id="<?php echo esc_attr($calendar['id']); ?>" view="month"]' onclick="this.select();">
+                                    <input type="text" readonly 
+                                           value='[azure_calendar email="<?php echo esc_attr($calendar_mailbox_email); ?>" id="<?php echo esc_attr($calendar['id']); ?>" view="month"]' 
+                                           onclick="this.select();" class="shortcode-input">
                                 </div>
                                 <div class="shortcode">
                                     <label>Events List:</label>
-                                    <input type="text" readonly value='[azure_calendar_events id="<?php echo esc_attr($calendar['id']); ?>" limit="10"]' onclick="this.select();">
+                                    <input type="text" readonly 
+                                           value='[azure_calendar_events email="<?php echo esc_attr($calendar_mailbox_email); ?>" id="<?php echo esc_attr($calendar['id']); ?>" limit="10"]' 
+                                           onclick="this.select();" class="shortcode-input">
                                 </div>
                             </div>
                         </div>
@@ -152,6 +241,11 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                 </div>
                 <?php endforeach; ?>
             </div>
+            <?php else: ?>
+            <div class="notice notice-info inline">
+                <p>No calendars found in this mailbox. Make sure you have delegated access to the shared mailbox.</p>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
         
@@ -350,8 +444,9 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                 </div>
             </div>
         </div>
-    </div>
-</div>
+    </div><!-- End Calendar Dashboard -->
+    
+</div><!-- End wrap -->
 
 <!-- Calendar Preview Modal -->
 <div id="calendar-preview-modal" class="modal" style="display: none;">
@@ -370,51 +465,131 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 
 <script>
 jQuery(document).ready(function($) {
-    // Handle calendar authorization
-    $('.authorize-calendar').click(function() {
+    // Save calendar settings (both emails)
+    $('#save-calendar-emails').click(function() {
+        var userEmail = $('#calendar_embed_user_email').val();
+        var mailboxEmail = $('#calendar_embed_mailbox_email').val();
         var button = $(this);
+        
+        if (!userEmail) {
+            alert('Please enter your M365 account email address');
+            return;
+        }
+        
+        if (!mailboxEmail) {
+            alert('Please enter the shared mailbox email address');
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Saving...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_save_calendar_embed_email',
+                user_email: userEmail,
+                mailbox_email: mailboxEmail,
+                nonce: azure_plugin_ajax.nonce
+            },
+            success: function(response) {
+                console.log('Calendar Embed Save Response:', response);
+                
+                button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Settings');
+                
+                if (response.success === true) {
+                    alert('✅ Settings saved successfully! You can now authenticate.');
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    } else if (response.message) {
+                        errorMsg = response.message;
+                    }
+                    console.error('Save failed:', errorMsg);
+                    alert('❌ Failed to save settings: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Settings');
+                console.error('AJAX Error:', xhr.responseText);
+                alert('❌ AJAX request failed: ' + error + '\nCheck browser console for details.');
+            }
+        });
+    });
+    
+    // Handle calendar authentication
+    $('#calendar-auth, #calendar-reauth').click(function() {
+        var userEmail = $('#calendar_embed_user_email').val();
+        var mailboxEmail = $('#calendar_embed_mailbox_email').val();
+        var button = $(this);
+        
+        if (!userEmail) {
+            alert('Please enter and save your M365 account email first');
+            return;
+        }
+        
+        if (!mailboxEmail) {
+            alert('Please enter and save the shared mailbox email first');
+            return;
+        }
+        
         button.prop('disabled', true).html('<span class="spinner is-active"></span> Authorizing...');
         
-        $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_calendar_authorize',
-            nonce: azure_plugin_ajax.nonce
-        }, function(response) {
-            if (response.success && response.data.auth_url) {
-                // Open authorization URL in new window
-                window.open(response.data.auth_url, 'azure_auth', 'width=600,height=700');
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_calendar_embed_authorize',
+                user_email: userEmail,
+                nonce: azure_plugin_ajax.nonce
+            },
+            success: function(response) {
+                console.log('Calendar Embed Auth Response:', response);
                 
-                // Check periodically for auth completion
-                var checkAuth = setInterval(function() {
-                    $.post(azure_plugin_ajax.ajax_url, {
-                        action: 'azure_calendar_check_auth',
-                        nonce: azure_plugin_ajax.nonce
-                    }, function(authResponse) {
-                        if (authResponse.success) {
-                            clearInterval(checkAuth);
-                            location.reload();
-                        }
-                    });
-                }, 2000);
-                
-                button.prop('disabled', false).html('Authorize Calendar Access');
-            } else {
-                alert('❌ Failed to generate authorization URL: ' + (response.data || 'Unknown error'));
-                button.prop('disabled', false).html('Authorize Calendar Access');
+                if (response.success && response.data.auth_url) {
+                    // Redirect to Microsoft authorization page
+                    window.location.href = response.data.auth_url;
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    } else if (response.message) {
+                        errorMsg = response.message;
+                    }
+                    console.error('Auth failed:', errorMsg);
+                    alert('❌ Failed to generate authorization URL: ' + errorMsg);
+                    button.prop('disabled', false).html('<span class="dashicons dashicons-admin-network"></span> Authenticate Calendar');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', xhr.responseText);
+                alert('❌ AJAX request failed: ' + error + '\nCheck browser console for details.');
+                button.prop('disabled', false).html('<span class="dashicons dashicons-admin-network"></span> Authenticate Calendar');
             }
         });
     });
     
     // Handle revoke authorization
-    $('.revoke-calendar-auth').click(function() {
+    $('#revoke-calendar-auth').click(function() {
         if (!confirm('Are you sure you want to revoke calendar access? You will need to re-authorize to use calendar features.')) {
             return;
         }
         
+        var email = $('#calendar_embed_mailbox_email').val();
         var button = $(this);
         button.prop('disabled', true).text('Revoking...');
         
-        $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_calendar_revoke',
+        $.post(ajaxurl, {
+            action: 'azure_calendar_embed_revoke',
+            email: email,
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
             if (response.success) {
@@ -426,18 +601,70 @@ jQuery(document).ready(function($) {
         });
     });
     
+    // Refresh mailbox calendars
+    $('#refresh-mailbox-calendars').click(function() {
+        location.reload();
+    });
+    
+    // Toggle calendar enable/disable for embedding
+    $('.calendar-embed-toggle').change(function() {
+        var calendarId = $(this).data('calendar-id');
+        var calendarName = $(this).data('calendar-name');
+        var enabled = $(this).is(':checked');
+        
+        $.post(ajaxurl, {
+            action: 'azure_toggle_calendar_embed',
+            calendar_id: calendarId,
+            calendar_name: calendarName,
+            enabled: enabled,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('❌ Failed to toggle calendar: ' + (response.data || 'Unknown error'));
+                // Revert toggle
+                $('.calendar-embed-toggle[data-calendar-id="' + calendarId + '"]').prop('checked', !enabled);
+            }
+        });
+    });
+    
+    // Save calendar timezone
+    $('.save-calendar-timezone').click(function() {
+        var calendarId = $(this).data('calendar-id');
+        var timezone = $('.calendar-timezone-select[data-calendar-id="' + calendarId + '"]').val();
+        var button = $(this);
+        
+        button.prop('disabled', true).text('Saving...');
+        
+        $.post(ajaxurl, {
+            action: 'azure_save_calendar_timezone',
+            calendar_id: calendarId,
+            timezone: timezone,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).text('Save');
+            
+            if (response.success) {
+                alert('✅ Timezone saved successfully!');
+            } else {
+                alert('❌ Failed to save timezone: ' + (response.data || 'Unknown error'));
+            }
+        });
+    });
+    
     // Handle calendar preview
     $('.preview-calendar').click(function() {
         var calendarId = $(this).data('calendar-id');
+        var userEmail = $(this).data('user-email');
         var modal = $('#calendar-preview-modal');
         var container = $('#calendar-preview-container');
         
         modal.show();
         container.html('Loading calendar preview...');
         
-        $.post(azure_plugin_ajax.ajax_url, {
+        $.post(ajaxurl, {
             action: 'azure_calendar_get_events',
             calendar_id: calendarId,
+            user_email: userEmail,
             max_events: 10,
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
@@ -468,28 +695,6 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Handle calendar sync
-    $('.sync-calendar').click(function() {
-        var calendarId = $(this).data('calendar-id');
-        var button = $(this);
-        
-        button.prop('disabled', true).text('Syncing...');
-        
-        $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_sync_calendar',
-            calendar_id: calendarId,
-            nonce: azure_plugin_ajax.nonce
-        }, function(response) {
-            if (response.success) {
-                alert('✅ Calendar synced successfully!');
-            } else {
-                alert('❌ Calendar sync failed: ' + (response.data || 'Unknown error'));
-            }
-            
-            button.prop('disabled', false).text('Sync');
-        });
-    });
-    
     // Handle modal close
     $('.modal-close, .modal').click(function(e) {
         if (e.target === this) {
@@ -497,31 +702,12 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Test calendar connection
-    $('.test-calendar-connection').click(function() {
-        var button = $(this);
-        button.prop('disabled', true).text('Testing...');
-        
-        $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_test_calendar_connection',
-            nonce: azure_plugin_ajax.nonce
-        }, function(response) {
-            button.prop('disabled', false).text('Test Connection');
-            
-            if (response.success) {
-                alert('✅ Calendar connection successful!\n\n' + response.data.message);
-            } else {
-                alert('❌ Calendar connection failed: ' + (response.data || 'Unknown error'));
-            }
-        });
-    });
-    
     // Handle module toggle
     $('.calendar-module-toggle').change(function() {
         var enabled = $(this).is(':checked');
-        var statusText = $('.toggle-status');
+        var statusText = $(this).closest('.module-control').find('.toggle-status');
         
-        $.post(azure_plugin_ajax.ajax_url, {
+        $.post(ajaxurl, {
             action: 'azure_toggle_module',
             module: 'calendar',
             enabled: enabled,
@@ -549,8 +735,74 @@ jQuery(document).ready(function($) {
 </script>
 
 <style>
+/* Step Numbers */
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #0073aa;
+    color: #fff;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 16px;
+    margin-right: 5px;
+}
+
+/* Status Badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.status-badge.status-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-badge .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.auth-status-display {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.auth-actions-inline {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .calendar-auth-section {
     margin-bottom: 30px;
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+}
+
+.calendar-auth-section h2 {
+    margin-top: 0;
+    color: #333;
+    display: flex;
+    align-items: center;
 }
 
 .auth-status-card {
@@ -601,6 +853,21 @@ jQuery(document).ready(function($) {
     flex-wrap: wrap;
 }
 
+.calendar-list-section {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.calendar-list-section h2 {
+    margin-top: 0;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
 .calendars-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -618,15 +885,32 @@ jQuery(document).ready(function($) {
 .calendar-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 15px;
     padding-bottom: 10px;
     border-bottom: 1px solid #eee;
 }
 
-.calendar-header h3 {
-    margin: 0;
+.calendar-title-section {
+    flex: 1;
+}
+
+.calendar-title-section h3 {
+    margin: 0 0 8px 0;
     color: #0073aa;
+}
+
+.calendar-enable-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+}
+
+.calendar-enable-toggle input[type="checkbox"] {
+    margin: 0;
 }
 
 .calendar-actions {
@@ -637,6 +921,31 @@ jQuery(document).ready(function($) {
 .calendar-info p {
     margin: 10px 0;
     font-size: 13px;
+}
+
+.calendar-info .selectable-text {
+    font-size: 11px;
+    cursor: text;
+    user-select: all;
+}
+
+.calendar-timezone-setting {
+    margin: 15px 0;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+.calendar-timezone-setting label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.calendar-timezone-select {
+    flex: 1;
+    min-width: 150px;
 }
 
 .calendar-shortcodes {
@@ -657,13 +966,15 @@ jQuery(document).ready(function($) {
 
 .shortcode-examples label {
     display: inline-block;
-    width: 80px;
+    width: 100px;
     font-size: 12px;
     color: #666;
+    vertical-align: top;
+    padding-top: 6px;
 }
 
-.shortcode-examples input {
-    width: calc(100% - 85px);
+.shortcode-examples .shortcode-input {
+    width: calc(100% - 110px);
     font-size: 11px;
     font-family: monospace;
     background: #f9f9f9;

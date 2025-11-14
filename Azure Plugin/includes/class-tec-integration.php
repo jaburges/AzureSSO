@@ -23,57 +23,33 @@ class Azure_TEC_Integration {
     }
     
     public function __construct() {
-        error_log('TEC Integration: 🚀 CONSTRUCTOR STARTED');
-        
         try {
-            error_log('TEC Integration: Step 1 - Checking Azure_Logger availability');
             if (!class_exists('Azure_Logger')) {
-                error_log('TEC Integration: ❌ Azure_Logger not available - exiting constructor');
                 return;
             }
-            error_log('TEC Integration: ✅ Step 1 - Azure_Logger available');
-            Azure_Logger::info('TEC Integration: Constructor started with Azure_Logger available', 'TEC');
+            Azure_Logger::debug('TEC Integration: Constructor started', 'TEC');
             
-            error_log('TEC Integration: Step 2 - Checking TEC plugin active');
             if (!$this->is_tec_active()) {
-                error_log('TEC Integration: ℹ️ Step 2 - TEC not active, adding admin notice');
                 add_action('admin_notices', array($this, 'tec_dependency_notice'));
                 Azure_Logger::info('TEC Integration: The Events Calendar not active, showing dependency notice', 'TEC');
-                error_log('TEC Integration: ✅ Step 2 - TEC dependency notice added successfully');
                 return;
             }
-            error_log('TEC Integration: ✅ Step 2 - TEC is active');
             Azure_Logger::info('TEC Integration: The Events Calendar is active, proceeding with initialization', 'TEC');
             
-            error_log('TEC Integration: Step 3 - Calling init_components()');
             $this->init_components();
-            error_log('TEC Integration: ✅ Step 3 - init_components() completed');
-            
-            error_log('TEC Integration: Step 4 - Calling register_hooks()');
             $this->register_hooks();
-            error_log('TEC Integration: ✅ Step 4 - register_hooks() completed');
             
-            error_log('TEC Integration: Step 5 - Checking if admin area');
             if (is_admin()) {
-                error_log('TEC Integration: Step 5a - In admin area, calling init_admin()');
                 $this->init_admin();
-                error_log('TEC Integration: ✅ Step 5a - init_admin() completed');
-            } else {
-                error_log('TEC Integration: ℹ️ Step 5 - Not in admin area, skipping init_admin()');
             }
             
-            error_log('TEC Integration: 🎉 CONSTRUCTOR COMPLETED SUCCESSFULLY');
             Azure_Logger::info('TEC Integration: Initialization completed successfully', 'TEC');
             
         } catch (Exception $e) {
-            error_log('TEC Integration: 💥 EXCEPTION in constructor: ' . $e->getMessage());
-            error_log('TEC Integration: Exception trace: ' . $e->getTraceAsString());
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::fatal('TEC Integration: Constructor Exception: ' . $e->getMessage(), 'TEC');
             }
         } catch (Error $e) {
-            error_log('TEC Integration: 💀 FATAL ERROR in constructor: ' . $e->getMessage());
-            error_log('TEC Integration: Error trace: ' . $e->getTraceAsString());
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::fatal('TEC Integration: Constructor Fatal Error: ' . $e->getMessage(), 'TEC');
             }
@@ -84,55 +60,30 @@ class Azure_TEC_Integration {
      * Check if The Events Calendar plugin is active
      */
     private function is_tec_active() {
-        error_log('TEC Integration: 🔍 Checking if TEC plugin is active...');
-        $is_active = class_exists('Tribe__Events__Main');
-        if ($is_active) {
-            error_log('TEC Integration: ✅ TEC plugin is active (Tribe__Events__Main class found)');
-        } else {
-            error_log('TEC Integration: ⚠️ TEC plugin is NOT active (Tribe__Events__Main class not found)');
-        }
-        return $is_active;
+        return class_exists('Tribe__Events__Main');
     }
     
     /**
      * Initialize components
      */
     private function init_components() {
-        error_log('TEC Integration: 🔧 INIT_COMPONENTS STARTED');
-        
         try {
-            error_log('TEC Integration: init_components Step 1 - Loading settings');
             $this->settings = Azure_Settings::get_all_settings();
-            error_log('TEC Integration: ✅ init_components Step 1 - Settings loaded successfully');
             
-            error_log('TEC Integration: init_components Step 2 - Checking for Azure_TEC_Sync_Engine class');
             if (class_exists('Azure_TEC_Sync_Engine')) {
-                error_log('TEC Integration: init_components Step 2a - Azure_TEC_Sync_Engine found, creating instance');
                 $this->sync_engine = new Azure_TEC_Sync_Engine();
-                error_log('TEC Integration: ✅ init_components Step 2a - Sync engine created successfully');
                 Azure_Logger::debug('TEC Integration: Sync engine initialized', 'TEC');
-            } else {
-                error_log('TEC Integration: ℹ️ init_components Step 2 - Azure_TEC_Sync_Engine class not found (expected - not loaded yet)');
             }
             
-            error_log('TEC Integration: init_components Step 3 - Checking for Azure_TEC_Data_Mapper class');
             if (class_exists('Azure_TEC_Data_Mapper')) {
-                error_log('TEC Integration: init_components Step 3a - Azure_TEC_Data_Mapper found, creating instance');
                 $this->data_mapper = new Azure_TEC_Data_Mapper();
-                error_log('TEC Integration: ✅ init_components Step 3a - Data mapper created successfully');
                 Azure_Logger::debug('TEC Integration: Data mapper initialized', 'TEC');
-            } else {
-                error_log('TEC Integration: ℹ️ init_components Step 3 - Azure_TEC_Data_Mapper class not found (expected - not loaded yet)');
             }
-            
-            error_log('TEC Integration: ✅ INIT_COMPONENTS COMPLETED SUCCESSFULLY');
             
         } catch (Exception $e) {
-            error_log('TEC Integration: 💥 EXCEPTION in init_components: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: init_components Exception: ' . $e->getMessage(), 'TEC');
             throw $e;
         } catch (Error $e) {
-            error_log('TEC Integration: 💀 FATAL ERROR in init_components: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: init_components Fatal Error: ' . $e->getMessage(), 'TEC');
             throw $e;
         }
@@ -142,38 +93,29 @@ class Azure_TEC_Integration {
      * Register WordPress hooks for TEC events
      */
     private function register_hooks() {
-        error_log('TEC Integration: 🔗 REGISTER_HOOKS STARTED');
-        
         try {
-            error_log('TEC Integration: register_hooks Step 1 - Adding TEC event lifecycle hooks');
+            // TEC event lifecycle hooks
             add_action('save_post_tribe_events', array($this, 'sync_tec_event_to_outlook'), 20, 2);
             add_action('before_delete_post', array($this, 'delete_outlook_event_from_tec'));
             add_action('tribe_events_update_meta', array($this, 'handle_tec_meta_update'), 10, 3);
-            error_log('TEC Integration: ✅ register_hooks Step 1 - TEC lifecycle hooks added');
             
-            error_log('TEC Integration: register_hooks Step 2 - Adding status change hooks');
+            // Status change hooks
             add_action('transition_post_status', array($this, 'handle_post_status_change'), 10, 3);
-            error_log('TEC Integration: ✅ register_hooks Step 2 - Status change hooks added');
             
-            error_log('TEC Integration: register_hooks Step 3 - Adding scheduled sync hooks');
+            // Scheduled sync hooks
             add_action('azure_tec_sync_from_outlook', array($this, 'scheduled_sync_from_outlook'));
-            error_log('TEC Integration: ✅ register_hooks Step 3 - Scheduled sync hooks added');
             
-            error_log('TEC Integration: register_hooks Step 4 - Adding admin hooks');
+            // Admin hooks
             add_action('add_meta_boxes', array($this, 'add_sync_metabox'));
             add_filter('manage_tribe_events_posts_columns', array($this, 'add_sync_status_column'));
             add_action('manage_tribe_events_posts_custom_column', array($this, 'display_sync_status_column'), 10, 2);
-            error_log('TEC Integration: ✅ register_hooks Step 4 - Admin hooks added');
             
-            error_log('TEC Integration: ✅ REGISTER_HOOKS COMPLETED SUCCESSFULLY');
             Azure_Logger::debug('TEC Integration: WordPress hooks registered', 'TEC');
             
         } catch (Exception $e) {
-            error_log('TEC Integration: 💥 EXCEPTION in register_hooks: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: register_hooks Exception: ' . $e->getMessage(), 'TEC');
             throw $e;
         } catch (Error $e) {
-            error_log('TEC Integration: 💀 FATAL ERROR in register_hooks: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: register_hooks Fatal Error: ' . $e->getMessage(), 'TEC');
             throw $e;
         }
@@ -183,32 +125,20 @@ class Azure_TEC_Integration {
      * Initialize admin interface
      */
     private function init_admin() {
-        error_log('TEC Integration: 🎛️ INIT_ADMIN STARTED');
-        
         try {
-            error_log('TEC Integration: init_admin Step 1 - Adding admin menu');
             add_action('admin_menu', array($this, 'add_admin_menu'), 20);
-            error_log('TEC Integration: ✅ init_admin Step 1 - Admin menu action added');
-            
-            error_log('TEC Integration: init_admin Step 2 - Adding admin scripts enqueue action');
             add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
-            error_log('TEC Integration: ✅ init_admin Step 2 - Admin scripts enqueue action added');
             
-            error_log('TEC Integration: init_admin Step 3 - Adding AJAX handlers');
+            // AJAX handlers
             add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_manual_sync'));
             add_action('wp_ajax_azure_tec_bulk_sync', array($this, 'ajax_bulk_sync'));
             add_action('wp_ajax_azure_tec_break_sync', array($this, 'ajax_break_sync'));
             add_action('wp_ajax_azure_tec_get_sync_status', array($this, 'ajax_get_sync_status'));
-            error_log('TEC Integration: ✅ init_admin Step 3 - AJAX handlers added');
-            
-            error_log('TEC Integration: ✅ INIT_ADMIN COMPLETED SUCCESSFULLY');
             
         } catch (Exception $e) {
-            error_log('TEC Integration: 💥 EXCEPTION in init_admin: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: init_admin Exception: ' . $e->getMessage(), 'TEC');
             throw $e;
         } catch (Error $e) {
-            error_log('TEC Integration: 💀 FATAL ERROR in init_admin: ' . $e->getMessage());
             Azure_Logger::fatal('TEC Integration: init_admin Fatal Error: ' . $e->getMessage(), 'TEC');
             throw $e;
         }
@@ -457,16 +387,18 @@ class Azure_TEC_Integration {
     
     /**
      * Add admin menu for TEC integration
+     * DISABLED: TEC Integration UI is now in Calendar page → TEC Calendar Sync tab
      */
     public function add_admin_menu() {
-        add_submenu_page(
-            'azure-plugin',
-            'TEC Integration',
-            'TEC Integration',
-            'manage_options',
-            'azure-tec-integration',
-            array($this, 'render_admin_page')
-        );
+        // Menu item disabled - use Calendar page TEC Sync tab instead
+        // add_submenu_page(
+        //     'azure-plugin',
+        //     'TEC Integration',
+        //     'TEC Integration',
+        //     'manage_options',
+        //     'azure-tec-integration',
+        //     array($this, 'render_admin_page')
+        // );
     }
     
     /**

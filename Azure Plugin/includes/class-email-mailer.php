@@ -819,4 +819,3 @@ class Azure_Email_Mailer {
         return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     }
 }
-?>

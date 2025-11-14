@@ -378,9 +378,16 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
                             <th scope="row">Show on Login Page</th>
                             <td>
                                 <label>
-                                    <input type="checkbox" name="sso_show_on_login_page" <?php checked($settings['sso_show_on_login_page'] ?? true); ?> />
-                                    Show "Sign in with Microsoft" button on WordPress login page
+                                    <input type="checkbox" name="sso_show_on_login_page" id="sso_show_on_login_page" <?php checked($settings['sso_show_on_login_page'] ?? true); ?> />
+                                    Show "Sign in" button on WordPress login page
                                 </label>
+                                <div id="sso_button_text_wrapper" style="margin-top: 10px; <?php echo ($settings['sso_show_on_login_page'] ?? true) ? '' : 'display: none;'; ?>">
+                                    <label for="sso_login_button_text">
+                                        <strong>Button Text:</strong><br />
+                                        <input type="text" name="sso_login_button_text" id="sso_login_button_text" value="<?php echo esc_attr($settings['sso_login_button_text'] ?? 'Sign in with WilderPTSA Email'); ?>" class="regular-text" placeholder="Sign in with WilderPTSA Email" />
+                                    </label>
+                                    <p class="description">Customize the text shown on the login button. The Microsoft icon will still be displayed.</p>
+                                </div>
                             </td>
                         </tr>
                         <tr>
@@ -583,7 +590,7 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
             <div class="shortcode-examples">
                 <div class="shortcode-example">
                     <h4>Login Button</h4>
-                    <code>[azure_sso_login text="Sign in with Microsoft" redirect="/dashboard"]</code>
+                    <code>[azure_sso_login text="Sign in with WilderPTSA Email" redirect="/dashboard"]</code>
                     <p>Creates a login button that redirects to the specified page after authentication.</p>
                 </div>
                 
@@ -635,6 +642,18 @@ jQuery(document).ready(function($) {
         } else {
             customRole.slideUp('fast');
             standardRoles.slideDown('fast');
+        }
+    });
+    
+    // Handle show on login page toggle
+    $('#sso_show_on_login_page').on('change', function() {
+        var isChecked = $(this).is(':checked');
+        var buttonTextWrapper = $('#sso_button_text_wrapper');
+        
+        if (isChecked) {
+            buttonTextWrapper.slideDown('fast');
+        } else {
+            buttonTextWrapper.slideUp('fast');
         }
     });
     
@@ -1125,4 +1144,4 @@ body.admin-color-midnight .sso-shortcodes-section {
 }
 </style>
 
-<?php sso_debug_log('SSO page rendering completed successfully'); ?>
+<?php sso_debug_log('SSO page rendering completed successfully');

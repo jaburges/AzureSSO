@@ -604,4 +604,3 @@ class Azure_PTA_Database {
         return $deleted;
     }
 }
-?>

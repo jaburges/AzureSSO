@@ -4,7 +4,647 @@
 
 jQuery(document).ready(function($) {
     
+    // ==========================================
+    // TEC Calendar Authentication Handlers
+    // ==========================================
+    
+    // Save TEC calendar email
+    $('#save-tec-calendar-email').on('click', function() {
+        var userEmail = $('#tec_calendar_user_email').val();
+        var mailboxEmail = $('#tec_calendar_mailbox_email').val();
+        var button = $(this);
+        
+        if (!userEmail) {
+            alert('Please enter your M365 account email address');
+            return;
+        }
+        
+        if (!mailboxEmail) {
+            alert('Please enter the shared mailbox email address');
+            return;
+        }
+        
+        button.prop('disabled', true).text('Saving...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_save_tec_calendar_email',
+                user_email: userEmail,
+                mailbox_email: mailboxEmail,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('TEC Save Response:', response);
+                
+                button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Settings');
+                
+                if (response.success === true) {
+                    alert('Settings saved successfully! Please click "Authenticate Calendar" to authorize access.');
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    } else if (response.message) {
+                        errorMsg = response.message;
+                    }
+                    console.error('Save failed:', errorMsg);
+                    alert('Failed to save settings: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Settings');
+                console.error('AJAX Error:', xhr.responseText);
+                alert('AJAX request failed: ' + error + '\nCheck browser console for details.');
+            }
+        });
+    });
+    
+    // TEC Calendar authentication
+    $('#tec-calendar-auth, #tec-calendar-reauth').on('click', function() {
+        var userEmail = $('#tec_calendar_user_email').val();
+        var mailboxEmail = $('#tec_calendar_mailbox_email').val();
+        var button = $(this);
+        
+        if (!userEmail) {
+            alert('Please enter and save your M365 account email first');
+            return;
+        }
+        
+        if (!mailboxEmail) {
+            alert('Please enter and save the shared mailbox email first');
+            return;
+        }
+        
+        button.prop('disabled', true).text('Generating authorization URL...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_calendar_authorize',
+                user_email: userEmail,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('TEC Auth Response:', response);
+                
+                if (response.success && response.data.auth_url) {
+                    // Redirect to Microsoft authorization page
+                    window.location.href = response.data.auth_url;
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    } else if (response.message) {
+                        errorMsg = response.message;
+                    }
+                    console.error('Auth failed:', errorMsg);
+                    button.prop('disabled', false).text('Authenticate Calendar');
+                    alert('Failed to generate authorization URL: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', xhr.responseText);
+                button.prop('disabled', false).text('Authenticate Calendar');
+                alert('Failed to generate authorization URL due to a network error. Check console for details.');
+            }
+        });
+    });
+    
+    // Refresh TEC calendars
+    $('#refresh-tec-calendars').on('click', function() {
+        location.reload();
+    });
+    
+    // ==========================================
+    // Calendar Mapping Handlers
+    // ==========================================
+    
+    // Open calendar mapping modal
+    $('#add-calendar-mapping').on('click', function() {
+        // Reset form for adding new mapping
+        $('#calendar-mapping-form')[0].reset();
+        $('#mapping-id').val('');
+        $('#new-category-name').val('');
+        $('#schedule-frequency-row, #schedule-daterange-row').hide();
+        
+        // Reset button text
+        $('#save-mapping-btn').html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+        
+        $('#calendar-mapping-modal').fadeIn(200);
+        $('body').addClass('modal-open');
+        
+        // Load available calendars when modal opens
+        loadOutlookCalendars();
+        
+        // Load TEC categories
+        loadTecCategories();
+    });
+    
+    // Load Outlook calendars into the dropdown
+    function loadOutlookCalendars(callback) {
+        var $select = $('#outlook-calendar-select');
+        $select.html('<option value="">Loading calendars...</option>').prop('disabled', true);
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_get_outlook_calendars_for_tec',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('Outlook Calendars Response:', response);
+                
+                if (response.success && response.data) {
+                    var calendars = response.data;
+                    
+                    if (calendars.length === 0) {
+                        $select.html('<option value="">No calendars found</option>');
+                    } else {
+                        $select.html('<option value="">Select a calendar...</option>');
+                        calendars.forEach(function(calendar) {
+                            $select.append(
+                                $('<option></option>')
+                                    .val(calendar.id)
+                                    .text(calendar.name)
+                                    .data('calendar-name', calendar.name)
+                            );
+                        });
+                        $select.prop('disabled', false);
+                    }
+                    
+                    // Call callback if provided
+                    if (typeof callback === 'function') {
+                        callback();
+                    }
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    $select.html('<option value="">Failed to load calendars</option>');
+                    console.error('Failed to load calendars:', errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                $select.html('<option value="">Error loading calendars</option>');
+                console.error('AJAX Error loading calendars:', error);
+            }
+        });
+    }
+    
+    // Load TEC categories into the dropdown
+    function loadTecCategories(callback) {
+        var $select = $('#tec-category-select');
+        $select.html('<option value="">Loading categories...</option>').prop('disabled', true);
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_get_tec_categories',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('TEC Categories Response:', response);
+                
+                if (response.success && response.data) {
+                    var categories = response.data;
+                    
+                    $select.html('<option value="">Select existing category...</option>');
+                    
+                    if (categories.length === 0) {
+                        $select.append('<option value="" disabled>No categories found - enter new category name below</option>');
+                    } else {
+                        categories.forEach(function(category) {
+                            $select.append(
+                                $('<option></option>')
+                                    .val(category.term_id)
+                                    .text(category.name)
+                                    .data('category-name', category.name)
+                            );
+                        });
+                    }
+                    $select.prop('disabled', false);
+                    
+                    // Call callback if provided
+                    if (typeof callback === 'function') {
+                        callback();
+                    }
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    $select.html('<option value="">Failed to load categories</option>');
+                    console.error('Failed to load TEC categories:', errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                $select.html('<option value="">Error loading categories</option>');
+                console.error('AJAX Error loading TEC categories:', error);
+            }
+        });
+    }
+    
+    // Close calendar mapping modal
+    $('.modal-close, .modal-overlay, #cancel-mapping-btn').on('click', function() {
+        $('#calendar-mapping-modal').fadeOut(200);
+        $('body').removeClass('modal-open');
+        
+        // Clear form
+        $('#calendar-mapping-form')[0].reset();
+        $('#mapping-id').val('');
+        $('#new-category-name').val('');
+        $('#schedule-frequency-row, #schedule-daterange-row').hide();
+        
+        // Reset button text
+        $('#save-mapping-btn').html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+    });
+    
+    // Toggle schedule fields visibility
+    $('#schedule-enabled-checkbox').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#schedule-frequency-row, #schedule-daterange-row').show();
+        } else {
+            $('#schedule-frequency-row, #schedule-daterange-row').hide();
+        }
+    });
+    
+    // Refresh Outlook calendars
+    $('#refresh-outlook-calendars').on('click', function() {
+        var button = $(this);
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Refreshing...');
+        
+        // Use the same loading function, but with force refresh
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_get_outlook_calendars_for_tec',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Refresh Available Calendars');
+                
+                if (response.success) {
+                    alert('Calendars refreshed successfully!');
+                    // Reload the dropdown
+                    loadOutlookCalendars();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Failed to refresh calendars: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Refresh Available Calendars');
+                alert('Failed to refresh calendars: ' + error);
+            }
+        });
+    });
+    
+    // Save calendar mapping (handle form submit)
+    $('#calendar-mapping-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var mappingId = $('#mapping-id').val() || 0; // Get mapping ID for editing
+        var outlookCalendarId = $('#outlook-calendar-select').val();
+        var outlookCalendarName = $('#outlook-calendar-select option:selected').text();
+        var tecCategoryId = $('#tec-category-select').val();
+        var tecCategoryName = $('#tec-category-select option:selected').text();
+        var newCategoryName = $('#new-category-name').val().trim();
+        var syncEnabled = $('#sync-enabled-checkbox').is(':checked') ? 1 : 0;
+        var scheduleEnabled = $('#schedule-enabled-checkbox').is(':checked') ? 1 : 0;
+        var scheduleFrequency = $('#schedule-frequency-select').val();
+        var scheduleLookbackDays = parseInt($('#schedule-lookback-days').val());
+        var scheduleLookaheadDays = parseInt($('#schedule-lookahead-days').val());
+        var button = $('#save-mapping-btn');
+        
+        // Validate Outlook calendar selection
+        if (!outlookCalendarId) {
+            alert('Please select an Outlook calendar');
+            return;
+        }
+        
+        // Validate TEC category: must have EITHER dropdown selection OR new name, not both
+        var hasExistingCategory = tecCategoryId && tecCategoryId !== '';
+        var hasNewCategory = newCategoryName !== '';
+        
+        if (!hasExistingCategory && !hasNewCategory) {
+            alert('Please select an existing TEC category OR enter a new category name');
+            return;
+        }
+        
+        if (hasExistingCategory && hasNewCategory) {
+            alert('Please either select an existing category OR enter a new category name, not both');
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Saving...');
+        
+        // If user entered a new category name, create it first
+        if (hasNewCategory) {
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'azure_create_tec_category',
+                    category_name: newCategoryName,
+                    nonce: azureTecAdmin.nonce
+                },
+                success: function(response) {
+                    console.log('Create Category Response:', response);
+                    
+                    if (response.success && response.data) {
+                        // Category created (or already existed), now save the mapping
+                        tecCategoryId = response.data.term_id;
+                        tecCategoryName = response.data.name;
+                        saveMapping(mappingId, outlookCalendarId, outlookCalendarName, tecCategoryId, tecCategoryName, syncEnabled, scheduleEnabled, scheduleFrequency, scheduleLookbackDays, scheduleLookaheadDays, button);
+                    } else {
+                        var errorMsg = 'Unknown error';
+                        if (typeof response.data === 'string') {
+                            errorMsg = response.data;
+                        } else if (response.data && response.data.message) {
+                            errorMsg = response.data.message;
+                        }
+                        alert('Failed to create category: ' + errorMsg);
+                        button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Failed to create category: ' + error);
+                    button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+                }
+            });
+        } else {
+            // Use existing category
+            saveMapping(mappingId, outlookCalendarId, outlookCalendarName, tecCategoryId, tecCategoryName, syncEnabled, scheduleEnabled, scheduleFrequency, scheduleLookbackDays, scheduleLookaheadDays, button);
+        }
+    });
+    
+    // Helper function to save the actual mapping
+    function saveMapping(mappingId, outlookCalendarId, outlookCalendarName, tecCategoryId, tecCategoryName, syncEnabled, scheduleEnabled, scheduleFrequency, scheduleLookbackDays, scheduleLookaheadDays, button) {
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_save_calendar_mapping',
+                mapping_id: mappingId,
+                outlook_calendar_id: outlookCalendarId,
+                outlook_calendar_name: outlookCalendarName,
+                tec_category_id: tecCategoryId,
+                tec_category_name: tecCategoryName,
+                sync_enabled: syncEnabled,
+                schedule_enabled: scheduleEnabled,
+                schedule_frequency: scheduleFrequency,
+                schedule_lookback_days: scheduleLookbackDays,
+                schedule_lookahead_days: scheduleLookaheadDays,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('Save Mapping Response:', response);
+                
+                if (response.success) {
+                    var action = mappingId ? 'updated' : 'saved';
+                    alert('Calendar mapping ' + action + ' successfully!');
+                    $('#calendar-mapping-modal').fadeOut(200);
+                    $('body').removeClass('modal-open');
+                    
+                    // Clear form
+                    $('#calendar-mapping-form')[0].reset();
+                    $('#mapping-id').val('');
+                    $('#new-category-name').val('');
+                    $('#schedule-frequency-row, #schedule-daterange-row').hide();
+                    
+                    // Reload page to show new/updated mapping
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Failed to save mapping: ' + errorMsg);
+                    button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Failed to save mapping: ' + error);
+                button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Mapping');
+            }
+        });
+    }
+    
+    // Delete calendar mapping
+    $(document).on('click', '.delete-mapping', function() {
+        var mappingId = $(this).data('mapping-id');
+        
+        if (!confirm('Are you sure you want to delete this calendar mapping?')) {
+            return;
+        }
+        
+        var button = $(this);
+        button.prop('disabled', true).text('Deleting...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_delete_calendar_mapping',
+                mapping_id: mappingId,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('Calendar mapping deleted successfully!');
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Failed to delete mapping: ' + errorMsg);
+                    button.prop('disabled', false).text('Delete');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Failed to delete mapping: ' + error);
+                button.prop('disabled', false).text('Delete');
+            }
+        });
+    });
+    
+    // Edit calendar mapping
+    $(document).on('click', '.edit-mapping', function() {
+        var mappingId = $(this).data('mapping-id');
+        
+        // Load mapping data via AJAX
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_get_calendar_mapping',
+                mapping_id: mappingId,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('Get Mapping Response:', response);
+                
+                if (response.success && response.data) {
+                    var mapping = response.data;
+                    
+                    // Populate modal with mapping data
+                    $('#mapping-id').val(mapping.id);
+                    
+                    // Load calendars and categories first
+                    loadOutlookCalendars(function() {
+                        $('#outlook-calendar-select').val(mapping.outlook_calendar_id);
+                    });
+                    
+                    loadTecCategories(function() {
+                        $('#tec-category-select').val(mapping.tec_category_id);
+                    });
+                    
+                    $('#sync-enabled-checkbox').prop('checked', mapping.sync_enabled == 1);
+                    $('#schedule-enabled-checkbox').prop('checked', mapping.schedule_enabled == 1);
+                    $('#schedule-frequency-select').val(mapping.schedule_frequency || 'hourly');
+                    $('#schedule-lookback-days').val(mapping.schedule_lookback_days || 30);
+                    $('#schedule-lookahead-days').val(mapping.schedule_lookahead_days || 365);
+                    
+                    // Show/hide schedule fields based on schedule_enabled
+                    if (mapping.schedule_enabled == 1) {
+                        $('#schedule-frequency-row, #schedule-daterange-row').show();
+                    } else {
+                        $('#schedule-frequency-row, #schedule-daterange-row').hide();
+                    }
+                    
+                    // Change button text to indicate editing
+                    $('#save-mapping-btn').html('<span class="dashicons dashicons-saved"></span> Update Mapping');
+                    
+                    // Show modal
+                    $('#calendar-mapping-modal').fadeIn(200);
+                    $('body').addClass('modal-open');
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Failed to load mapping: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Failed to load mapping: ' + error);
+            }
+        });
+    });
+    
+    // Toggle calendar mapping sync
+    $(document).on('change', '.toggle-mapping-sync', function() {
+        var mappingId = $(this).data('mapping-id');
+        var enabled = $(this).is(':checked');
+        var checkbox = $(this);
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_toggle_mapping_sync',
+                mapping_id: mappingId,
+                enabled: enabled ? 1 : 0,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                if (!response.success) {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Failed to toggle sync: ' + errorMsg);
+                    checkbox.prop('checked', !enabled); // Revert
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Failed to toggle sync: ' + error);
+                checkbox.prop('checked', !enabled); // Revert
+            }
+        });
+    });
+    
+    // Manual sync for calendar mapping
+    $(document).on('click', '.sync-mapping-now', function() {
+        var mappingId = $(this).data('mapping-id');
+        var button = $(this);
+        
+        button.prop('disabled', true).text('Syncing...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_sync_calendar_mapping',
+                mapping_id: mappingId,
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('Calendar sync completed successfully!');
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Sync failed: ' + errorMsg);
+                    button.prop('disabled', false).text('Sync Now');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Sync failed: ' + error);
+                button.prop('disabled', false).text('Sync Now');
+            }
+        });
+    });
+    
+    // ==========================================
     // Manual sync function for individual events
+    // ==========================================
     window.azureTecManualSync = function(postId) {
         if (!postId) {
             alert('Invalid event ID');
@@ -386,4 +1026,78 @@ jQuery(document).ready(function($) {
             }, index * 500); // Stagger requests to avoid overwhelming the server
         });
     }
+    
+    // ==========================================
+    // NOTE: Global schedule settings have been replaced with per-mapping schedules
+    // Schedule settings are now configured when creating/editing calendar mappings
+    // ==========================================
+    
+    // ==========================================
+    // Manual Sync Now Handler
+    // ==========================================
+    $('#tec-manual-sync-btn').on('click', function(e) {
+        e.preventDefault(); // Prevent any default action
+        
+        var button = $(this);
+        
+        if (!confirm('This will sync all enabled calendar mappings now. This may take a few minutes. Continue?')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Syncing...');
+        
+        console.log('Starting manual sync...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_manual_sync',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('Manual Sync Response:', response);
+                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Sync Now');
+                
+                if (response.success) {
+                    var data = response.data;
+                    var message = 'Sync completed successfully!\n\n';
+                    message += 'Calendars synced: ' + data.calendars_synced + '\n';
+                    message += 'Total events synced: ' + data.total_events_synced + '\n';
+                    message += 'Errors: ' + data.total_errors;
+                    
+                    alert(message);
+                    
+                    // Reload to show updated sync times
+                    location.reload();
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Sync failed: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Manual Sync AJAX Error:', xhr, status, error);
+                console.error('Response Text:', xhr.responseText);
+                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Sync Now');
+                
+                // Try to parse error response
+                try {
+                    var errorResponse = JSON.parse(xhr.responseText);
+                    if (errorResponse && errorResponse.data) {
+                        alert('Sync failed: ' + errorResponse.data);
+                    } else {
+                        alert('Sync failed: ' + error);
+                    }
+                } catch(e) {
+                    alert('Sync failed: ' + error + ' (Status: ' + status + ')');
+                }
+            }
+        });
+    });
 });

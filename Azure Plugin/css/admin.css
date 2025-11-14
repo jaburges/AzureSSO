@@ -467,6 +467,19 @@ input:checked + .slider:before {
         color: #fff !important;
     }
     
+    /* Force light background for backup page specifically */
+    body.toplevel_page_azure-plugin-backup .credentials-section,
+    body.azure-plugin_page_azure-plugin-backup .credentials-section {
+        background: #fff !important;
+        color: #333 !important;
+        border-color: #ccd0d4 !important;
+    }
+    
+    body.toplevel_page_azure-plugin-backup .credentials-section h2,
+    body.azure-plugin_page_azure-plugin-backup .credentials-section h2 {
+        color: #333 !important;
+    }
+    
     .wp-core-ui .module-header h3 {
         color: #fff !important;
     }

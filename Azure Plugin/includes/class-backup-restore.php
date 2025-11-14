@@ -533,6 +533,3 @@ class Azure_Backup_Restore {
         return self::$restore_in_progress;
     }
 }
-?>
-
-

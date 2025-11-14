@@ -29,13 +29,15 @@ class Azure_Calendar_GraphAPI {
     
     /**
      * Get user calendars from Microsoft Graph
+     * If $user_email is provided, gets calendars for that specific user (shared mailbox)
      */
-    public function get_calendars($force_refresh = false) {
+    public function get_calendars($user_email = null, $force_refresh = false) {
         if (!$this->auth) {
             return array();
         }
         
-        $cache_key = 'azure_calendar_calendars';
+        // Use different cache key for different users
+        $cache_key = $user_email ? 'azure_calendar_calendars_' . md5($user_email) : 'azure_calendar_calendars';
         
         if (!$force_refresh) {
             $cached_data = $this->get_cached_data($cache_key);
@@ -44,10 +46,16 @@ class Azure_Calendar_GraphAPI {
             }
         }
         
-        $access_token = $this->auth->get_access_token();
+        // Get access token for specific user or default
+        if ($user_email) {
+            $access_token = $this->auth->get_user_access_token($user_email);
+        } else {
+            $access_token = $this->auth->get_access_token();
+        }
         
         if (!$access_token) {
-            Azure_Logger::error('Calendar API: No access token available');
+            $user_context = $user_email ? " for user {$user_email}" : '';
+            Azure_Logger::error("Calendar API: No access token available{$user_context}");
             return array();
         }
         
@@ -90,9 +98,18 @@ class Azure_Calendar_GraphAPI {
     }
     
     /**
-     * Get calendar events
+     * Alias for get_calendars with user_email
+     * Makes it easier to read: get_user_calendars($email) vs get_calendars($email)
      */
-    public function get_calendar_events($calendar_id, $start_date = null, $end_date = null, $max_events = null, $force_refresh = false) {
+    public function get_user_calendars($user_email, $force_refresh = false) {
+        return $this->get_calendars($user_email, $force_refresh);
+    }
+    
+    /**
+     * Get calendar events
+     * If $user_email is provided, gets events for that specific user's calendar (shared mailbox)
+     */
+    public function get_calendar_events($calendar_id, $start_date = null, $end_date = null, $max_events = null, $force_refresh = false, $user_email = null) {
         if (!$this->auth) {
             return array();
         }
@@ -116,10 +133,16 @@ class Azure_Calendar_GraphAPI {
             }
         }
         
-        $access_token = $this->auth->get_access_token();
+        // Get access token for specific user or default
+        if ($user_email) {
+            $access_token = $this->auth->get_user_access_token($user_email);
+        } else {
+            $access_token = $this->auth->get_access_token();
+        }
         
         if (!$access_token) {
-            Azure_Logger::error('Calendar API: No access token available for events');
+            $user_context = $user_email ? " for user {$user_email}" : '';
+            Azure_Logger::error("Calendar API: No access token available for events{$user_context}");
             return array();
         }
         
@@ -607,11 +630,3 @@ class Azure_Calendar_GraphAPI {
         }
     }
 }
-?>
-
-
-
-
-
-
-

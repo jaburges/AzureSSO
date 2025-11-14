@@ -407,6 +407,3 @@ class Azure_Backup_Scheduler {
         }
     }
 }
-?>
-
-

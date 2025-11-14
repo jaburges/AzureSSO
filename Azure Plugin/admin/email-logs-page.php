@@ -926,6 +926,3 @@ function get_log_level_class($line) {
     if (strpos($line, '[DEBUG]') !== false) return 'debug';
     return 'info';
 }
-?>
-
-

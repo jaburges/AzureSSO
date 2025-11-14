@@ -1,569 +1,878 @@
 <?php
-/**
- * TEC Integration Admin Page
- */
-
 if (!defined('ABSPATH')) {
     exit;
 }
 
-// Check user permissions
-if (!current_user_can('manage_options')) {
-    wp_die('You do not have sufficient permissions to access this page.');
-}
-
-// Get current settings
+// Get plugin settings
 $settings = Azure_Settings::get_all_settings();
-$tec_integration = Azure_TEC_Integration::get_instance();
 
-// Handle form submission
-if (isset($_POST['submit']) && wp_verify_nonce($_POST['azure_tec_nonce'], 'azure_tec_settings')) {
-    
-    // Update TEC integration settings
-    $tec_settings = array(
-        'enable_tec_integration' => isset($_POST['enable_tec_integration']) ? 1 : 0,
-        'tec_outlook_calendar_id' => sanitize_text_field($_POST['tec_outlook_calendar_id'] ?? 'primary'),
-        'tec_default_venue' => sanitize_text_field($_POST['tec_default_venue'] ?? 'School Campus'),
-        'tec_default_organizer' => sanitize_text_field($_POST['tec_default_organizer'] ?? 'PTSA'),
-        'tec_organizer_email' => sanitize_email($_POST['tec_organizer_email'] ?? get_option('admin_email')),
-        'tec_sync_frequency' => sanitize_text_field($_POST['tec_sync_frequency'] ?? 'hourly'),
-        'tec_conflict_resolution' => sanitize_text_field($_POST['tec_conflict_resolution'] ?? 'outlook_wins'),
-        'tec_include_event_url' => isset($_POST['tec_include_event_url']) ? 1 : 0,
-        'tec_event_footer' => sanitize_textarea_field($_POST['tec_event_footer'] ?? ''),
-        'tec_default_category' => sanitize_text_field($_POST['tec_default_category'] ?? 'School Event')
-    );
-    
-    // Merge with existing settings
-    $updated_settings = array_merge($settings, $tec_settings);
-    
-    // Save settings
-    if (Azure_Settings::save_settings($updated_settings)) {
-        echo '<div class="notice notice-success"><p>TEC Integration settings saved successfully!</p></div>';
-        
-        // Schedule sync cron if enabled
-        if ($tec_settings['enable_tec_integration'] && $settings['enable_calendar']) {
-            $frequency = $tec_settings['tec_sync_frequency'];
-            if (!wp_next_scheduled('azure_tec_sync_from_outlook')) {
-                wp_schedule_event(time(), $frequency, 'azure_tec_sync_from_outlook');
-            }
-        } else {
-            wp_clear_scheduled_hook('azure_tec_sync_from_outlook');
-        }
-        
-        // Refresh settings
-        $settings = Azure_Settings::get_all_settings();
-    } else {
-        echo '<div class="notice notice-error"><p>Failed to save TEC Integration settings.</p></div>';
+// Check if TEC Integration module is enabled
+$tec_module_enabled = Azure_Settings::is_module_enabled('tec_integration');
+
+// Check if TEC plugin is installed
+$tec_installed = class_exists('Tribe__Events__Main');
+
+// Check TEC calendar authentication status
+$tec_user_email = $settings['tec_calendar_user_email'] ?? '';
+$tec_mailbox_email = $settings['tec_calendar_mailbox_email'] ?? '';
+$tec_calendar_authenticated = false;
+if (!empty($tec_user_email) && class_exists('Azure_Calendar_Auth')) {
+    try {
+        $auth = new Azure_Calendar_Auth();
+        $tec_calendar_authenticated = $auth->has_valid_user_token($tec_user_email);
+    } catch (Exception $e) {
+        // Silently handle error
+        $tec_calendar_authenticated = false;
     }
 }
 
-// Get sync statistics
-$sync_engine = new Azure_TEC_Sync_Engine();
-$sync_stats = $sync_engine->get_sync_statistics();
-
+// Get TEC calendar mappings
+$calendar_mappings = array();
+if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+    try {
+        $mapping_manager = new Azure_TEC_Calendar_Mapping_Manager();
+        $calendar_mappings = $mapping_manager->get_all_mappings();
+    } catch (Exception $e) {
+        // Silently handle error
+        $calendar_mappings = array();
+    }
+}
 ?>
 
 <div class="wrap">
-    <h1>TEC Integration Settings</h1>
+    <h1>Azure Plugin - Calendar Sync</h1>
     
-    <?php if (!class_exists('Tribe__Events__Main')): ?>
-    <div class="notice notice-warning">
-        <p><strong>Warning:</strong> The Events Calendar plugin is not active. TEC Integration requires The Events Calendar to be installed and activated.</p>
+    <!-- Module Toggle Section -->
+    <div class="module-status-section">
+        <h2>TEC Integration Module Status</h2>
+        <div class="module-toggle-card">
+            <div class="module-info">
+                <h3><span class="dashicons dashicons-calendar"></span> TEC Integration Module</h3>
+                <p>Sync Microsoft Outlook calendars with The Events Calendar plugin</p>
+            </div>
+            <div class="module-control">
+                <label class="switch">
+                    <input type="checkbox" class="tec-module-toggle" <?php checked($tec_module_enabled); ?> />
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-status"><?php echo $tec_module_enabled ? 'Enabled' : 'Disabled'; ?></span>
+            </div>
+        </div>
+        <?php if (!$tec_module_enabled): ?>
+        <div class="notice notice-warning inline">
+            <p><strong>TEC Integration module is disabled.</strong> Enable it above to use TEC Calendar Sync functionality.</p>
+        </div>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
     
-    <form method="post" action="">
-        <?php wp_nonce_field('azure_tec_settings', 'azure_tec_nonce'); ?>
+    <?php if (!$tec_installed): ?>
+    <div class="notice notice-error inline-notice">
+        <p><span class="dashicons dashicons-dismiss"></span> <strong>The Events Calendar Plugin Not Found</strong></p>
+        <p>The Events Calendar plugin must be installed and activated to use the TEC Calendar Sync feature.</p>
+        <p><a href="<?php echo admin_url('plugin-install.php?s=the+events+calendar&tab=search&type=term'); ?>" class="button">Install The Events Calendar</a></p>
+    </div>
+    <?php elseif ($tec_module_enabled): ?>
+    
+    <!-- TEC Sync Overview -->
+    <div class="tec-sync-overview">
+        <div class="info-card">
+            <h2><span class="dashicons dashicons-update"></span> TEC Calendar Synchronization</h2>
+            <p>Sync events from Outlook shared mailbox calendars to The Events Calendar plugin. Events in Outlook will automatically sync to your WordPress site based on your schedule.</p>
+            <ul>
+                <li><strong>One-way sync:</strong> Outlook → TEC (Outlook always wins)</li>
+                <li><strong>Multi-calendar support:</strong> Select specific calendars from shared mailbox</li>
+                <li><strong>Category mapping:</strong> Assign TEC categories to imported events</li>
+                <li><strong>Flexible scheduling:</strong> Manual or automatic scheduled sync</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Step 1: Shared Mailbox Authentication -->
+    <div class="tec-auth-section">
+        <h2><span class="step-number">1</span> Shared Mailbox Authentication</h2>
+        <p class="description">Authenticate with your Microsoft 365 account to access a shared mailbox's calendars.</p>
         
         <table class="form-table">
             <tr>
-                <th scope="row">Enable TEC Integration</th>
+                <th scope="row">
+                    <label for="tec_calendar_user_email">Your M365 Account</label>
+                </th>
                 <td>
-                    <label>
-                        <input type="checkbox" name="enable_tec_integration" value="1" 
-                               <?php checked($settings['enable_tec_integration'] ?? false); ?>
-                               <?php echo !$settings['enable_calendar'] ? 'disabled' : ''; ?>>
-                        Enable bidirectional sync between The Events Calendar and Outlook
-                    </label>
-                    <?php if (!$settings['enable_calendar']): ?>
-                    <p class="description" style="color: #d63638;">
-                        <strong>Calendar functionality must be enabled first.</strong> 
-                        <a href="<?php echo admin_url('admin.php?page=azure-calendar'); ?>">Enable Calendar Module</a>
-                    </p>
+                    <input type="email" 
+                           id="tec_calendar_user_email" 
+                           name="tec_calendar_user_email" 
+                           value="<?php echo esc_attr($tec_user_email); ?>"
+                           placeholder="jamie@wilderptsa.net" 
+                           class="regular-text">
+                    <p class="description">Your Microsoft 365 email address (the account you'll sign in with)</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="tec_calendar_mailbox_email">Shared Mailbox Email</label>
+                </th>
+                <td>
+                    <input type="email" 
+                           id="tec_calendar_mailbox_email" 
+                           name="tec_calendar_mailbox_email" 
+                           value="<?php echo esc_attr($tec_mailbox_email); ?>"
+                           placeholder="calendar@wilderptsa.net" 
+                           class="regular-text">
+                    <p class="description">The shared mailbox email you have delegated access to</p>
+                    <button type="button" class="button button-primary" id="save-tec-calendar-email">
+                        <span class="dashicons dashicons-saved"></span> Save Settings
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Authentication Status</th>
+                <td>
+                    <div class="auth-status-display">
+                        <?php if ($tec_calendar_authenticated): ?>
+                            <span class="status-badge status-success">
+                                <span class="dashicons dashicons-yes-alt"></span> Authenticated as <?php echo esc_html($tec_calendar_email); ?>
+                            </span>
+                            <div class="auth-actions-inline">
+                                <button type="button" class="button" id="refresh-tec-calendars">
+                                    <span class="dashicons dashicons-update"></span> Refresh Calendars
+                                </button>
+                                <button type="button" class="button button-secondary" id="tec-calendar-reauth">
+                                    Re-authenticate
+                                </button>
+                            </div>
+                        <?php else: ?>
+                            <span class="status-badge status-error">
+                                <span class="dashicons dashicons-dismiss"></span> Not authenticated
+                            </span>
+                            <div class="auth-actions-inline">
+                                <?php if (!empty($tec_calendar_email)): ?>
+                                <button type="button" class="button button-primary" id="tec-calendar-auth">
+                                    <span class="dashicons dashicons-admin-network"></span> Authenticate Calendar
+                                </button>
+                                <?php else: ?>
+                                <p class="description">Please enter and save the shared mailbox email above, then authenticate.</p>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- Step 2: Calendar Mapping -->
+    <?php if ($tec_calendar_authenticated): ?>
+    <div class="tec-calendar-mapping-section">
+        <h2><span class="step-number">2</span> Calendar Mapping</h2>
+        <p class="description">Select which Outlook calendars to sync and assign TEC categories for filtering.</p>
+        
+        <div class="calendar-mappings-container">
+            <div class="calendar-mappings-header">
+                <button type="button" class="button" id="refresh-outlook-calendars">
+                    <span class="dashicons dashicons-update"></span> Refresh Available Calendars
+                </button>
+                <button type="button" class="button button-primary" id="add-calendar-mapping">
+                    <span class="dashicons dashicons-plus-alt"></span> Add Calendar Mapping
+                </button>
+            </div>
+            
+            <table class="wp-list-table widefat fixed striped calendar-mappings-table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">Sync</th>
+                        <th>Outlook Calendar</th>
+                        <th>TEC Category</th>
+                        <th style="width: 200px;">Schedule</th>
+                        <th style="width: 150px;">Last Sync</th>
+                        <th style="width: 150px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="calendar-mappings-list">
+                    <?php if (empty($calendar_mappings)): ?>
+                    <tr class="no-mappings">
+                        <td colspan="6" style="text-align: center; padding: 40px;">
+                            <span class="dashicons dashicons-calendar-alt" style="font-size: 48px; opacity: 0.3;"></span>
+                            <p style="margin: 10px 0 0 0; color: #666;">No calendar mappings yet. Click "Add Calendar Mapping" to get started.</p>
+                </td>
+            </tr>
+                    <?php else: ?>
+                        <?php foreach ($calendar_mappings as $mapping): ?>
+                        <tr data-mapping-id="<?php echo esc_attr($mapping->id); ?>">
+                            <td>
+                                <label class="switch">
+                                    <input type="checkbox" 
+                                           class="mapping-sync-toggle" 
+                                           data-mapping-id="<?php echo esc_attr($mapping->id); ?>"
+                                           <?php checked($mapping->sync_enabled); ?> />
+                                    <span class="slider"></span>
+                                </label>
+                            </td>
+                            <td>
+                                <strong><?php echo esc_html($mapping->outlook_calendar_name); ?></strong>
+                                <br><small style="color: #666;"><?php echo esc_html($mapping->outlook_calendar_id); ?></small>
+                            </td>
+                            <td>
+                                <span class="tec-category-badge"><?php echo esc_html($mapping->tec_category_name); ?></span>
+                            </td>
+                            <td>
+                                <?php if ($mapping->schedule_enabled): ?>
+                                    <div class="schedule-info">
+                                        <span class="dashicons dashicons-clock" style="color: #2271b1;"></span>
+                                        <?php
+                                        $freq_labels = array(
+                                            '15min' => 'Every 15 min',
+                                            '30min' => 'Every 30 min',
+                                            'hourly' => 'Hourly',
+                                            'twicedaily' => 'Twice Daily',
+                                            'daily' => 'Daily'
+                                        );
+                                        $freq = $mapping->schedule_frequency ?? 'hourly';
+                                        echo esc_html($freq_labels[$freq] ?? $freq);
+                                        ?>
+                                        <br>
+                                        <small style="color: #666;">
+                                            <?php echo esc_html($mapping->schedule_lookback_days ?? 30); ?> days back, 
+                                            <?php echo esc_html($mapping->schedule_lookahead_days ?? 365); ?> days ahead
+                                        </small>
+                                    </div>
+                                <?php else: ?>
+                                    <em style="color: #999;">Manual only</em>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php 
+                                if ($mapping->last_sync) {
+                                    echo esc_html(date('M j, Y g:i A', strtotime($mapping->last_sync)));
+                                } else {
+                                    echo '<em style="color: #999;">Never</em>';
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <button type="button" 
+                                        class="button button-small edit-mapping" 
+                                        data-mapping-id="<?php echo esc_attr($mapping->id); ?>">
+                                    Edit
+                                </button>
+                                <button type="button" 
+                                        class="button button-small button-link-delete delete-mapping" 
+                                        data-mapping-id="<?php echo esc_attr($mapping->id); ?>">
+                                    Delete
+                                </button>
+                </td>
+            </tr>
+                        <?php endforeach; ?>
                     <?php endif; ?>
-                </td>
-            </tr>
+                </tbody>
         </table>
-        
-        <h2>Sync Settings</h2>
-        
-        <table class="form-table">
-            <tr>
-                <th scope="row">Outlook Calendar</th>
-                <td>
-                    <select name="tec_outlook_calendar_id">
-                        <option value="primary" <?php selected($settings['tec_outlook_calendar_id'] ?? 'primary', 'primary'); ?>>
-                            Primary Calendar
-                        </option>
-                        <!-- Additional calendar options would be loaded via AJAX in production -->
-                    </select>
-                    <p class="description">Select which Outlook calendar to sync with TEC events.</p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Sync Frequency</th>
-                <td>
-                    <select name="tec_sync_frequency">
-                        <option value="hourly" <?php selected($settings['tec_sync_frequency'] ?? 'hourly', 'hourly'); ?>>
-                            Every Hour
-                        </option>
-                        <option value="twicedaily" <?php selected($settings['tec_sync_frequency'] ?? 'hourly', 'twicedaily'); ?>>
-                            Twice Daily
-                        </option>
-                        <option value="daily" <?php selected($settings['tec_sync_frequency'] ?? 'hourly', 'daily'); ?>>
-                            Daily
-                        </option>
-                        <option value="manual" <?php selected($settings['tec_sync_frequency'] ?? 'hourly', 'manual'); ?>>
-                            Manual Only
-                        </option>
-                    </select>
-                    <p class="description">How often to automatically sync events from Outlook to TEC.</p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Conflict Resolution</th>
-                <td>
-                    <select name="tec_conflict_resolution">
-                        <option value="outlook_wins" <?php selected($settings['tec_conflict_resolution'] ?? 'outlook_wins', 'outlook_wins'); ?>>
-                            Outlook Wins (Recommended)
-                        </option>
-                        <option value="tec_wins" <?php selected($settings['tec_conflict_resolution'] ?? 'outlook_wins', 'tec_wins'); ?>>
-                            TEC Wins
-                        </option>
-                        <option value="manual" <?php selected($settings['tec_conflict_resolution'] ?? 'outlook_wins', 'manual'); ?>>
-                            Manual Resolution
-                        </option>
-                    </select>
-                    <p class="description">How to resolve conflicts when the same event is modified in both systems.</p>
-                </td>
-            </tr>
-        </table>
-        
-        <h2>Default Event Settings</h2>
-        
-        <table class="form-table">
-            <tr>
-                <th scope="row">Default Venue</th>
-                <td>
-                    <input type="text" name="tec_default_venue" 
-                           value="<?php echo esc_attr($settings['tec_default_venue'] ?? 'School Campus'); ?>" 
-                           class="regular-text">
-                    <p class="description">Default venue for events synced from Outlook.</p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Default Organizer</th>
-                <td>
-                    <input type="text" name="tec_default_organizer" 
-                           value="<?php echo esc_attr($settings['tec_default_organizer'] ?? 'PTSA'); ?>" 
-                           class="regular-text">
-                    <p class="description">Default organizer name for events.</p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Organizer Email</th>
-                <td>
-                    <input type="email" name="tec_organizer_email" 
-                           value="<?php echo esc_attr($settings['tec_organizer_email'] ?? get_option('admin_email')); ?>" 
-                           class="regular-text">
-                    <p class="description">Email address for the event organizer.</p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Default Category</th>
-                <td>
-                    <input type="text" name="tec_default_category" 
-                           value="<?php echo esc_attr($settings['tec_default_category'] ?? 'School Event'); ?>" 
-                           class="regular-text">
-                    <p class="description">Default category for events synced from Outlook.</p>
-                </td>
-            </tr>
-        </table>
-        
-        <h2>Content Settings</h2>
-        
-        <table class="form-table">
-            <tr>
-                <th scope="row">Include Event URL</th>
-                <td>
-                    <label>
-                        <input type="checkbox" name="tec_include_event_url" value="1" 
-                               <?php checked($settings['tec_include_event_url'] ?? true); ?>>
-                        Include event URL in Outlook event description
-                    </label>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">Event Footer</th>
-                <td>
-                    <textarea name="tec_event_footer" rows="3" cols="50" class="large-text"><?php 
-                        echo esc_textarea($settings['tec_event_footer'] ?? ''); 
-                    ?></textarea>
-                    <p class="description">Text to append to all event descriptions synced to Outlook.</p>
-                </td>
-            </tr>
-        </table>
-        
-        <?php submit_button('Save TEC Integration Settings'); ?>
-    </form>
-    
-    <hr>
-    
-    <h2>Sync Status</h2>
-    
-    <div class="azure-tec-stats">
-        <div class="azure-tec-stat-box">
-            <h3>Total TEC Events</h3>
-            <p class="azure-tec-stat-number"><?php echo intval($sync_stats['total_tec_events'] ?? 0); ?></p>
-        </div>
-        
-        <div class="azure-tec-stat-box">
-            <h3>Synced Events</h3>
-            <p class="azure-tec-stat-number"><?php echo intval($sync_stats['synced_events'] ?? 0); ?></p>
-        </div>
-        
-        <div class="azure-tec-stat-box">
-            <h3>Pending Sync</h3>
-            <p class="azure-tec-stat-number"><?php echo intval($sync_stats['pending_events'] ?? 0); ?></p>
-        </div>
-        
-        <div class="azure-tec-stat-box">
-            <h3>Sync Errors</h3>
-            <p class="azure-tec-stat-number"><?php echo intval($sync_stats['error_events'] ?? 0); ?></p>
         </div>
     </div>
     
-    <?php if (!empty($sync_stats['last_sync'])): ?>
-    <p><strong>Last Sync:</strong> <?php echo esc_html(date('Y-m-d H:i:s', strtotime($sync_stats['last_sync']))); ?></p>
-    <?php endif; ?>
-    
-    <h2>Sync Actions</h2>
-    
-    <div class="azure-tec-actions">
-        <button type="button" class="button button-primary" onclick="azureTecBulkSync('sync_to_outlook')">
-            Sync All TEC Events to Outlook
-        </button>
+    <!-- Step 3: Manual Sync -->
+    <div class="tec-manual-sync-section">
+        <h2><span class="step-number">3</span> Manual Sync</h2>
+        <p class="description">Trigger an immediate synchronization of enabled calendars. Automatic sync schedules are configured per calendar mapping in Step 2 above.</p>
         
-        <button type="button" class="button button-secondary" onclick="azureTecBulkSync('sync_from_outlook')">
-            Sync All Outlook Events to TEC
-        </button>
+        <div class="manual-sync-card">
+            <div class="manual-sync-info">
+                <p><strong>Ready to sync:</strong> <span id="enabled-calendars-count">
+                    <?php echo count(array_filter($calendar_mappings, function($m) { return $m->sync_enabled; })); ?>
+                </span> calendar(s) enabled</p>
+                <p>This will sync all enabled Outlook calendars to The Events Calendar based on each mapping's date range settings.</p>
+            </div>
+            <div class="manual-sync-actions">
+                <button type="button" class="button button-primary button-large" id="tec-manual-sync-btn">
+                    <span class="dashicons dashicons-update"></span> Sync Now
+                </button>
+            </div>
+        </div>
         
-        <button type="button" class="button" onclick="azureTecRefreshStats()">
-            Refresh Statistics
-        </button>
+        <div id="sync-progress" style="display:none;">
+            <div class="sync-progress-bar">
+                <div class="sync-progress-fill" style="width: 0%;"></div>
+            </div>
+            <p id="sync-status-message" class="sync-message"></p>
+            <div id="sync-details"></div>
+        </div>
+        </div>
+        
+    <!-- Sync History -->
+    <div class="tec-sync-history-section">
+        <h2>Recent Sync History</h2>
+        <div id="sync-history-container">
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">Date/Time</th>
+                        <th style="width: 100px;">Type</th>
+                        <th>Calendar(s)</th>
+                        <th style="width: 120px;">Events Synced</th>
+                        <th style="width: 100px;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="sync-history-list">
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 20px;">
+                            <em style="color: #666;">Loading sync history...</em>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
     
-    <div id="azure-tec-sync-progress" style="display: none;">
-        <p>Sync in progress... Please wait.</p>
-        <div class="progress-bar">
-            <div class="progress-bar-fill"></div>
+    <?php endif; // End if TEC calendar authenticated ?>
+    
+    <?php endif; // End if TEC module enabled ?>
+</div><!-- End wrap -->
+
+<!-- Calendar Mapping Modal -->
+<div id="calendar-mapping-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="mapping-modal-title">Add Calendar Mapping</h2>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="calendar-mapping-form">
+                <input type="hidden" id="mapping-id" name="mapping_id">
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="outlook-calendar-select">Outlook Calendar</label>
+                        </th>
+                        <td>
+                            <select id="outlook-calendar-select" name="outlook_calendar_id" class="regular-text" required>
+                                <option value="">Loading calendars...</option>
+                            </select>
+                            <p class="description">Select the Outlook calendar to sync</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="tec-category-select">TEC Category</label>
+                        </th>
+                        <td>
+                            <select id="tec-category-select" name="tec_category_id" class="regular-text">
+                                <option value="">Select existing category...</option>
+                            </select>
+                            <p class="description">Select an existing category from the dropdown above</p>
+                            <p class="description" style="margin-top: 10px;"><strong>OR</strong> enter a new category name below:</p>
+                            <input type="text" id="new-category-name" placeholder="New category name" class="regular-text" style="margin-top: 5px;">
+                            <p class="description" style="margin-top: 5px; color: #666; font-style: italic;">
+                                Note: Choose either an existing category OR enter a new name, not both.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Enable Sync</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="sync-enabled-checkbox" name="sync_enabled" value="1" checked>
+                                Enable synchronization for this calendar
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">
+                            <h3 style="margin-top: 20px; margin-bottom: 10px;">Automatic Sync Schedule (Optional)</h3>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Enable Schedule</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="schedule-enabled-checkbox" name="schedule_enabled" value="1">
+                                Enable automatic scheduled sync for this mapping
+                            </label>
+                            <p class="description">When enabled, this calendar will sync automatically at the specified frequency.</p>
+                        </td>
+                    </tr>
+                    <tr id="schedule-frequency-row" style="display: none;">
+                        <th scope="row">Sync Frequency</th>
+                        <td>
+                            <select name="schedule_frequency" id="schedule-frequency-select" class="regular-text">
+                                <option value="15min">Every 15 Minutes</option>
+                                <option value="30min">Every 30 Minutes</option>
+                                <option value="hourly" selected>Hourly</option>
+                                <option value="twicedaily">Twice Daily</option>
+                                <option value="daily">Daily</option>
+                            </select>
+                            <p class="description">How often to automatically sync this calendar.</p>
+                        </td>
+                    </tr>
+                    <tr id="schedule-daterange-row" style="display: none;">
+                        <th scope="row">Date Range</th>
+                        <td>
+                            <label>
+                                Sync events from 
+                                <input type="number" 
+                                       name="schedule_lookback_days" 
+                                       id="schedule-lookback-days"
+                                       value="30" 
+                                       min="0" 
+                                       max="365" 
+                                       style="width: 80px;"> days ago
+                            </label>
+                            <br>
+                            <label>
+                                to 
+                                <input type="number" 
+                                       name="schedule_lookahead_days" 
+                                       id="schedule-lookahead-days"
+                                       value="365" 
+                                       min="1" 
+                                       max="730" 
+                                       style="width: 80px;"> days ahead
+                            </label>
+                            <p class="description">Define the date range for syncing events.</p>
+                        </td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <button type="submit" class="button button-primary" id="save-mapping-btn">
+                        <span class="dashicons dashicons-saved"></span> Save Mapping
+        </button>
+                    <button type="button" class="button" id="cancel-mapping-btn">Cancel</button>
+                </p>
+            </form>
         </div>
     </div>
 </div>
 
+<link rel="stylesheet" href="<?php echo AZURE_PLUGIN_URL . 'css/admin.css'; ?>">
+
 <style>
-.azure-tec-stats {
+/* ====================
+   TEC SYNC PAGE STYLES
+   ==================== */
+
+/* Module Status Section */
+.module-status-section {
+    margin-bottom: 30px;
+}
+
+.module-toggle-card {
     display: flex;
-    gap: 20px;
-    margin: 20px 0;
-}
-
-.azure-tec-stat-box {
-    background: #f1f1f1;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff !important;
+    color: #333 !important;
     padding: 20px;
-    border-radius: 5px;
-    text-align: center;
-    min-width: 120px;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    margin-bottom: 15px;
 }
 
-.azure-tec-stat-box h3 {
-    margin: 0 0 10px 0;
-    font-size: 14px;
-    color: #666;
+.module-info h3 {
+    margin: 0 0 8px 0;
+    color: #333 !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.azure-tec-stat-number {
-    font-size: 24px;
-    font-weight: bold;
+.module-info p {
     margin: 0;
+    color: #666 !important;
+}
+
+.module-control {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.toggle-status {
+    font-weight: 500;
+    color: #333 !important;
+}
+
+.notice.inline {
+    margin: 15px 0;
+}
+
+/* Toggle Switch Styles */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    border-radius: 24px;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: #0073aa;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* Inline Notices */
+.inline-notice {
+    margin: 20px 0;
+    padding: 15px 20px;
+}
+
+.inline-notice .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    vertical-align: middle;
+    margin-right: 5px;
+}
+
+.inline-notice p:first-child {
+    display: flex;
+    align-items: center;
+    margin: 0 0 10px 0;
+}
+
+.inline-notice p:last-child {
+    margin: 0;
+}
+
+/* TEC Sync Overview */
+.tec-sync-overview {
+    margin-bottom: 30px;
+}
+
+.info-card {
+    background: #e7f5fe;
+    border-left: 4px solid #0073aa;
+    padding: 20px;
+    border-radius: 4px;
+}
+
+.info-card h2 {
+    margin-top: 0;
+    color: #0073aa;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.info-card ul {
+    margin: 15px 0 0 20px;
+}
+
+.info-card li {
+    margin-bottom: 8px;
+}
+
+/* Section Styling */
+.tec-auth-section,
+.tec-calendar-mapping-section,
+.tec-sync-schedule-section,
+.tec-manual-sync-section,
+.tec-sync-history-section {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.tec-auth-section h2,
+.tec-calendar-mapping-section h2,
+.tec-sync-schedule-section h2,
+.tec-manual-sync-section h2,
+.tec-sync-history-section h2 {
+    margin-top: 0;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #0073aa;
+    color: #fff;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+/* Status Badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.status-badge.status-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-badge .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.auth-status-display {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.auth-actions-inline {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Calendar Mappings */
+.calendar-mappings-container {
+    margin-top: 15px;
+}
+
+.calendar-mappings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+.calendar-mappings-table {
+    margin-top: 15px;
+}
+
+.tec-category-badge {
+    display: inline-block;
+    background: #0073aa;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Manual Sync Card */
+.manual-sync-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.manual-sync-info p {
+    margin: 5px 0;
+}
+
+#enabled-calendars-count {
+    font-weight: bold;
     color: #0073aa;
 }
 
-.azure-tec-actions {
-    margin: 20px 0;
+/* Sync Progress */
+#sync-progress {
+    margin-top: 20px;
 }
 
-.azure-tec-actions .button {
-    margin-right: 10px;
-}
-
-.progress-bar {
+.sync-progress-bar {
     width: 100%;
-    height: 20px;
-    background-color: #f1f1f1;
-    border-radius: 10px;
+    height: 30px;
+    background: #f0f0f0;
+    border-radius: 4px;
     overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.sync-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa 0%, #00a0d2 100%);
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: bold;
+}
+
+.sync-message {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+#sync-details {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+.sync-results ul {
+    margin: 10px 0 0 20px;
+}
+
+.sync-results li {
+    margin-bottom: 5px;
+}
+
+/* Switch with Label */
+.switch-with-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.switch-with-label input[type="checkbox"] {
+    margin: 0;
+}
+
+.switch-with-label span {
+    font-weight: 500;
+}
+
+/* Sync History Table */
+.tec-sync-history-section table {
+    margin-top: 15px;
+}
+
+.status-badge.status-failed,
+.status-badge.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-badge.status-partial {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 8px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80%;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+#calendar-mapping-modal .form-table th {
+    width: 25%;
+}
+
+#new-category-name {
     margin-top: 10px;
 }
 
-.progress-bar-fill {
-    height: 100%;
-    background-color: #0073aa;
-    width: 0%;
-    transition: width 0.3s ease;
+#create-tec-category-btn {
+    margin-top: 5px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 782px) {
+    .manual-sync-card {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+    }
+    
+    .calendar-mappings-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .auth-status-display {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 </style>
-
-<script>
-jQuery(document).ready(function($) {
-    
-    // Bulk sync function
-    window.azureTecBulkSync = function(action) {
-        $('#azure-tec-sync-progress').show();
-        $('.progress-bar-fill').css('width', '0%');
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'azure_tec_bulk_sync',
-                action_type: action,
-                nonce: '<?php echo wp_create_nonce('azure_tec_action'); ?>'
-            },
-            success: function(response) {
-                $('#azure-tec-sync-progress').hide();
-                $('.progress-bar-fill').css('width', '100%');
-                
-                if (response.success) {
-                    alert('Bulk sync completed successfully!');
-                    azureTecRefreshStats();
-                } else {
-                    alert('Bulk sync failed: ' + (response.data || 'Unknown error'));
-                }
-            },
-            error: function() {
-                $('#azure-tec-sync-progress').hide();
-                alert('Bulk sync failed due to a network error.');
-            }
-        });
-    };
-    
-    // Refresh statistics
-    window.azureTecRefreshStats = function() {
-        location.reload();
-    };
-    
-    // Manual sync function (for individual events)
-    window.azureTecManualSync = function(postId) {
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'azure_tec_manual_sync',
-                post_id: postId,
-                nonce: '<?php echo wp_create_nonce('azure_tec_action'); ?>'
-            },
-            success: function(response) {
-                if (response.success) {
-                    alert('Manual sync initiated successfully!');
-                    location.reload();
-                } else {
-                    alert('Manual sync failed: ' + (response.data || 'Unknown error'));
-                }
-            },
-            error: function() {
-                alert('Manual sync failed due to a network error.');
-            }
-        });
-    };
-    
-    // Break sync function (for individual events)
-    window.azureTecBreakSync = function(postId) {
-        if (confirm('Are you sure you want to break the sync relationship for this event? This action cannot be undone.')) {
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'azure_tec_break_sync',
-                    post_id: postId,
-                    nonce: '<?php echo wp_create_nonce('azure_tec_action'); ?>'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Sync relationship broken successfully!');
-                        location.reload();
-                    } else {
-                        alert('Failed to break sync: ' + (response.data || 'Unknown error'));
-                    }
-                },
-                error: function() {
-                    alert('Failed to break sync due to a network error.');
-                }
-            });
-        }
-        // Handle conflict resolution (Task 3.8)
-        $('.resolve-conflict').click(function() {
-            var conflictId = $(this).data('conflict-id');
-            var resolution = $(this).data('resolution');
-            var button = $(this);
-            
-            if (!confirm('Are you sure you want to resolve this conflict with: ' + resolution + '?')) {
-                return;
-            }
-            
-            button.prop('disabled', true).html('<span class="spinner is-active"></span> Resolving...');
-            
-            $.post(azure_plugin_ajax.ajax_url, {
-                action: 'azure_tec_resolve_conflict',
-                conflict_id: conflictId,
-                resolution: resolution,
-                nonce: azure_plugin_ajax.nonce
-            }, function(response) {
-                if (response.success) {
-                    alert('✅ Conflict resolved successfully!');
-                    location.reload();
-                } else {
-                    alert('❌ Failed to resolve conflict: ' + response.data);
-                    button.prop('disabled', false).html(button.data('original-text'));
-                }
-            }).fail(function() {
-                alert('❌ Network error occurred');
-                button.prop('disabled', false).html(button.data('original-text'));
-            });
-        });
-        
-        // Handle maintenance actions (Tasks 1.7, 1.8, 2.8)
-        $('.maintenance-action').click(function() {
-            var action = $(this).data('action');
-            var button = $(this);
-            var confirmMessage = 'Are you sure you want to perform this action?';
-            
-            if (action === 'cleanup_sync_metadata') {
-                confirmMessage = 'WARNING: This will remove ALL sync metadata from TEC events. They will no longer be connected to Outlook events. Continue?';
-            }
-            
-            if (!confirm(confirmMessage)) {
-                return;
-            }
-            
-            var originalText = button.html();
-            button.prop('disabled', true).html('<span class="spinner is-active"></span> Processing...');
-            
-            $.post(azure_plugin_ajax.ajax_url, {
-                action: 'azure_tec_maintenance',
-                maintenance_action: action,
-                nonce: azure_plugin_ajax.nonce
-            }, function(response) {
-                button.prop('disabled', false).html(originalText);
-                
-                if (response.success) {
-                    var message = response.data.message || 'Action completed successfully';
-                    if (response.data.details) {
-                        message += '\n\nDetails:\n' + response.data.details;
-                    }
-                    alert('✅ ' + message);
-                    
-                    // Refresh page for certain actions
-                    if (action === 'initialize_existing_events' || action === 'cleanup_sync_metadata') {
-                        location.reload();
-                    }
-                } else {
-                    alert('❌ ' + response.data);
-                }
-            }).fail(function() {
-                button.prop('disabled', false).html(originalText);
-                alert('❌ Network error occurred');
-            });
-        });
-        
-        // Store original button text for conflict resolution
-        $('.resolve-conflict').each(function() {
-            $(this).data('original-text', $(this).html());
-        });
-    };
-});
-</script>
-
-<!-- Add conflict resolution and maintenance sections above this script -->
-<div style="margin-top: 30px;">
-    <!-- Conflict Resolution Section (Task 3.7) -->
-    <div class="tec-section">
-        <h3>🚨 Sync Conflicts</h3>
-        
-        <?php
-        global $wpdb;
-        $conflicts_table = Azure_Database::get_table_name('tec_sync_conflicts');
-        
-        if ($conflicts_table && $wpdb->get_var("SHOW TABLES LIKE '{$conflicts_table}'")) {
-            $conflicts = $wpdb->get_results("SELECT * FROM {$conflicts_table} WHERE resolution_status = 'pending' ORDER BY created_at DESC LIMIT 10");
-            
-            if ($conflicts) {
-                echo '<div class="notice notice-warning"><p>You have ' . count($conflicts) . ' sync conflicts that need resolution.</p></div>';
-                
-                foreach ($conflicts as $conflict) {
-                    $tec_event = get_post($conflict->tec_event_id);
-                    echo '<div class="conflict-item" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">';
-                    echo '<h4>Event: ' . ($tec_event ? esc_html($tec_event->post_title) : 'Unknown Event') . '</h4>';
-                    echo '<p><strong>Conflict Type:</strong> ' . esc_html($conflict->conflict_type) . '</p>';
-                    echo '<p><strong>Outlook Event ID:</strong> ' . esc_html($conflict->outlook_event_id) . '</p>';
-                    
-                    echo '<div class="conflict-actions">';
-                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="outlook_wins">Use Outlook Version</button> ';
-                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="tec_wins">Use TEC Version</button> ';
-                    echo '<button class="button resolve-conflict" data-conflict-id="' . $conflict->id . '" data-resolution="manual">Resolve Manually</button>';
-                    echo '</div>';
-                    echo '</div>';
-                }
-            } else {
-                echo '<p style="color: green;">✅ No sync conflicts - all events are synchronized properly.</p>';
-            }
-        } else {
-            echo '<p style="color: orange;">⚠️ Conflicts table not available. Conflicts will be logged to the system logs.</p>';
-        }
-        ?>
-    </div>
-    
-    <!-- Maintenance Actions Section (Tasks 1.7, 1.8, 2.8) -->
-    <div class="tec-section">
-        <h3>🔧 Maintenance Actions</h3>
-        
-        <div class="maintenance-actions" style="display: grid; gap: 20px;">
-            <div>
-                <button type="button" class="button button-primary maintenance-action" data-action="initialize_existing_events">
-                    Initialize Existing TEC Events for Sync
-                </button>
-                <p class="description">Prepare existing TEC events for synchronization with Outlook. This is a one-time setup for sites with pre-existing events.</p>
-            </div>
-            
-            <div>
-                <button type="button" class="button maintenance-action" data-action="retry_failed_syncs">
-                    Retry Failed Syncs
-                </button>
-                <p class="description">Attempt to re-sync events that previously failed with exponential backoff.</p>
-            </div>
-            
-            <div>
-                <button type="button" class="button button-secondary maintenance-action" data-action="cleanup_sync_metadata" style="color: #d63638;">
-                    Clean Up Sync Metadata
-                </button>
-                <p class="description"><strong>Warning:</strong> Remove all sync metadata from TEC events. This will not delete the events themselves, but they will no longer be connected to Outlook events.</p>
-            </div>
-        </div>
-    </div>
-</div>

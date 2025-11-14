@@ -109,7 +109,169 @@ class Azure_TEC_Sync_Engine {
     }
     
     /**
-     * Sync Outlook events to TEC
+     * Sync multiple calendars to TEC (NEW - for multi-calendar support)
+     */
+    public function sync_multiple_calendars_to_tec($calendar_ids = null, $start_date = null, $end_date = null, $user_email = null) {
+        if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+            Azure_Logger::error('TEC Sync Engine: Calendar Mapping Manager not available', 'TEC');
+            return false;
+        }
+        
+        $mapping_manager = new Azure_TEC_Calendar_Mapping_Manager();
+        
+        // Get enabled calendars if none specified
+        if (!$calendar_ids) {
+            $mappings = $mapping_manager->get_enabled_calendars();
+            if (empty($mappings)) {
+                Azure_Logger::info('TEC Sync Engine: No enabled calendars to sync', 'TEC');
+                return array(
+                    'success' => true,
+                    'total_calendars' => 0,
+                    'total_events_synced' => 0,
+                    'total_errors' => 0,
+                    'calendar_results' => array()
+                );
+            }
+            $calendar_ids = array_column($mappings, 'outlook_calendar_id');
+        }
+        
+        Azure_Logger::info('TEC Sync Engine: Starting multi-calendar sync for ' . count($calendar_ids) . ' calendars', 'TEC');
+        
+        $overall_results = array(
+            'success' => true,
+            'total_calendars' => count($calendar_ids),
+            'total_events_synced' => 0,
+            'total_errors' => 0,
+            'calendar_results' => array()
+        );
+        
+        foreach ($calendar_ids as $calendar_id) {
+            $mapping = $mapping_manager->get_mapping_by_calendar_id($calendar_id);
+            
+            if (!$mapping) {
+                Azure_Logger::warning("TEC Sync Engine: No mapping found for calendar {$calendar_id}, skipping", 'TEC');
+                continue;
+            }
+            
+            Azure_Logger::info("TEC Sync Engine: Syncing calendar '{$mapping->outlook_calendar_name}' to category '{$mapping->tec_category_name}'", 'TEC');
+            
+            $result = $this->sync_single_calendar_to_tec(
+                $calendar_id,
+                $mapping->tec_category_name,
+                $start_date,
+                $end_date,
+                $user_email
+            );
+            
+            $overall_results['calendar_results'][$calendar_id] = $result;
+            $overall_results['total_events_synced'] += $result['events_synced'];
+            $overall_results['total_errors'] += $result['errors'];
+            
+            if (!$result['success']) {
+                $overall_results['success'] = false;
+            }
+            
+            // Update last sync timestamp for this calendar
+            $mapping_manager->update_last_sync($calendar_id);
+        }
+        
+        Azure_Logger::info("TEC Sync Engine: Multi-calendar sync completed. Total events: {$overall_results['total_events_synced']}, Errors: {$overall_results['total_errors']}", 'TEC');
+        
+        return $overall_results;
+    }
+    
+    /**
+     * Sync single calendar to TEC with category assignment
+     */
+    public function sync_single_calendar_to_tec($calendar_id, $tec_category_name, $start_date = null, $end_date = null, $user_email = null) {
+        if (!$this->graph_api || !$this->data_mapper) {
+            return array(
+                'success' => false,
+                'calendar_id' => $calendar_id,
+                'events_synced' => 0,
+                'errors' => 0,
+                'error_message' => 'Required components not available'
+            );
+        }
+        
+        Azure_Logger::info("TEC Sync Engine: Starting sync for calendar {$calendar_id} to category '{$tec_category_name}'", 'TEC');
+        
+        try {
+            // Default date ranges from settings
+            if (!$start_date) {
+                $lookback_days = Azure_Settings::get_setting('tec_sync_lookback_days', 30);
+                $start_date = date('Y-m-d\TH:i:s\Z', strtotime("-{$lookback_days} days"));
+            }
+            if (!$end_date) {
+                $lookahead_days = Azure_Settings::get_setting('tec_sync_lookahead_days', 365);
+                $end_date = date('Y-m-d\TH:i:s\Z', strtotime("+{$lookahead_days} days"));
+            }
+            
+            // Get events from Outlook for this specific calendar
+            $outlook_events = $this->graph_api->get_calendar_events(
+                $calendar_id,
+                $start_date,
+                $end_date,
+                null,
+                true,  // force refresh
+                $user_email  // use specific user's token if provided
+            );
+            
+            if (!$outlook_events) {
+                Azure_Logger::info("TEC Sync Engine: No events found for calendar {$calendar_id}", 'TEC');
+                return array(
+                    'success' => true,
+                    'calendar_id' => $calendar_id,
+                    'events_synced' => 0,
+                    'errors' => 0
+                );
+            }
+            
+            $synced_count = 0;
+            $error_count = 0;
+            
+            foreach ($outlook_events as $outlook_event) {
+                try {
+                    $result = $this->sync_single_outlook_event_to_tec_with_category(
+                        $outlook_event,
+                        $calendar_id,
+                        $tec_category_name
+                    );
+                    
+                    if ($result) {
+                        $synced_count++;
+                    } else {
+                        $error_count++;
+                    }
+                } catch (Exception $e) {
+                    Azure_Logger::error("TEC Sync Engine: Exception syncing event {$outlook_event['id']}: " . $e->getMessage(), 'TEC');
+                    $error_count++;
+                }
+            }
+            
+            Azure_Logger::info("TEC Sync Engine: Calendar {$calendar_id} sync completed. Synced: {$synced_count}, Errors: {$error_count}", 'TEC');
+            
+            return array(
+                'success' => true,
+                'calendar_id' => $calendar_id,
+                'events_synced' => $synced_count,
+                'errors' => $error_count
+            );
+            
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Sync Engine: Exception during calendar {$calendar_id} sync: " . $e->getMessage(), 'TEC');
+            return array(
+                'success' => false,
+                'calendar_id' => $calendar_id,
+                'events_synced' => 0,
+                'errors' => 1,
+                'error_message' => $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * Sync Outlook events to TEC (Legacy method - kept for backward compatibility)
      */
     public function sync_outlook_to_tec($start_date = null, $end_date = null) {
         if (!$this->graph_api || !$this->data_mapper) {
@@ -161,6 +323,37 @@ class Azure_TEC_Sync_Engine {
         } catch (Exception $e) {
             Azure_Logger::error('TEC Sync Engine: Exception during Outlook to TEC sync: ' . $e->getMessage(), 'TEC');
             return false;
+        }
+    }
+    
+    /**
+     * Sync single Outlook event to TEC with category assignment
+     */
+    private function sync_single_outlook_event_to_tec_with_category($outlook_event, $calendar_id, $tec_category_name) {
+        if (!isset($outlook_event['id'])) {
+            return false;
+        }
+        
+        $outlook_event_id = $outlook_event['id'];
+        
+        // Check if TEC event already exists for this Outlook event
+        $existing_tec_event_id = $this->find_tec_event_by_outlook_id($outlook_event_id);
+        
+        if ($existing_tec_event_id) {
+            // Update existing TEC event (Outlook always wins)
+            return $this->update_tec_event_from_outlook_with_category(
+                $existing_tec_event_id,
+                $outlook_event,
+                $calendar_id,
+                $tec_category_name
+            );
+        } else {
+            // Create new TEC event
+            return $this->create_tec_event_from_outlook_with_category(
+                $outlook_event,
+                $calendar_id,
+                $tec_category_name
+            );
         }
     }
     
@@ -276,6 +469,123 @@ class Azure_TEC_Sync_Engine {
             
         } catch (Exception $e) {
             Azure_Logger::error("TEC Sync Engine: Exception creating TEC event from Outlook: " . $e->getMessage(), 'TEC');
+            return false;
+        }
+    }
+    
+    /**
+     * Create new TEC event from Outlook event with category assignment
+     */
+    private function create_tec_event_from_outlook_with_category($outlook_event, $calendar_id, $tec_category_name) {
+        if (!$this->data_mapper) {
+            return false;
+        }
+        
+        Azure_Logger::debug("TEC Sync Engine: Creating TEC event from Outlook event {$outlook_event['id']} with category '{$tec_category_name}'", 'TEC');
+        
+        try {
+            // Use existing create method
+            $tec_event_id = $this->create_tec_event_from_outlook($outlook_event);
+            
+            if (!$tec_event_id) {
+                return false;
+            }
+            
+            // Store calendar ID
+            update_post_meta($tec_event_id, '_outlook_calendar_id', $calendar_id);
+            update_post_meta($tec_event_id, '_outlook_last_modified', $outlook_event['lastModifiedDateTime'] ?? current_time('mysql'));
+            
+            // Assign TEC category
+            $term = term_exists($tec_category_name, 'tribe_events_cat');
+            if ($term) {
+                wp_set_object_terms($tec_event_id, array((int) $term['term_id']), 'tribe_events_cat');
+                Azure_Logger::debug("TEC Sync Engine: Assigned category '{$tec_category_name}' to TEC event {$tec_event_id}", 'TEC');
+            } else {
+                Azure_Logger::warning("TEC Sync Engine: Category '{$tec_category_name}' not found for TEC event {$tec_event_id}", 'TEC');
+            }
+            
+            return $tec_event_id;
+            
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Sync Engine: Exception creating TEC event with category: " . $e->getMessage(), 'TEC');
+            return false;
+        }
+    }
+    
+    /**
+     * Update existing TEC event from Outlook event with category (Outlook always wins)
+     */
+    private function update_tec_event_from_outlook_with_category($tec_event_id, $outlook_event, $calendar_id, $tec_category_name) {
+        if (!$this->data_mapper) {
+            return false;
+        }
+        
+        Azure_Logger::debug("TEC Sync Engine: Updating TEC event {$tec_event_id} from Outlook (Outlook wins)", 'TEC');
+        
+        try {
+            // Map Outlook event to TEC format
+            $tec_event_data = $this->data_mapper->map_outlook_to_tec($outlook_event);
+            
+            if (!$tec_event_data) {
+                Azure_Logger::error("TEC Sync Engine: Failed to map Outlook event {$outlook_event['id']} to TEC format", 'TEC');
+                return false;
+            }
+            
+            // Update TEC event post (Outlook always wins - no conflict check)
+            $post_data = array(
+                'ID' => $tec_event_id,
+                'post_title' => $tec_event_data['title'],
+                'post_content' => $tec_event_data['description']
+            );
+            
+            // Temporarily remove our sync hook to prevent infinite loop
+            remove_action('save_post_tribe_events', array(Azure_TEC_Integration::get_instance(), 'sync_tec_event_to_outlook'), 20);
+            
+            $result = wp_update_post($post_data);
+            
+            // Re-add our sync hook
+            add_action('save_post_tribe_events', array(Azure_TEC_Integration::get_instance(), 'sync_tec_event_to_outlook'), 20, 2);
+            
+            if (is_wp_error($result)) {
+                Azure_Logger::error("TEC Sync Engine: Failed to update TEC event: " . $result->get_error_message(), 'TEC');
+                return false;
+            }
+            
+            // Update TEC event metadata
+            if (isset($tec_event_data['start_date'])) {
+                update_post_meta($tec_event_id, '_EventStartDate', $tec_event_data['start_date']);
+            }
+            if (isset($tec_event_data['end_date'])) {
+                update_post_meta($tec_event_id, '_EventEndDate', $tec_event_data['end_date']);
+            }
+            if (isset($tec_event_data['all_day'])) {
+                update_post_meta($tec_event_id, '_EventAllDay', $tec_event_data['all_day'] ? 'yes' : 'no');
+            }
+            if (isset($tec_event_data['venue'])) {
+                update_post_meta($tec_event_id, '_EventVenue', $tec_event_data['venue']);
+            }
+            if (isset($tec_event_data['organizer'])) {
+                update_post_meta($tec_event_id, '_EventOrganizer', $tec_event_data['organizer']);
+            }
+            
+            // Update sync metadata
+            update_post_meta($tec_event_id, '_outlook_calendar_id', $calendar_id);
+            update_post_meta($tec_event_id, '_outlook_last_modified', $outlook_event['lastModifiedDateTime'] ?? current_time('mysql'));
+            update_post_meta($tec_event_id, '_outlook_last_sync', current_time('mysql'));
+            update_post_meta($tec_event_id, '_sync_direction', 'from_outlook');
+            
+            // Assign TEC category
+            $term = term_exists($tec_category_name, 'tribe_events_cat');
+            if ($term) {
+                wp_set_object_terms($tec_event_id, array((int) $term['term_id']), 'tribe_events_cat');
+            }
+            
+            Azure_Logger::info("TEC Sync Engine: Successfully updated TEC event {$tec_event_id} from Outlook (Outlook wins)", 'TEC');
+            
+            return $tec_event_id;
+            
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Sync Engine: Exception updating TEC event: " . $e->getMessage(), 'TEC');
             return false;
         }
     }

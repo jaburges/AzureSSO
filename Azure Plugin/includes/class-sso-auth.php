@@ -371,16 +371,26 @@ class Azure_SSO_Auth {
             return;
         }
         
+        // Check if button has already been rendered to avoid duplicates
+        static $button_rendered = false;
+        if ($button_rendered) {
+            return;
+        }
+        $button_rendered = true;
+        
         $sso_url = $this->get_authorization_url();
         
         if (!$sso_url) {
             return;
         }
         
+        // Get custom button text from settings
+        $button_text = Azure_Settings::get_setting('sso_login_button_text', 'Sign in with WilderPTSA Email');
+        
         echo '<div style="margin: 20px 0; text-align: center;">';
         echo '<a href="' . esc_url($sso_url) . '" class="button button-primary" style="width: 100%; padding: 10px; font-size: 14px;">';
         echo '<span class="dashicons dashicons-admin-users" style="vertical-align: middle; margin-right: 5px;"></span>';
-        echo 'Sign in with Microsoft';
+        echo esc_html($button_text);
         echo '</a>';
         echo '</div>';
         
@@ -542,4 +552,3 @@ class Azure_SSO_Auth {
         return Azure_Settings::get_setting('sso_default_role', 'subscriber');
     }
 }
-?>

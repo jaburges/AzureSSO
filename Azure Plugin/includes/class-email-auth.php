@@ -466,11 +466,6 @@ class Azure_Email_Auth {
         }
     }
 }
-?>
-
-
-
-
 
 
 

@@ -1,0 +1,674 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * TEC Calendar Sync AJAX Handlers
+ * 
+ * Handles all AJAX requests for TEC-Outlook calendar synchronization
+ */
+class Azure_TEC_Integration_Ajax {
+    
+    public function __construct() {
+        // Authentication handlers
+        add_action('wp_ajax_azure_save_tec_calendar_email', array($this, 'ajax_save_tec_calendar_email'));
+        add_action('wp_ajax_azure_tec_calendar_authorize', array($this, 'ajax_tec_calendar_authorize'));
+        add_action('wp_ajax_azure_tec_calendar_check_auth', array($this, 'ajax_tec_calendar_check_auth'));
+        
+        // Calendar discovery handlers
+        add_action('wp_ajax_azure_get_outlook_calendars_for_tec', array($this, 'ajax_get_outlook_calendars'));
+        add_action('wp_ajax_azure_get_tec_categories', array($this, 'ajax_get_tec_categories'));
+        add_action('wp_ajax_azure_create_tec_category', array($this, 'ajax_create_tec_category'));
+        
+        // Mapping handlers
+        add_action('wp_ajax_azure_get_calendar_mapping', array($this, 'ajax_get_calendar_mapping'));
+        add_action('wp_ajax_azure_save_calendar_mapping', array($this, 'ajax_save_calendar_mapping'));
+        add_action('wp_ajax_azure_delete_calendar_mapping', array($this, 'ajax_delete_calendar_mapping'));
+        add_action('wp_ajax_azure_toggle_calendar_sync', array($this, 'ajax_toggle_calendar_sync'));
+        
+        // Sync handlers
+        add_action('wp_ajax_azure_save_tec_sync_schedule', array($this, 'ajax_save_tec_sync_schedule'));
+        add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_tec_manual_sync'));
+        add_action('wp_ajax_azure_get_sync_history', array($this, 'ajax_get_sync_history'));
+        
+        Azure_Logger::debug('TEC Integration AJAX: Initialized', 'TEC');
+    }
+    
+    /**
+     * Save TEC calendar email
+     */
+    public function ajax_save_tec_calendar_email() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            Azure_Logger::warning('TEC Integration AJAX: Unauthorized attempt to save calendar email', 'TEC');
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $email = sanitize_email($_POST['email'] ?? '');
+        
+        if (empty($email) || !is_email($email)) {
+            Azure_Logger::warning('TEC Integration AJAX: Invalid email provided', 'TEC');
+            wp_send_json_error('Invalid email address');
+            return;
+        }
+        
+        Azure_Settings::update_setting('tec_calendar_user_email', $email);
+        Azure_Logger::info("TEC Integration AJAX: Saved calendar email: {$email}", 'TEC');
+        
+        wp_send_json_success(array('email' => $email));
+    }
+    
+    /**
+     * Generate OAuth authorization URL for TEC calendar
+     */
+    public function ajax_tec_calendar_authorize() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            Azure_Logger::warning('TEC Integration AJAX: Unauthorized calendar auth attempt', 'TEC');
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $email = sanitize_email($_POST['email'] ?? '');
+        
+        if (empty($email)) {
+            wp_send_json_error('Email is required');
+            return;
+        }
+        
+        if (!class_exists('Azure_Calendar_Auth')) {
+            Azure_Logger::error('TEC Integration AJAX: Calendar auth class not found', 'TEC');
+            wp_send_json_error('Calendar authentication not available');
+            return;
+        }
+        
+        try {
+            $auth = new Azure_Calendar_Auth();
+            
+            // Check if credentials are configured
+            $settings = Azure_Settings::get_all_settings();
+            $credentials = Azure_Settings::get_credentials('calendar');
+            
+            if (empty($credentials['client_id']) || empty($credentials['tenant_id'])) {
+                Azure_Logger::error("TEC Integration AJAX: Calendar credentials not configured - Client ID or Tenant ID missing", 'TEC');
+                wp_send_json_error('Calendar credentials not configured. Please set up Azure credentials in the main settings.');
+                return;
+            }
+            
+            $state = wp_generate_password(32, false);
+            $auth_url = $auth->get_user_authorization_url($email, $state);
+            
+            if ($auth_url) {
+                Azure_Logger::info("TEC Integration AJAX: Generated auth URL for {$email}", 'TEC');
+                wp_send_json_success(array('auth_url' => $auth_url));
+            } else {
+                Azure_Logger::error("TEC Integration AJAX: Failed to generate auth URL for {$email} - get_user_authorization_url returned false", 'TEC');
+                wp_send_json_error('Failed to generate authorization URL. Check Azure credentials configuration.');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Integration AJAX: Exception generating auth URL: " . $e->getMessage(), 'TEC');
+            wp_send_json_error('Error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Check TEC calendar authentication status
+     */
+    public function ajax_tec_calendar_check_auth() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $email = sanitize_email($_POST['email'] ?? '');
+        
+        if (empty($email)) {
+            wp_send_json_error('Email is required');
+            return;
+        }
+        
+        if (!class_exists('Azure_Calendar_Auth')) {
+            wp_send_json_error('Calendar authentication not available');
+            return;
+        }
+        
+        $auth = new Azure_Calendar_Auth();
+        $authenticated = $auth->has_valid_user_token($email);
+        
+        if ($authenticated) {
+            Azure_Logger::debug("TEC Integration AJAX: Calendar {$email} is authenticated", 'TEC');
+            wp_send_json_success(array('authenticated' => true));
+        } else {
+            wp_send_json_error('Not authenticated');
+        }
+    }
+    
+    /**
+     * Get Outlook calendars for TEC mapping
+     */
+    public function ajax_get_outlook_calendars() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            Azure_Logger::warning('TEC Integration AJAX: Unauthorized calendar fetch attempt', 'TEC');
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $settings = Azure_Settings::get_all_settings();
+        $user_email = $settings['tec_calendar_user_email'] ?? '';
+        
+        if (empty($user_email)) {
+            wp_send_json_error('Calendar email not configured');
+            return;
+        }
+        
+        if (!class_exists('Azure_Calendar_GraphAPI')) {
+            Azure_Logger::error('TEC Integration AJAX: Graph API class not found', 'TEC');
+            wp_send_json_error('Calendar API not available');
+            return;
+        }
+        
+        try {
+            $graph_api = new Azure_Calendar_GraphAPI();
+            $calendars = $graph_api->get_calendars($user_email, true);
+            
+            if (is_array($calendars) && !empty($calendars)) {
+                Azure_Logger::info("TEC Integration AJAX: Retrieved " . count($calendars) . " calendars for {$user_email}", 'TEC');
+                wp_send_json_success($calendars);
+            } else {
+                Azure_Logger::warning("TEC Integration AJAX: No calendars found for {$user_email}", 'TEC');
+                wp_send_json_success(array());
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error("TEC Integration AJAX: Failed to fetch calendars: " . $e->getMessage(), 'TEC');
+            wp_send_json_error('Failed to fetch calendars: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get TEC event categories
+     */
+    public function ajax_get_tec_categories() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!class_exists('Tribe__Events__Main')) {
+            wp_send_json_error('The Events Calendar plugin not active');
+            return;
+        }
+        
+        $categories = get_terms(array(
+            'taxonomy' => 'tribe_events_cat',
+            'hide_empty' => false,
+            'orderby' => 'name',
+            'order' => 'ASC'
+        ));
+        
+        if (is_wp_error($categories)) {
+            Azure_Logger::error('TEC Integration AJAX: Failed to get categories: ' . $categories->get_error_message(), 'TEC');
+            wp_send_json_error('Failed to retrieve categories');
+            return;
+        }
+        
+        $formatted_categories = array();
+        foreach ($categories as $category) {
+            $formatted_categories[] = array(
+                'term_id' => $category->term_id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+                'count' => $category->count
+            );
+        }
+        
+        Azure_Logger::debug('TEC Integration AJAX: Retrieved ' . count($formatted_categories) . ' TEC categories', 'TEC');
+        wp_send_json_success($formatted_categories);
+    }
+    
+    /**
+     * Create new TEC event category
+     */
+    public function ajax_create_tec_category() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!class_exists('Tribe__Events__Main')) {
+            wp_send_json_error('The Events Calendar plugin not active');
+            return;
+        }
+        
+        $category_name = sanitize_text_field($_POST['category_name'] ?? '');
+        
+        if (empty($category_name)) {
+            wp_send_json_error('Category name is required');
+            return;
+        }
+        
+        // Check if category already exists
+        $existing = term_exists($category_name, 'tribe_events_cat');
+        if ($existing) {
+            Azure_Logger::info("TEC Integration AJAX: Category '{$category_name}' already exists", 'TEC');
+            wp_send_json_success(array(
+                'term_id' => $existing['term_id'],
+                'name' => $category_name,
+                'existed' => true
+            ));
+            return;
+        }
+        
+        // Create new category
+        $result = wp_insert_term($category_name, 'tribe_events_cat');
+        
+        if (is_wp_error($result)) {
+            Azure_Logger::error("TEC Integration AJAX: Failed to create category '{$category_name}': " . $result->get_error_message(), 'TEC');
+            wp_send_json_error('Failed to create category: ' . $result->get_error_message());
+            return;
+        }
+        
+        Azure_Logger::info("TEC Integration AJAX: Created category '{$category_name}' with ID {$result['term_id']}", 'TEC');
+        wp_send_json_success(array(
+            'term_id' => $result['term_id'],
+            'name' => $category_name,
+            'existed' => false
+        ));
+    }
+    
+    /**
+     * Get calendar mapping by ID
+     */
+    public function ajax_get_calendar_mapping() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        if (!$mapping_id) {
+            wp_send_json_error('Invalid mapping ID');
+            return;
+        }
+        
+        if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+            wp_send_json_error('Mapping manager not available');
+            return;
+        }
+        
+        $manager = new Azure_TEC_Calendar_Mapping_Manager();
+        $mapping = $manager->get_mapping_by_id($mapping_id);
+        
+        if ($mapping) {
+            wp_send_json_success((array)$mapping);
+        } else {
+            wp_send_json_error('Mapping not found');
+        }
+    }
+    
+    /**
+     * Save calendar mapping (create or update)
+     */
+    public function ajax_save_calendar_mapping() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+            wp_send_json_error('Mapping manager not available');
+            return;
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        $outlook_calendar_id = sanitize_text_field($_POST['outlook_calendar_id'] ?? '');
+        $outlook_calendar_name = sanitize_text_field($_POST['outlook_calendar_name'] ?? '');
+        $tec_category_id = intval($_POST['tec_category_id'] ?? 0);
+        $tec_category_name = sanitize_text_field($_POST['tec_category_name'] ?? '');
+        $sync_enabled = intval($_POST['sync_enabled'] ?? 1);
+        
+        // Get schedule parameters
+        $schedule_enabled = intval($_POST['schedule_enabled'] ?? 0);
+        $schedule_frequency = sanitize_text_field($_POST['schedule_frequency'] ?? 'hourly');
+        $schedule_lookback_days = intval($_POST['schedule_lookback_days'] ?? 30);
+        $schedule_lookahead_days = intval($_POST['schedule_lookahead_days'] ?? 365);
+        
+        if (empty($outlook_calendar_id) || empty($outlook_calendar_name) || !$tec_category_id || empty($tec_category_name)) {
+            wp_send_json_error('Missing required fields');
+            return;
+        }
+        
+        $manager = new Azure_TEC_Calendar_Mapping_Manager();
+        
+        if ($mapping_id) {
+            // Update existing mapping
+            $result = $manager->update_mapping(
+                $mapping_id,
+                $outlook_calendar_id,
+                $outlook_calendar_name,
+                $tec_category_id,
+                $tec_category_name,
+                $sync_enabled,
+                $schedule_enabled,
+                $schedule_frequency,
+                $schedule_lookback_days,
+                $schedule_lookahead_days
+            );
+            
+            if ($result) {
+                Azure_Logger::info("TEC Integration AJAX: Updated mapping ID {$mapping_id}", 'TEC');
+                wp_send_json_success(array('mapping_id' => $mapping_id, 'action' => 'updated'));
+            } else {
+                global $wpdb;
+                $error_msg = $wpdb->last_error ? $wpdb->last_error : 'Failed to update mapping';
+                Azure_Logger::error("TEC Integration AJAX: Failed to update mapping ID {$mapping_id}. Error: {$error_msg}", 'TEC');
+                wp_send_json_error($error_msg);
+            }
+        } else {
+            // Create new mapping
+            $new_id = $manager->create_mapping(
+                $outlook_calendar_id,
+                $outlook_calendar_name,
+                $tec_category_id,
+                $tec_category_name,
+                $sync_enabled,
+                $schedule_enabled,
+                $schedule_frequency,
+                $schedule_lookback_days,
+                $schedule_lookahead_days
+            );
+            
+            if ($new_id) {
+                Azure_Logger::info("TEC Integration AJAX: Created mapping ID {$new_id}", 'TEC');
+                wp_send_json_success(array('mapping_id' => $new_id, 'action' => 'created'));
+            } else {
+                global $wpdb;
+                $error_msg = $wpdb->last_error ? $wpdb->last_error : 'Failed to create mapping';
+                Azure_Logger::error("TEC Integration AJAX: Failed to create mapping. Error: {$error_msg}", 'TEC');
+                wp_send_json_error($error_msg);
+            }
+        }
+    }
+    
+    /**
+     * Delete calendar mapping
+     */
+    public function ajax_delete_calendar_mapping() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        if (!$mapping_id) {
+            wp_send_json_error('Invalid mapping ID');
+            return;
+        }
+        
+        if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+            wp_send_json_error('Mapping manager not available');
+            return;
+        }
+        
+        $manager = new Azure_TEC_Calendar_Mapping_Manager();
+        $result = $manager->delete_mapping($mapping_id);
+        
+        if ($result) {
+            Azure_Logger::info("TEC Integration AJAX: Deleted mapping ID {$mapping_id}", 'TEC');
+            wp_send_json_success(array('mapping_id' => $mapping_id));
+        } else {
+            wp_send_json_error('Failed to delete mapping');
+        }
+    }
+    
+    /**
+     * Toggle sync enabled status for mapping
+     */
+    public function ajax_toggle_calendar_sync() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        $enabled = isset($_POST['enabled']) && $_POST['enabled'] === 'true' ? 1 : 0;
+        
+        if (!$mapping_id) {
+            wp_send_json_error('Invalid mapping ID');
+            return;
+        }
+        
+        if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
+            wp_send_json_error('Mapping manager not available');
+            return;
+        }
+        
+        global $wpdb;
+        $table = Azure_Database::get_table_name('tec_calendar_mappings');
+        
+        $result = $wpdb->update(
+            $table,
+            array('sync_enabled' => $enabled),
+            array('id' => $mapping_id),
+            array('%d'),
+            array('%d')
+        );
+        
+        if ($result !== false) {
+            $status = $enabled ? 'enabled' : 'disabled';
+            Azure_Logger::info("TEC Integration AJAX: {$status} sync for mapping ID {$mapping_id}", 'TEC');
+            wp_send_json_success(array('mapping_id' => $mapping_id, 'enabled' => $enabled));
+        } else {
+            wp_send_json_error('Failed to update sync status');
+        }
+    }
+    
+    /**
+     * Save TEC sync schedule settings
+     */
+    public function ajax_save_tec_sync_schedule() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        $sync_enabled = isset($_POST['sync_enabled']) && $_POST['sync_enabled'] === 'true' ? true : false;
+        $frequency = sanitize_text_field($_POST['frequency'] ?? 'hourly');
+        $lookback_days = intval($_POST['lookback_days'] ?? 30);
+        $lookahead_days = intval($_POST['lookahead_days'] ?? 365);
+        
+        // Update settings
+        Azure_Settings::update_setting('tec_sync_schedule_enabled', $sync_enabled);
+        Azure_Settings::update_setting('tec_sync_schedule_frequency', $frequency);
+        Azure_Settings::update_setting('tec_sync_lookback_days', $lookback_days);
+        Azure_Settings::update_setting('tec_sync_lookahead_days', $lookahead_days);
+        
+        Azure_Logger::info("TEC Integration AJAX: Updated sync schedule - Enabled: {$sync_enabled}, Frequency: {$frequency}", 'TEC');
+        
+        // Trigger scheduler to update cron jobs
+        if (class_exists('Azure_TEC_Sync_Scheduler')) {
+            $scheduler = Azure_TEC_Sync_Scheduler::get_instance();
+            
+            if ($sync_enabled) {
+                // Schedule with the selected frequency
+                $scheduler->schedule_sync($frequency);
+                Azure_Logger::info("TEC Integration AJAX: Scheduled sync with frequency: {$frequency}", 'TEC');
+            } else {
+                // Disable scheduling
+                $scheduler->unschedule_sync();
+                Azure_Logger::info("TEC Integration AJAX: Unscheduled sync", 'TEC');
+            }
+        }
+        
+        wp_send_json_success(array(
+            'sync_enabled' => $sync_enabled,
+            'frequency' => $frequency,
+            'lookback_days' => $lookback_days,
+            'lookahead_days' => $lookahead_days
+        ));
+    }
+    
+    /**
+     * Execute manual TEC sync
+     */
+    public function ajax_tec_manual_sync() {
+        // Verify nonce - return false instead of dying
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        Azure_Logger::info('TEC Integration AJAX: Manual sync initiated', 'TEC');
+        
+        // Check if TEC is installed
+        if (!class_exists('Tribe__Events__Main')) {
+            wp_send_json_error('The Events Calendar plugin not active');
+            return;
+        }
+        
+        // Check if sync engine is available
+        if (!class_exists('Azure_TEC_Sync_Engine')) {
+            Azure_Logger::error('TEC Integration AJAX: Sync engine not available', 'TEC');
+            wp_send_json_error('Sync engine not available');
+            return;
+        }
+        
+        // Get settings for date range
+        $settings = Azure_Settings::get_all_settings();
+        $user_email = $settings['tec_calendar_user_email'] ?? '';
+        $lookback_days = intval($settings['tec_sync_lookback_days'] ?? 30);
+        $lookahead_days = intval($settings['tec_sync_lookahead_days'] ?? 365);
+        
+        if (empty($user_email)) {
+            wp_send_json_error('Calendar email not configured');
+            return;
+        }
+        
+        // Calculate date range
+        $start_date = date('Y-m-d', strtotime("-{$lookback_days} days"));
+        $end_date = date('Y-m-d', strtotime("+{$lookahead_days} days"));
+        
+        try {
+            $sync_engine = new Azure_TEC_Sync_Engine();
+            $results = $sync_engine->sync_multiple_calendars_to_tec(null, $start_date, $end_date, $user_email);
+            
+            if ($results['success']) {
+                Azure_Logger::info("TEC Integration AJAX: Manual sync completed - Events: {$results['total_events_synced']}, Errors: {$results['total_errors']}", 'TEC');
+                
+                wp_send_json_success(array(
+                    'calendars_synced' => $results['calendars_processed'],
+                    'total_events_synced' => $results['total_events_synced'],
+                    'total_errors' => $results['total_errors'],
+                    'calendar_results' => $results['results']
+                ));
+            } else {
+                Azure_Logger::error('TEC Integration AJAX: Manual sync failed: ' . ($results['message'] ?? 'Unknown error'), 'TEC');
+                wp_send_json_error($results['message'] ?? 'Sync failed');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('TEC Integration AJAX: Manual sync exception: ' . $e->getMessage(), 'TEC');
+            wp_send_json_error('Sync error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get sync history
+     */
+    public function ajax_get_sync_history() {
+        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        global $wpdb;
+        $activity_table = Azure_Database::get_table_name('activity_log');
+        
+        if (!$activity_table) {
+            wp_send_json_success(array());
+            return;
+        }
+        
+        // Get recent TEC sync activities
+        $history = $wpdb->get_results(
+            "SELECT * FROM {$activity_table} 
+             WHERE category = 'TEC' 
+             AND level IN ('info', 'success', 'error')
+             AND message LIKE '%sync%'
+             ORDER BY created_at DESC 
+             LIMIT 20",
+            ARRAY_A
+        );
+        
+        $formatted_history = array();
+        
+        if ($history) {
+            foreach ($history as $record) {
+                // Try to parse sync info from message
+                $message = $record['message'];
+                $type = 'Manual';
+                $calendars = 'Multiple';
+                $events_count = 0;
+                $status = 'success';
+                
+                // Extract events count if present
+                if (preg_match('/(\d+)\s+events?/i', $message, $matches)) {
+                    $events_count = intval($matches[1]);
+                }
+                
+                // Determine status
+                if (strpos($message, 'failed') !== false || strpos($message, 'error') !== false) {
+                    $status = 'failed';
+                } elseif (strpos($message, 'completed') !== false) {
+                    $status = 'success';
+                }
+                
+                // Determine type
+                if (strpos($message, 'scheduled') !== false || strpos($message, 'Scheduled') !== false) {
+                    $type = 'Scheduled';
+                }
+                
+                $formatted_history[] = array(
+                    'timestamp' => date('M j, Y g:i A', strtotime($record['created_at'])),
+                    'type' => $type,
+                    'calendars' => $calendars,
+                    'events_count' => $events_count,
+                    'status' => $status,
+                    'message' => $message
+                );
+            }
+        }
+        
+        Azure_Logger::debug('TEC Integration AJAX: Retrieved ' . count($formatted_history) . ' sync history records', 'TEC');
+        wp_send_json_success($formatted_history);
+    }
+}

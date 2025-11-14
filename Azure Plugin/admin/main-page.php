@@ -91,6 +91,38 @@ if (!defined('ABSPATH')) {
                         <p>Manage PTA organizational structure with Azure AD sync.</p>
                     </div>
                 </div>
+                
+                <div class="module-card <?php echo ($settings['enable_tec_integration'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                    <div class="module-header">
+                        <h3><span class="dashicons dashicons-calendar-alt"></span> TEC Integration</h3>
+                        <div class="module-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="module-toggle" data-module="tec_integration" <?php checked($settings['enable_tec_integration'] ?? false); ?> />
+                                <span class="slider"></span>
+                            </label>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-calendar'); ?>#tec-sync" class="button button-configure">Configure</a>
+                        </div>
+                    </div>
+                    <div class="module-description">
+                        <p>Sync Outlook calendars to The Events Calendar plugin.</p>
+                    </div>
+                </div>
+                
+                <div class="module-card <?php echo ($settings['enable_onedrive_media'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                    <div class="module-header">
+                        <h3><span class="dashicons dashicons-cloud-upload"></span> OneDrive Media</h3>
+                        <div class="module-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="module-toggle" data-module="onedrive_media" <?php checked($settings['enable_onedrive_media'] ?? false); ?> />
+                                <span class="slider"></span>
+                            </label>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-onedrive-media'); ?>" class="button button-configure">Configure</a>
+                        </div>
+                    </div>
+                    <div class="module-description">
+                        <p>Store WordPress media files in OneDrive/SharePoint with CDN optimization.</p>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -104,6 +136,8 @@ if (!defined('ABSPATH')) {
                 <input type="hidden" name="enable_calendar" id="hidden_enable_calendar" value="<?php echo $settings['enable_calendar'] ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_email" id="hidden_enable_email" value="<?php echo $settings['enable_email'] ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_pta" id="hidden_enable_pta" value="<?php echo $settings['enable_pta'] ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_tec_integration" id="hidden_enable_tec_integration" value="<?php echo ($settings['enable_tec_integration'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_onedrive_media" id="hidden_enable_onedrive_media" value="<?php echo ($settings['enable_onedrive_media'] ?? false) ? '1' : '0'; ?>" />
                 
                 <div class="credentials-section">
                     <h2>Azure Credentials</h2>
@@ -226,6 +260,7 @@ jQuery(document).ready(function($) {
             enabled: enabled,
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
+            console.log('Toggle response:', response);
             if (response.success) {
                 if (enabled) {
                     card.removeClass('disabled').addClass('enabled');
@@ -235,11 +270,16 @@ jQuery(document).ready(function($) {
                 console.log('Module ' + module + ' toggled successfully:', response.data);
             } else {
                 // Revert toggle if AJAX failed
-                $(this).prop('checked', !enabled);
+                $('.module-toggle[data-module="' + module + '"]').prop('checked', !enabled);
                 $('#hidden_enable_' + module).val(enabled ? '0' : '1');
-                alert('Failed to toggle module: ' + (response.data || 'Unknown error'));
+                var errorMsg = 'Unknown error';
+                if (response.data) {
+                    errorMsg = typeof response.data === 'string' ? response.data : (response.data.message || 'Unknown error');
+                }
+                alert('Failed to toggle module: ' + errorMsg);
+                console.error('Module toggle error:', response);
             }
-        }).fail(function() {
+        }).fail(function(xhr, status, error) {
             // Revert toggle if AJAX failed
             $(this).prop('checked', !enabled);
             $('#hidden_enable_' + module).val(enabled ? '0' : '1');
@@ -258,24 +298,70 @@ jQuery(document).ready(function($) {
         button.prop('disabled', true).text('Testing...');
         status.html('<span class="spinner is-active"></span>');
         
-        $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_test_credentials',
-            client_id: clientIdField.val(),
-            client_secret: clientSecretField.val(),
-            tenant_id: tenantIdField.val(),
-            nonce: azure_plugin_ajax.nonce
-        }, function(response) {
+        $.ajax({
+            url: azure_plugin_ajax.ajax_url,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_test_credentials',
+                client_id: clientIdField.val(),
+                client_secret: clientSecretField.val(),
+                tenant_id: tenantIdField.val(),
+                nonce: azure_plugin_ajax.nonce
+            },
+            success: function(response) {
             button.prop('disabled', false).text('Test Credentials');
             
-            if (response.valid) {
-                status.html('<span class="dashicons dashicons-yes-alt" style="color: green;"></span> ' + response.message);
-            } else {
-                status.html('<span class="dashicons dashicons-dismiss" style="color: red;"></span> ' + response.message);
+            console.log('Test Credentials Response:', response);
+            console.log('Response type:', typeof response);
+            console.log('Response keys:', response ? Object.keys(response) : 'null');
+            
+            // Handle string responses (jQuery might not parse as JSON if there's whitespace)
+            if (typeof response === 'string') {
+                try {
+                    response = JSON.parse(response.trim());
+                    console.log('Parsed string response:', response);
+                } catch (e) {
+                    console.error('Failed to parse response:', e);
+                    status.html('<span class="dashicons dashicons-dismiss" style="color: red;"></span> Invalid JSON response from server');
+                    setTimeout(function() { status.fadeOut(); }, 5000);
+                    return;
+                }
             }
             
-            setTimeout(function() {
-                status.fadeOut();
-            }, 5000);
+            // WordPress AJAX format: response.success, response.data
+            if (response && typeof response === 'object' && ('success' in response || response.hasOwnProperty('success'))) {
+                if (response.success === true || response.success === 'true') {
+                    // Success response: response.data contains the validation result
+                    var message = (response.data && response.data.message) || 'Credentials are valid';
+                    status.html('<span class="dashicons dashicons-yes-alt" style="color: green; font-weight: bold;"></span> <strong style="color: green;">' + message + '</strong>');
+                    status.show(); // Keep it visible permanently
+                } else {
+                    // Error response: response.data is the error message
+                    var errorMsg = typeof response.data === 'string' ? response.data : (response.data ? JSON.stringify(response.data) : 'Credentials validation failed');
+                    status.html('<span class="dashicons dashicons-dismiss" style="color: red;"></span> <strong style="color: red;">' + errorMsg + '</strong>');
+                    // Only fade out errors after 8 seconds
+                    setTimeout(function() {
+                        status.fadeOut();
+                    }, 8000);
+                }
+            } else {
+                console.error('Invalid response structure:', response);
+                status.html('<span class="dashicons dashicons-dismiss" style="color: red;"></span> Invalid response from server. Check console for details.');
+                setTimeout(function() {
+                    status.fadeOut();
+                }, 8000);
+            }
+            },
+            error: function(xhr, status, error) {
+                button.prop('disabled', false).text('Test Credentials');
+                console.error('AJAX Error:', xhr.responseText);
+                status.html('<span class="dashicons dashicons-dismiss" style="color: red;"></span> <strong style="color: red;">Network error: ' + (error || 'Unknown error') + '</strong>');
+                
+                setTimeout(function() {
+                    status.fadeOut();
+                }, 8000);
+            }
         });
     });
 });
