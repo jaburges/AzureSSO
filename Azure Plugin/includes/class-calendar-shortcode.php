@@ -28,10 +28,18 @@ class Azure_Calendar_Shortcode {
     /**
      * Main calendar shortcode
      * Usage: [azure_calendar id="calendar_id" view="month" height="600px"]
+     * 
+     * For shared mailboxes, use:
+     * [azure_calendar id="calendar_id" user_email="user@domain.com" mailbox_email="shared@domain.com"]
+     * 
+     * Legacy support: 'email' parameter is treated as mailbox_email, and user_email is fetched from settings
      */
     public function calendar_shortcode($atts) {
         $atts = shortcode_atts(array(
             'id' => '',
+            'email' => '', // Legacy: treated as mailbox_email for shared mailbox access
+            'user_email' => '', // Authenticated user who has token
+            'mailbox_email' => '', // Shared mailbox to access (optional)
             'view' => 'month', // month, week, day, list
             'height' => '600px',
             'width' => '100%',
@@ -43,7 +51,10 @@ class Azure_Calendar_Shortcode {
             'show_toolbar' => true,
             'show_weekends' => true,
             'first_day' => 0, // 0 = Sunday, 1 = Monday
-            'time_format' => '24h'
+            'time_format' => '24h',
+            'slot_min_time' => '08:00:00', // Start time for day/week views (e.g., '08:00:00')
+            'slot_max_time' => '18:00:00', // End time for day/week views (e.g., '18:00:00')
+            'slot_duration' => '00:30:00' // Time slot duration (e.g., '00:30:00' for 30 min slots)
         ), $atts);
         
         if (empty($atts['id'])) {
@@ -61,11 +72,57 @@ class Azure_Calendar_Shortcode {
         $start_date = $atts['start_date'] ?: date('Y-m-d\TH:i:s\Z');
         $end_date = $atts['end_date'] ?: date('Y-m-d\TH:i:s\Z', strtotime('+30 days'));
         
+        // Handle email parameters for shared mailbox access
+        // If 'email' is provided (legacy), treat it as the mailbox_email
+        // and get user_email from calendar embed settings
+        $mailbox_email = !empty($atts['mailbox_email']) ? sanitize_email($atts['mailbox_email']) : null;
+        $user_email = !empty($atts['user_email']) ? sanitize_email($atts['user_email']) : null;
+        
+        // Legacy support: if 'email' is provided but not 'mailbox_email' or 'user_email'
+        if (!empty($atts['email']) && empty($mailbox_email)) {
+            $mailbox_email = sanitize_email($atts['email']);
+        }
+        
+        // If we have a mailbox but no user_email, get the authenticated user from settings
+        if ($mailbox_email && !$user_email) {
+            $settings = Azure_Settings::get_all_settings();
+            // Try calendar embed user first, then TEC calendar user
+            $user_email = $settings['calendar_embed_user_email'] ?? $settings['tec_calendar_user_email'] ?? '';
+            
+            if (empty($user_email)) {
+                Azure_Logger::warning("Calendar Shortcode: Mailbox email provided but no authenticated user configured. Please set up Calendar Embed authentication.", 'Calendar');
+                return '<p class="azure-calendar-error">Calendar authentication not configured. Please contact the site administrator.</p>';
+            }
+        }
+        
+        // If no emails specified at all, try to get both from settings
+        if (!$user_email && !$mailbox_email) {
+            $settings = Azure_Settings::get_all_settings();
+            $user_email = $settings['calendar_embed_user_email'] ?? '';
+            $mailbox_email = $settings['calendar_embed_mailbox_email'] ?? '';
+            
+            // If still no user_email, check if they're using the same email for both
+            if (empty($user_email)) {
+                Azure_Logger::warning("Calendar Shortcode: No user_email configured. Please set up Calendar Embed authentication.", 'Calendar');
+            }
+        }
+        
+        // If no mailbox specified, user_email is both the token holder and calendar owner
+        if (!$mailbox_email && $user_email) {
+            // User is accessing their own calendar
+            $mailbox_email = null;
+        }
+        
+        Azure_Logger::debug("Calendar Shortcode: Fetching events for calendar {$atts['id']}, user_email: " . ($user_email ?: 'default') . ", mailbox_email: " . ($mailbox_email ?: 'none'), 'Calendar');
+        
         $events = $this->graph_api->get_calendar_events(
             $atts['id'],
             $start_date,
             $end_date,
-            intval($atts['max_events'])
+            intval($atts['max_events']),
+            false, // force_refresh
+            $user_email,
+            $mailbox_email
         );
         
         if ($events === false) {
@@ -86,10 +143,16 @@ class Azure_Calendar_Shortcode {
     /**
      * Events list shortcode
      * Usage: [azure_calendar_events id="calendar_id" limit="10" format="list"]
+     * 
+     * For shared mailboxes:
+     * [azure_calendar_events id="calendar_id" user_email="user@domain.com" mailbox_email="shared@domain.com"]
      */
     public function events_list_shortcode($atts) {
         $atts = shortcode_atts(array(
             'id' => '',
+            'email' => '', // Legacy: treated as mailbox_email
+            'user_email' => '', // Authenticated user who has token
+            'mailbox_email' => '', // Shared mailbox to access
             'limit' => 10,
             'format' => 'list', // list, grid, compact
             'show_dates' => true,
@@ -114,11 +177,33 @@ class Azure_Calendar_Shortcode {
         $start_date = $atts['upcoming_only'] ? date('Y-m-d\TH:i:s\Z') : date('Y-m-d\TH:i:s\Z', strtotime('-30 days'));
         $end_date = date('Y-m-d\TH:i:s\Z', strtotime('+90 days'));
         
+        // Handle email parameters for shared mailbox access
+        $mailbox_email = !empty($atts['mailbox_email']) ? sanitize_email($atts['mailbox_email']) : null;
+        $user_email = !empty($atts['user_email']) ? sanitize_email($atts['user_email']) : null;
+        
+        // Legacy support: if 'email' is provided but not 'mailbox_email'
+        if (!empty($atts['email']) && empty($mailbox_email)) {
+            $mailbox_email = sanitize_email($atts['email']);
+        }
+        
+        // If we have a mailbox but no user_email, get from settings
+        if ($mailbox_email && !$user_email) {
+            $settings = Azure_Settings::get_all_settings();
+            $user_email = $settings['calendar_embed_user_email'] ?? $settings['tec_calendar_user_email'] ?? '';
+            
+            if (empty($user_email)) {
+                return '<p class="azure-calendar-error">Calendar authentication not configured.</p>';
+            }
+        }
+        
         $events = $this->graph_api->get_calendar_events(
             $atts['id'],
             $start_date,
             $end_date,
-            intval($atts['limit']) * 2 // Get more to account for filtering
+            intval($atts['limit']) * 2, // Get more to account for filtering
+            false, // force_refresh
+            $user_email,
+            $mailbox_email
         );
         
         if ($events === false) {
@@ -212,7 +297,38 @@ class Azure_Calendar_Shortcode {
      */
     private function get_calendar_script($container_id, $events, $atts) {
         $events_json = json_encode($events);
-        $timezone = !empty($atts['timezone']) ? $atts['timezone'] : wp_timezone_string();
+        
+        // Determine timezone: shortcode attr > per-calendar setting > plugin default > WordPress default
+        $timezone = '';
+        if (!empty($atts['timezone'])) {
+            $timezone = $atts['timezone'];
+        } else {
+            $settings = Azure_Settings::get_all_settings();
+            // Check for per-calendar timezone setting
+            if (!empty($atts['id']) && !empty($settings['calendar_timezone_' . $atts['id']])) {
+                $timezone = $settings['calendar_timezone_' . $atts['id']];
+            } elseif (!empty($settings['calendar_default_timezone'])) {
+                // Fall back to plugin default timezone
+                $timezone = $settings['calendar_default_timezone'];
+            } else {
+                // Fall back to WordPress timezone
+                $timezone = wp_timezone_string();
+            }
+        }
+        
+        // Map view names to FullCalendar v6 view names
+        $view_map = array(
+            'month' => 'dayGridMonth',
+            'week' => 'timeGridWeek',
+            'day' => 'timeGridDay',
+            'list' => 'listWeek'
+        );
+        $initial_view = isset($view_map[$atts['view']]) ? $view_map[$atts['view']] : 'dayGridMonth';
+        
+        // Time range settings for day/week views
+        $slot_min_time = esc_js($atts['slot_min_time']);
+        $slot_max_time = esc_js($atts['slot_max_time']);
+        $slot_duration = esc_js($atts['slot_duration']);
         
         $script = "
         <script>
@@ -221,7 +337,7 @@ class Azure_Calendar_Shortcode {
             
             if (typeof FullCalendar !== 'undefined') {
                 var calendar = new FullCalendar.Calendar(calendarEl, {
-                    initialView: '{$atts['view']}View',
+                    initialView: '{$initial_view}',
                     timeZone: '{$timezone}',
                     events: {$events_json},
                     headerToolbar: {
@@ -231,16 +347,20 @@ class Azure_Calendar_Shortcode {
                     },
                     weekends: " . ($atts['show_weekends'] ? 'true' : 'false') . ",
                     firstDay: {$atts['first_day']},
+                    slotMinTime: '{$slot_min_time}',
+                    slotMaxTime: '{$slot_max_time}',
+                    slotDuration: '{$slot_duration}',
+                    scrollTime: '{$slot_min_time}',
                     eventClick: function(info) {
                         alert('Event: ' + info.event.title + '\\nTime: ' + info.event.start.toLocaleString());
                     },
                     height: '{$atts['height']}',
-                    themeSystem: 'bootstrap'
+                    themeSystem: 'standard'
                 });
                 
                 calendar.render();
             } else {
-                calendarEl.innerHTML = '<p class=\"azure-calendar-error\">FullCalendar library not loaded.</p>';
+                calendarEl.innerHTML = '<p class=\"azure-calendar-error\">FullCalendar library not loaded. Please make sure JavaScript is enabled.</p>';
             }
         });
         </script>";
@@ -305,28 +425,25 @@ class Azure_Calendar_Shortcode {
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
-        // Only enqueue if we're on a page that might have calendar shortcodes
-        global $post;
-        
-        if (!$post || !has_shortcode($post->post_content, 'azure_calendar')) {
-            return;
+        // Always enqueue on frontend - it's better to load when not needed than to miss it when needed
+        // The library is loaded from CDN so it won't impact server resources
+        if (!is_admin()) {
+            // Enqueue FullCalendar
+            wp_enqueue_script(
+                'fullcalendar',
+                'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
+                array(),
+                '6.1.8',
+                true
+            );
+            
+            // Enqueue calendar styles
+            wp_enqueue_style(
+                'azure-calendar-frontend',
+                AZURE_PLUGIN_URL . 'css/calendar-frontend.css',
+                array(),
+                AZURE_PLUGIN_VERSION
+            );
         }
-        
-        // Enqueue FullCalendar
-        wp_enqueue_script(
-            'fullcalendar',
-            'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
-            array(),
-            '6.1.8',
-            true
-        );
-        
-        // Enqueue calendar styles
-        wp_enqueue_style(
-            'azure-calendar-frontend',
-            AZURE_PLUGIN_URL . 'css/calendar-frontend.css',
-            array(),
-            AZURE_PLUGIN_VERSION
-        );
     }
 }

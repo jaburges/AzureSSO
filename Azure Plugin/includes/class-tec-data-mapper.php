@@ -121,7 +121,10 @@ class Azure_TEC_Data_Mapper {
             $tec_end = $this->format_date_for_tec($outlook_event['end'], $timezone);
             
             if (!$tec_start || !$tec_end) {
-                Azure_Logger::error("TEC Data Mapper: Invalid dates for Outlook event {$outlook_event['id']}", 'TEC');
+                // Log detailed debug info about the date formats
+                $start_debug = is_array($outlook_event['start']) ? 'array[' . json_encode($outlook_event['start']) . ']' : (is_string($outlook_event['start']) ? 'string[' . $outlook_event['start'] . ']' : gettype($outlook_event['start']));
+                $end_debug = is_array($outlook_event['end']) ? 'array[' . json_encode($outlook_event['end']) . ']' : (is_string($outlook_event['end']) ? 'string[' . $outlook_event['end'] . ']' : gettype($outlook_event['end']));
+                Azure_Logger::error("TEC Data Mapper: Invalid dates for Outlook event {$outlook_event['id']} - Start: {$start_debug}, End: {$end_debug}", 'TEC');
                 return false;
             }
             
@@ -187,16 +190,33 @@ class Azure_TEC_Data_Mapper {
      * Format date for TEC
      */
     private function format_date_for_tec($outlook_date, $timezone = 'UTC') {
-        if (empty($outlook_date) || !is_array($outlook_date)) {
+        if (empty($outlook_date)) {
             return null;
         }
         
         try {
-            $date_string = $outlook_date['dateTime'] ?? $outlook_date;
-            $source_timezone = $outlook_date['timeZone'] ?? 'UTC';
-            
-            // Create DateTime object with source timezone
-            $date = new DateTime($date_string, new DateTimeZone($source_timezone));
+            // Handle both formats: array (raw Graph API) or string (processed events)
+            if (is_array($outlook_date)) {
+                $date_string = $outlook_date['dateTime'] ?? null;
+                $source_timezone = $outlook_date['timeZone'] ?? 'UTC';
+                
+                if (empty($date_string)) {
+                    return null;
+                }
+                
+                // Create DateTime object with source timezone
+                $date = new DateTime($date_string, new DateTimeZone($source_timezone));
+            } else if (is_string($outlook_date)) {
+                // Date is already a formatted string from processed events
+                // It may be in ISO 8601 format with timezone offset (e.g., 2025-12-04T09:00:00-08:00)
+                // or without timezone. DateTime constructor handles both.
+                $date = new DateTime($outlook_date);
+                // Note: DateTime parses the timezone from ISO 8601 strings automatically
+                // If no timezone in string, it uses default (UTC or server timezone)
+            } else {
+                Azure_Logger::error("TEC Data Mapper: Invalid date format (expected array or string)", 'TEC');
+                return null;
+            }
             
             // Convert to WordPress timezone
             $date->setTimezone(new DateTimeZone($timezone));

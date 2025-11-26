@@ -102,7 +102,7 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
                            id="tec_calendar_user_email" 
                            name="tec_calendar_user_email" 
                            value="<?php echo esc_attr($tec_user_email); ?>"
-                           placeholder="jamie@wilderptsa.net" 
+                           placeholder="admin@wilderptsa.net" 
                            class="regular-text">
                     <p class="description">Your Microsoft 365 email address (the account you'll sign in with)</p>
                 </td>
@@ -280,9 +280,12 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
                 </span> calendar(s) enabled</p>
                 <p>This will sync all enabled Outlook calendars to The Events Calendar based on each mapping's date range settings.</p>
             </div>
-            <div class="manual-sync-actions">
+            <div class="manual-sync-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button type="button" class="button button-primary button-large" id="tec-manual-sync-btn">
                     <span class="dashicons dashicons-update"></span> Sync Now
+                </button>
+                <button type="button" class="button button-secondary" id="tec-repair-metadata-btn" title="Fix missing timezone and UTC date metadata for existing synced events">
+                    <span class="dashicons dashicons-admin-tools"></span> Repair Event Metadata
                 </button>
             </div>
         </div>

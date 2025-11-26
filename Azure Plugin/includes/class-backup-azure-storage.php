@@ -16,13 +16,29 @@ class Azure_Backup_Storage {
     public function __construct() {
         // Initialize settings safely to avoid dependency issues
         try {
-            $this->storage_account = Azure_Settings::get_setting('backup_storage_account', '');
-            $this->storage_key = Azure_Settings::get_setting('backup_storage_key', '');
-            $this->container_name = Azure_Settings::get_setting('backup_container_name', 'wordpress-backups');
+            // Try new setting names first, fallback to old names for backwards compatibility
+            $this->storage_account = Azure_Settings::get_setting('backup_storage_account_name', '');
+            if (empty($this->storage_account)) {
+                $this->storage_account = Azure_Settings::get_setting('backup_storage_account', '');
+            }
+            
+            $this->storage_key = Azure_Settings::get_setting('backup_storage_account_key', '');
+            if (empty($this->storage_key)) {
+                $this->storage_key = Azure_Settings::get_setting('backup_storage_key', '');
+            }
+            
+            $this->container_name = Azure_Settings::get_setting('backup_storage_container_name', 'wordpress-backups');
+            if ($this->container_name === 'wordpress-backups') {
+                // Fallback to old setting name
+                $old_container = Azure_Settings::get_setting('backup_container_name', '');
+                if (!empty($old_container)) {
+                    $this->container_name = $old_container;
+                }
+            }
             
             if (empty($this->storage_account) || empty($this->storage_key)) {
                 if (class_exists('Azure_Logger')) {
-                    Azure_Logger::warning('Backup Storage: Azure Storage credentials not configured');
+                    Azure_Logger::debug_module('Backup', 'Azure Storage credentials not configured');
                 }
             }
         } catch (Exception $e) {
@@ -31,7 +47,7 @@ class Azure_Backup_Storage {
             $this->storage_key = '';
             $this->container_name = 'wordpress-backups';
             if (class_exists('Azure_Logger')) {
-                Azure_Logger::warning('Backup Storage: Could not load settings - ' . $e->getMessage());
+                Azure_Logger::debug_module('Backup', 'Could not load settings - ' . $e->getMessage());
             }
         }
     }

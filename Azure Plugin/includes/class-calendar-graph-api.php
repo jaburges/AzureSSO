@@ -60,7 +60,16 @@ class Azure_Calendar_GraphAPI {
         }
         
         try {
-            $response = wp_remote_get('https://graph.microsoft.com/v1.0/me/calendars', array(
+            // Build API URL - use specific user endpoint if user_email provided, otherwise use /me
+            if ($user_email) {
+                $api_url = "https://graph.microsoft.com/v1.0/users/{$user_email}/calendars";
+                Azure_Logger::debug("Calendar API: Fetching calendars for user: {$user_email}");
+            } else {
+                $api_url = 'https://graph.microsoft.com/v1.0/me/calendars';
+                Azure_Logger::debug("Calendar API: Fetching calendars for authenticated user");
+            }
+            
+            $response = wp_remote_get($api_url, array(
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $access_token,
                     'Content-Type' => 'application/json'
@@ -106,10 +115,89 @@ class Azure_Calendar_GraphAPI {
     }
     
     /**
-     * Get calendar events
-     * If $user_email is provided, gets events for that specific user's calendar (shared mailbox)
+     * Get calendars from a mailbox using delegated access
+     * 
+     * @param string $authenticated_user_email The user who authenticated (has the token)
+     * @param string $mailbox_email The mailbox to access (shared mailbox)
+     * @param bool $force_refresh Force refresh cache
+     * @return array Array of calendars
      */
-    public function get_calendar_events($calendar_id, $start_date = null, $end_date = null, $max_events = null, $force_refresh = false, $user_email = null) {
+    public function get_mailbox_calendars($authenticated_user_email, $mailbox_email, $force_refresh = false) {
+        if (!$this->auth) {
+            return array();
+        }
+        
+        // Use different cache key for different mailboxes
+        $cache_key = 'azure_calendar_mailbox_' . md5($authenticated_user_email . '_' . $mailbox_email);
+        
+        if (!$force_refresh) {
+            $cached_data = $this->get_cached_data($cache_key);
+            if ($cached_data !== false) {
+                return $cached_data;
+            }
+        }
+        
+        // Get access token for the AUTHENTICATED USER (who has delegated access)
+        $access_token = $this->auth->get_user_access_token($authenticated_user_email);
+        
+        if (!$access_token) {
+            Azure_Logger::error("Calendar API: No access token available for user {$authenticated_user_email}");
+            return array();
+        }
+        
+        try {
+            // Use the MAILBOX's endpoint with the USER's token
+            $api_url = "https://graph.microsoft.com/v1.0/users/{$mailbox_email}/calendars";
+            Azure_Logger::debug("Calendar API: Fetching calendars for mailbox '{$mailbox_email}' using token from '{$authenticated_user_email}'");
+            
+            $response = wp_remote_get($api_url, array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $access_token,
+                    'Content-Type' => 'application/json'
+                ),
+                'timeout' => 30
+            ));
+            
+            if (is_wp_error($response)) {
+                Azure_Logger::error('Calendar API: Failed to get mailbox calendars - ' . $response->get_error_message());
+                return array();
+            }
+            
+            $response_code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+            
+            if ($response_code !== 200) {
+                Azure_Logger::error('Calendar API: Mailbox calendar request failed with status ' . $response_code . ': ' . $response_body);
+                return array();
+            }
+            
+            $data = json_decode($response_body, true);
+            $calendars = $data['value'] ?? array();
+            
+            // Cache the results
+            $this->cache_data($cache_key, $calendars, $this->cache_duration);
+            
+            Azure_Logger::info("Calendar API: Retrieved " . count($calendars) . " calendars from mailbox '{$mailbox_email}'");
+            
+            return $calendars;
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('Calendar API: Exception getting mailbox calendars - ' . $e->getMessage());
+            return array();
+        }
+    }
+    
+    /**
+     * Get calendar events
+     * @param string $calendar_id The calendar ID to fetch events from
+     * @param string $start_date Start date for events (ISO format)
+     * @param string $end_date End date for events (ISO format)
+     * @param int $max_events Maximum number of events to fetch
+     * @param bool $force_refresh Force refresh from API (skip cache)
+     * @param string $user_email The authenticated user's email (to get token)
+     * @param string $mailbox_email Optional shared mailbox email (if different from user)
+     */
+    public function get_calendar_events($calendar_id, $start_date = null, $end_date = null, $max_events = null, $force_refresh = false, $user_email = null, $mailbox_email = null) {
         if (!$this->auth) {
             return array();
         }
@@ -124,7 +212,8 @@ class Azure_Calendar_GraphAPI {
         
         $max_events = $max_events ?: Azure_Settings::get_setting('calendar_max_events_per_calendar', 100);
         
-        $cache_key = 'azure_calendar_events_' . md5($calendar_id . $start_date . $end_date . $max_events);
+        // Include mailbox in cache key if provided
+        $cache_key = 'azure_calendar_events_' . md5($calendar_id . $start_date . $end_date . $max_events . ($mailbox_email ?? ''));
         
         if (!$force_refresh) {
             $cached_data = $this->get_cached_data($cache_key);
@@ -156,7 +245,16 @@ class Azure_Calendar_GraphAPI {
                 '$select' => 'id,subject,start,end,location,attendees,body,isAllDay,showAs,sensitivity,categories'
             );
             
-            $api_url = "https://graph.microsoft.com/v1.0/me/calendars/{$calendar_id}/calendarView?" . http_build_query($query_params);
+            // Use /users/{mailbox}/calendars/ for shared mailbox, otherwise /me/calendars/
+            if ($mailbox_email) {
+                $api_url = "https://graph.microsoft.com/v1.0/users/{$mailbox_email}/calendars/{$calendar_id}/calendarView?" . http_build_query($query_params);
+                Azure_Logger::info("Calendar API: Fetching events from mailbox '{$mailbox_email}' calendar '{$calendar_id}' using token from '{$user_email}'", 'Calendar');
+            } else {
+                $api_url = "https://graph.microsoft.com/v1.0/me/calendars/{$calendar_id}/calendarView?" . http_build_query($query_params);
+                Azure_Logger::info("Calendar API: Fetching events from /me/calendars/{$calendar_id} (no mailbox specified)", 'Calendar');
+            }
+            
+            Azure_Logger::debug("Calendar API: Full URL: " . substr($api_url, 0, 200) . "...", 'Calendar');
             
             $response = wp_remote_get($api_url, array(
                 'headers' => array(
@@ -174,21 +272,34 @@ class Azure_Calendar_GraphAPI {
             $response_code = wp_remote_retrieve_response_code($response);
             $response_body = wp_remote_retrieve_body($response);
             
+            Azure_Logger::debug("Calendar API: Events response code: {$response_code}", 'Calendar');
+            
             if ($response_code !== 200) {
-                Azure_Logger::error('Calendar API: Events request failed with status ' . $response_code . ': ' . $response_body);
+                $error_context = $mailbox_email ? "mailbox '{$mailbox_email}'" : "user's own calendars";
+                Azure_Logger::error("Calendar API: Events request failed for {$error_context}, calendar ID '{$calendar_id}' - Status {$response_code}: {$response_body}");
+                
+                // Provide helpful hint for 404 errors
+                if ($response_code === 404) {
+                    Azure_Logger::error("Calendar API: 404 error typically means the calendar ID doesn't exist in the target mailbox. You may need to delete and re-create calendar mappings after changing mailbox settings.");
+                }
                 return array();
             }
             
             $data = json_decode($response_body, true);
             $events = $data['value'] ?? array();
             
+            Azure_Logger::info("Calendar API: Raw events count from Graph API: " . count($events), 'Calendar');
+            
             // Process events for easier frontend consumption
             $processed_events = $this->process_events($events);
+            
+            Azure_Logger::info("Calendar API: Processed events count: " . count($processed_events), 'Calendar');
             
             // Cache the results
             $this->cache_data($cache_key, $processed_events, $this->cache_duration);
             
-            Azure_Logger::info('Calendar API: Retrieved ' . count($processed_events) . ' events for calendar ' . $calendar_id);
+            $mailbox_context = $mailbox_email ? " (mailbox: {$mailbox_email})" : '';
+            Azure_Logger::info('Calendar API: Retrieved ' . count($processed_events) . ' events for calendar ' . $calendar_id . $mailbox_context);
             
             return $processed_events;
             
@@ -386,6 +497,7 @@ class Azure_Calendar_GraphAPI {
     
     /**
      * Format datetime from Graph API response
+     * Returns ISO 8601 format with timezone offset for proper FullCalendar handling
      */
     private function format_datetime($datetime_obj) {
         if (empty($datetime_obj['dateTime'])) {
@@ -396,7 +508,9 @@ class Azure_Calendar_GraphAPI {
         
         try {
             $dt = new DateTime($datetime_obj['dateTime'], new DateTimeZone($timezone));
-            return $dt->format('Y-m-d\TH:i:s');
+            // Return ISO 8601 format WITH timezone offset so FullCalendar knows the correct time
+            // Example: 2025-12-04T09:00:00-08:00 (Pacific Time)
+            return $dt->format('c'); // 'c' = ISO 8601 with timezone offset
         } catch (Exception $e) {
             return $datetime_obj['dateTime'];
         }

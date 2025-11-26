@@ -476,7 +476,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             dataType: 'json',
             data: {
-                action: 'azure_tec_delete_calendar_mapping',
+                action: 'azure_delete_calendar_mapping',
                 mapping_id: mappingId,
                 nonce: azureTecAdmin.nonce
             },
@@ -1097,6 +1097,61 @@ jQuery(document).ready(function($) {
                 } catch(e) {
                     alert('Sync failed: ' + error + ' (Status: ' + status + ')');
                 }
+            }
+        });
+    });
+    
+    // ==========================================
+    // Repair Event Metadata Handler
+    // ==========================================
+    $('#tec-repair-metadata-btn').on('click', function(e) {
+        e.preventDefault();
+        
+        var button = $(this);
+        
+        if (!confirm('This will add missing timezone and UTC date metadata to all synced events.\n\nThis can fix issues where events don\'t appear when filtering by category.\n\nContinue?')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Repairing...');
+        
+        console.log('Starting metadata repair...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_tec_repair_event_metadata',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                console.log('Repair Response:', response);
+                button.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools"></span> Repair Event Metadata');
+                
+                if (response.success) {
+                    var data = response.data;
+                    var message = 'Repair completed!\n\n';
+                    message += data.message + '\n';
+                    if (data.errors > 0) {
+                        message += 'Errors: ' + data.errors;
+                    }
+                    
+                    alert(message);
+                } else {
+                    var errorMsg = 'Unknown error';
+                    if (typeof response.data === 'string') {
+                        errorMsg = response.data;
+                    } else if (response.data && response.data.message) {
+                        errorMsg = response.data.message;
+                    }
+                    alert('Repair failed: ' + errorMsg);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Repair AJAX Error:', xhr, status, error);
+                button.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools"></span> Repair Event Metadata');
+                alert('Repair failed: ' + error);
             }
         });
     });

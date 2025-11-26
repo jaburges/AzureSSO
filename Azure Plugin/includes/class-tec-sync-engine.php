@@ -110,8 +110,13 @@ class Azure_TEC_Sync_Engine {
     
     /**
      * Sync multiple calendars to TEC (NEW - for multi-calendar support)
+     * @param array $calendar_ids Optional array of calendar IDs to sync (null = all enabled)
+     * @param string $start_date Start date for sync range
+     * @param string $end_date End date for sync range
+     * @param string $user_email The authenticated user's email (to get token)
+     * @param string $mailbox_email Optional shared mailbox email (if different from user)
      */
-    public function sync_multiple_calendars_to_tec($calendar_ids = null, $start_date = null, $end_date = null, $user_email = null) {
+    public function sync_multiple_calendars_to_tec($calendar_ids = null, $start_date = null, $end_date = null, $user_email = null, $mailbox_email = null) {
         if (!class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
             Azure_Logger::error('TEC Sync Engine: Calendar Mapping Manager not available', 'TEC');
             return false;
@@ -160,7 +165,8 @@ class Azure_TEC_Sync_Engine {
                 $mapping->tec_category_name,
                 $start_date,
                 $end_date,
-                $user_email
+                $user_email,
+                $mailbox_email
             );
             
             $overall_results['calendar_results'][$calendar_id] = $result;
@@ -182,8 +188,14 @@ class Azure_TEC_Sync_Engine {
     
     /**
      * Sync single calendar to TEC with category assignment
+     * @param string $calendar_id The Outlook calendar ID
+     * @param string $tec_category_name The TEC category to assign events to
+     * @param string $start_date Start date for sync range
+     * @param string $end_date End date for sync range
+     * @param string $user_email The authenticated user's email (to get token)
+     * @param string $mailbox_email Optional shared mailbox email (if different from user)
      */
-    public function sync_single_calendar_to_tec($calendar_id, $tec_category_name, $start_date = null, $end_date = null, $user_email = null) {
+    public function sync_single_calendar_to_tec($calendar_id, $tec_category_name, $start_date = null, $end_date = null, $user_email = null, $mailbox_email = null) {
         if (!$this->graph_api || !$this->data_mapper) {
             return array(
                 'success' => false,
@@ -208,16 +220,28 @@ class Azure_TEC_Sync_Engine {
             }
             
             // Get events from Outlook for this specific calendar
+            // If mailbox_email is provided, use it to access the shared mailbox's calendars
+            Azure_Logger::info("TEC Sync Engine: Fetching events - Calendar: {$calendar_id}, User: {$user_email}, Mailbox: {$mailbox_email}, Start: {$start_date}, End: {$end_date}", 'TEC');
+            
             $outlook_events = $this->graph_api->get_calendar_events(
                 $calendar_id,
                 $start_date,
                 $end_date,
-                null,
+                500,   // max events - increase from default
                 true,  // force refresh
-                $user_email  // use specific user's token if provided
+                $user_email,  // use specific user's token
+                $mailbox_email  // access this mailbox's calendars
             );
             
-            if (!$outlook_events) {
+            $event_count = is_array($outlook_events) ? count($outlook_events) : 'null/false';
+            Azure_Logger::info("TEC Sync Engine: Received {$event_count} events from Graph API for calendar {$calendar_id}", 'TEC');
+            
+            // Log first event for debugging if we have any
+            if (is_array($outlook_events) && !empty($outlook_events)) {
+                Azure_Logger::debug("TEC Sync Engine: First event sample: " . json_encode(array_slice($outlook_events[0], 0, 5)), 'TEC');
+            }
+            
+            if (!$outlook_events || empty($outlook_events)) {
                 Azure_Logger::info("TEC Sync Engine: No events found for calendar {$calendar_id}", 'TEC');
                 return array(
                     'success' => true,
@@ -436,16 +460,50 @@ class Azure_TEC_Sync_Engine {
                 return false;
             }
             
-            // Add TEC event metadata
+            // Add TEC event metadata - all required fields for proper TEC functionality
+            $timezone = get_option('timezone_string', 'UTC');
+            if (empty($timezone)) {
+                $timezone = 'UTC';
+            }
+            
             if (isset($tec_event_data['start_date'])) {
                 update_post_meta($tec_event_id, '_EventStartDate', $tec_event_data['start_date']);
+                
+                // Also set UTC version for TEC queries
+                try {
+                    $start_dt = new DateTime($tec_event_data['start_date'], new DateTimeZone($timezone));
+                    $start_dt->setTimezone(new DateTimeZone('UTC'));
+                    update_post_meta($tec_event_id, '_EventStartDateUTC', $start_dt->format('Y-m-d H:i:s'));
+                } catch (Exception $e) {
+                    update_post_meta($tec_event_id, '_EventStartDateUTC', $tec_event_data['start_date']);
+                }
             }
             if (isset($tec_event_data['end_date'])) {
                 update_post_meta($tec_event_id, '_EventEndDate', $tec_event_data['end_date']);
+                
+                // Also set UTC version for TEC queries
+                try {
+                    $end_dt = new DateTime($tec_event_data['end_date'], new DateTimeZone($timezone));
+                    $end_dt->setTimezone(new DateTimeZone('UTC'));
+                    update_post_meta($tec_event_id, '_EventEndDateUTC', $end_dt->format('Y-m-d H:i:s'));
+                } catch (Exception $e) {
+                    update_post_meta($tec_event_id, '_EventEndDateUTC', $tec_event_data['end_date']);
+                }
             }
             if (isset($tec_event_data['all_day'])) {
                 update_post_meta($tec_event_id, '_EventAllDay', $tec_event_data['all_day'] ? 'yes' : 'no');
             }
+            
+            // Set timezone meta (required for TEC)
+            update_post_meta($tec_event_id, '_EventTimezone', $timezone);
+            update_post_meta($tec_event_id, '_EventTimezoneAbbr', $this->get_timezone_abbr($timezone));
+            
+            // Set duration in seconds (required for some TEC views)
+            if (isset($tec_event_data['start_date']) && isset($tec_event_data['end_date'])) {
+                $duration = strtotime($tec_event_data['end_date']) - strtotime($tec_event_data['start_date']);
+                update_post_meta($tec_event_id, '_EventDuration', max(0, $duration));
+            }
+            
             if (isset($tec_event_data['venue'])) {
                 // Set venue (simplified - in production you might want to create/find venue posts)
                 update_post_meta($tec_event_id, '_EventVenueID', 0);
@@ -551,16 +609,50 @@ class Azure_TEC_Sync_Engine {
                 return false;
             }
             
-            // Update TEC event metadata
+            // Update TEC event metadata - all required fields for proper TEC functionality
+            $timezone = get_option('timezone_string', 'UTC');
+            if (empty($timezone)) {
+                $timezone = 'UTC';
+            }
+            
             if (isset($tec_event_data['start_date'])) {
                 update_post_meta($tec_event_id, '_EventStartDate', $tec_event_data['start_date']);
+                
+                // Also set UTC version for TEC queries
+                try {
+                    $start_dt = new DateTime($tec_event_data['start_date'], new DateTimeZone($timezone));
+                    $start_dt->setTimezone(new DateTimeZone('UTC'));
+                    update_post_meta($tec_event_id, '_EventStartDateUTC', $start_dt->format('Y-m-d H:i:s'));
+                } catch (Exception $e) {
+                    update_post_meta($tec_event_id, '_EventStartDateUTC', $tec_event_data['start_date']);
+                }
             }
             if (isset($tec_event_data['end_date'])) {
                 update_post_meta($tec_event_id, '_EventEndDate', $tec_event_data['end_date']);
+                
+                // Also set UTC version for TEC queries
+                try {
+                    $end_dt = new DateTime($tec_event_data['end_date'], new DateTimeZone($timezone));
+                    $end_dt->setTimezone(new DateTimeZone('UTC'));
+                    update_post_meta($tec_event_id, '_EventEndDateUTC', $end_dt->format('Y-m-d H:i:s'));
+                } catch (Exception $e) {
+                    update_post_meta($tec_event_id, '_EventEndDateUTC', $tec_event_data['end_date']);
+                }
             }
             if (isset($tec_event_data['all_day'])) {
                 update_post_meta($tec_event_id, '_EventAllDay', $tec_event_data['all_day'] ? 'yes' : 'no');
             }
+            
+            // Set timezone meta (required for TEC)
+            update_post_meta($tec_event_id, '_EventTimezone', $timezone);
+            update_post_meta($tec_event_id, '_EventTimezoneAbbr', $this->get_timezone_abbr($timezone));
+            
+            // Set duration in seconds (required for some TEC views)
+            if (isset($tec_event_data['start_date']) && isset($tec_event_data['end_date'])) {
+                $duration = strtotime($tec_event_data['end_date']) - strtotime($tec_event_data['start_date']);
+                update_post_meta($tec_event_id, '_EventDuration', max(0, $duration));
+            }
+            
             if (isset($tec_event_data['venue'])) {
                 update_post_meta($tec_event_id, '_EventVenue', $tec_event_data['venue']);
             }
@@ -1012,5 +1104,18 @@ class Azure_TEC_Sync_Engine {
         }
         
         return 0;
+    }
+    
+    /**
+     * Get timezone abbreviation from timezone string
+     */
+    private function get_timezone_abbr($timezone_string) {
+        try {
+            $tz = new DateTimeZone($timezone_string);
+            $dt = new DateTime('now', $tz);
+            return $dt->format('T');
+        } catch (Exception $e) {
+            return 'UTC';
+        }
     }
 }

@@ -3,6 +3,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Check if user is an administrator - this page is admin-only
+if (!current_user_can('administrator')) {
+    wp_die(__('You do not have sufficient permissions to access this page.', 'azure-plugin'));
+}
+
 // Get recent logs using the new formatted logger
 $level_filter = $_GET['level'] ?? '';
 $module_filter = $_GET['module'] ?? '';
@@ -57,6 +62,29 @@ if ($activity_table) {
             </div>
         </div>
         <?php endif; ?>
+        
+        <!-- PTA Roles Admin Functions -->
+        <div class="pta-admin-functions-section" style="margin-bottom: 30px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+            <h2><span class="dashicons dashicons-groups" style="margin-right: 8px;"></span>PTA Roles Admin Functions</h2>
+            <p class="description">Administrative functions for PTA Roles management. Use with caution.</p>
+            
+            <div class="pta-admin-buttons" style="margin-top: 15px; display: flex; gap: 15px; flex-wrap: wrap;">
+                <button type="button" class="button button-primary import-roles-from-azure">
+                    <span class="dashicons dashicons-download"></span>
+                    One-Time Pull from Azure AD
+                </button>
+                
+                <button type="button" class="button reimport-default-tables" style="background-color: #d63638; border-color: #d63638; color: white;">
+                    <span class="dashicons dashicons-database-import"></span>
+                    Reimport Default Tables
+                </button>
+            </div>
+            
+            <p class="description" style="margin-top: 15px; color: #666;">
+                <strong>One-Time Pull from Azure AD:</strong> Imports job titles from Azure AD and maps them to PTA roles for all existing users.<br>
+                <strong>Reimport Default Tables:</strong> Recreates PTA database tables and imports default roles/departments. <span style="color: #d63638;">Warning: This will delete existing data!</span>
+            </p>
+        </div>
         
         <!-- Log Controls -->
         <div class="log-controls-section">
@@ -762,4 +790,85 @@ function get_log_level_class($line) {
     return 'info';
 }
 ?>
+
+/* PTA Admin Functions Section */
+.pta-admin-functions-section .button .dashicons {
+    vertical-align: middle;
+    line-height: 1;
+    margin-right: 5px;
+}
 </style>
+
+<script>
+jQuery(document).ready(function($) {
+    // One-Time Pull from Azure AD
+    $('.import-roles-from-azure').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+
+        if (!confirm('⚠️ Warning: This will attempt to import roles from Azure AD job titles for all existing WordPress users linked to Azure AD.\n\nThis is a ONE-TIME import and will not overwrite existing assignments unless a role is explicitly removed and then re-imported.\n\nAre you sure you want to continue?')) {
+            return;
+        }
+
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Importing...');
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_import_roles_from_azure',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+
+            if (response.success) {
+                var message = '✅ ' + response.data.message;
+                if (response.data.errors && response.data.errors.length > 0) {
+                    message += '\n\nWarnings/Errors:\n' + response.data.errors.slice(0, 10).join('\n');
+                    if (response.data.errors.length > 10) {
+                        message += '\n... and ' + (response.data.errors.length - 10) + ' more';
+                    }
+                }
+                alert(message);
+            } else {
+                alert('❌ One-time import failed:\n\n' + (response.data || 'Unknown error'));
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            alert('❌ One-time import failed due to network error:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
+            console.error('One-time import AJAX error:', xhr);
+        });
+    });
+
+    // Reimport Default Tables
+    $('.reimport-default-tables').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+
+        if (!confirm('⚠️ DANGER: This will DELETE all existing PTA roles, departments, and assignments, then reimport the default data.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to continue?')) {
+            return;
+        }
+
+        // Double confirmation for destructive action
+        if (!confirm('🚨 FINAL WARNING: All PTA data will be permanently deleted!\n\nType "DELETE" mentally and click OK to proceed.')) {
+            return;
+        }
+
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Reimporting...');
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_reimport_default_tables',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+
+            if (response.success) {
+                alert('✅ Default tables reimported successfully!\n\n' + (response.data.message || ''));
+            } else {
+                alert('❌ Reimport failed:\n\n' + (response.data || 'Unknown error'));
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            alert('❌ Reimport failed due to network error:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
+            console.error('Reimport AJAX error:', xhr);
+        });
+    });
+});
+</script>

@@ -194,6 +194,47 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 
+                <div class="debug-section" style="margin-top: 20px;">
+                    <h2>Debug Settings</h2>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="debug_mode">Debug Mode</label>
+                            </th>
+                            <td>
+                                <input type="checkbox" id="debug_mode" name="debug_mode" value="1" 
+                                       <?php checked($settings['debug_mode'] ?? false); ?> />
+                                <label for="debug_mode">Enable detailed debug logging</label>
+                                <p class="description">
+                                    ⚠️ <strong>Warning:</strong> Only enable for troubleshooting. Requires WP_DEBUG to be enabled in wp-config.php. 
+                                    <br>Impacts performance when enabled. Logs are written to <code>wp-content/plugins/Azure Plugin/logs.md</code>
+                                </p>
+                            </td>
+                        </tr>
+                        
+                        <tr id="debug-modules-row" style="<?php echo ($settings['debug_mode'] ?? false) ? '' : 'display:none;'; ?>">
+                            <th scope="row">Debug Modules</th>
+                            <td>
+                                <?php
+                                $debug_modules = $settings['debug_modules'] ?? array();
+                                $available_modules = array('Core', 'SSO', 'Calendar', 'TEC', 'Email', 'Backup', 'PTA', 'OneDrive');
+                                foreach ($available_modules as $module):
+                                ?>
+                                <label style="display: inline-block; margin-right: 15px; margin-bottom: 5px;">
+                                    <input type="checkbox" name="debug_modules[]" value="<?php echo esc_attr($module); ?>"
+                                           <?php checked(in_array($module, $debug_modules)); ?> />
+                                    <?php echo esc_html($module); ?>
+                                </label>
+                                <?php endforeach; ?>
+                                <p class="description">
+                                    Select specific modules to debug. Leave all unchecked to debug all modules.
+                                    <br><strong>Tip:</strong> Enable only the module you're troubleshooting to reduce log noise.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                
                 <p class="submit">
                     <input type="submit" name="azure_plugin_submit" class="button-primary" value="Save Settings" />
                 </p>
@@ -241,6 +282,15 @@ jQuery(document).ready(function($) {
             $('#common-credentials').slideDown();
         } else {
             $('#common-credentials').slideUp();
+        }
+    });
+    
+    // Handle debug mode toggle
+    $('#debug_mode').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#debug-modules-row').slideDown('fast');
+        } else {
+            $('#debug-modules-row').slideUp('fast');
         }
     });
     

@@ -99,6 +99,31 @@ class Azure_SSO_Auth {
             wp_die('Failed to get user information');
         }
         
+        // Check if user is in the exclusion list (service accounts, shared mailboxes, etc.)
+        $azure_user_id = $user_info['id'] ?? '';
+        $user_email = $user_info['mail'] ?? $user_info['userPrincipalName'] ?? '';
+        
+        if (class_exists('Azure_SSO_Sync') && Azure_SSO_Sync::is_user_excluded($azure_user_id, $user_email)) {
+            $display_name = $user_info['displayName'] ?? $user_email;
+            Azure_Logger::warning("SSO: Login blocked for excluded account: {$display_name} ({$user_email})");
+            Azure_Database::log_activity('sso', 'login_blocked', 'user', null, array(
+                'reason' => 'User in exclusion list',
+                'email' => $user_email,
+                'display_name' => $display_name,
+                'azure_id' => $azure_user_id
+            ));
+            
+            wp_die(
+                '<h1>Access Denied</h1>' .
+                '<p>This account (<strong>' . esc_html($user_email) . '</strong>) is not authorized to log in to this site.</p>' .
+                '<p>This may be a service account or shared mailbox that has been excluded from user access.</p>' .
+                '<p>If you believe this is an error, please contact the site administrator.</p>' .
+                '<p><a href="' . esc_url(home_url()) . '">Return to homepage</a></p>',
+                'Access Denied',
+                array('response' => 403)
+            );
+        }
+        
         // Process the user login
         $user_id = $this->process_user_login($user_info, $token_data);
         
@@ -163,7 +188,7 @@ class Azure_SSO_Auth {
      * Get user information from Microsoft Graph
      */
     private function get_user_info($access_token) {
-        $graph_url = 'https://graph.microsoft.com/v1.0/me';
+        $graph_url = 'https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName,givenName,surname,department,jobTitle';
         
         $response = wp_remote_get($graph_url, array(
             'headers' => array(
@@ -254,6 +279,17 @@ class Azure_SSO_Auth {
                     'role' => $this->get_sso_role()  // Use configured SSO role
                 ));
                 
+                // Map department from Azure AD to WordPress user meta
+                if (!empty($user_info['department'])) {
+                    update_user_meta($user_id, 'department', sanitize_text_field($user_info['department']));
+                    Azure_Logger::debug("SSO: Set department '{$user_info['department']}' for user {$user_id}");
+                }
+                
+                // Store Azure AD jobTitle for reference (but don't auto-assign)
+                if (!empty($user_info['jobTitle'])) {
+                    update_user_meta($user_id, 'azure_job_title', sanitize_text_field($user_info['jobTitle']));
+                }
+                
                 $wp_user = get_user_by('ID', $user_id);
                 
                 Azure_Logger::info('SSO: Created new user: ' . $email);
@@ -277,6 +313,11 @@ class Azure_SSO_Auth {
                 array('%d', '%s', '%s', '%s'),
                 array('%d')
             );
+            
+            // Store Azure AD jobTitle for reference (but don't auto-assign)
+            if (!empty($user_info['jobTitle'])) {
+                update_user_meta($wp_user->ID, 'azure_job_title', sanitize_text_field($user_info['jobTitle']));
+            }
         } else {
             $wpdb->insert(
                 $sso_users_table,

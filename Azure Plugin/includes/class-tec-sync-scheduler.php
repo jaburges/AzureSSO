@@ -133,10 +133,17 @@ class Azure_TEC_Sync_Scheduler {
                 return;
             }
             
-            // Get the calendar user email
+            // Get the calendar user email and mailbox email
             $user_email = $settings['tec_calendar_user_email'] ?? '';
+            $mailbox_email = $settings['tec_calendar_mailbox_email'] ?? '';
+            
             if (empty($user_email)) {
                 Azure_Logger::warning('TEC Sync Scheduler: No calendar user email configured', 'TEC');
+                return;
+            }
+            
+            if (empty($mailbox_email)) {
+                Azure_Logger::warning('TEC Sync Scheduler: No shared mailbox email configured', 'TEC');
                 return;
             }
             
@@ -148,6 +155,8 @@ class Azure_TEC_Sync_Scheduler {
                     return;
                 }
             }
+            
+            Azure_Logger::info("TEC Sync Scheduler: Syncing from mailbox '{$mailbox_email}' using token from '{$user_email}'", 'TEC');
             
             // Get date range from settings
             $lookback_days = $settings['tec_sync_lookback_days'] ?? 30;
@@ -163,7 +172,8 @@ class Azure_TEC_Sync_Scheduler {
                     null,  // null = all enabled calendars
                     $start_date,
                     $end_date,
-                    $user_email
+                    $user_email,
+                    $mailbox_email
                 );
                 
                 if ($results && $results['success']) {
@@ -229,10 +239,17 @@ class Azure_TEC_Sync_Scheduler {
                 return;
             }
             
-            // Get the calendar user email
+            // Get the calendar user email and mailbox email
             $user_email = $settings['tec_calendar_user_email'] ?? '';
+            $mailbox_email = $settings['tec_calendar_mailbox_email'] ?? '';
+            
             if (empty($user_email)) {
                 Azure_Logger::warning("TEC Sync Scheduler: No calendar user email configured, skipping mapping {$mapping_id}", 'TEC');
+                return;
+            }
+            
+            if (empty($mailbox_email)) {
+                Azure_Logger::warning("TEC Sync Scheduler: No shared mailbox email configured, skipping mapping {$mapping_id}", 'TEC');
                 return;
             }
             
@@ -271,6 +288,8 @@ class Azure_TEC_Sync_Scheduler {
                 return;
             }
             
+            Azure_Logger::info("TEC Sync Scheduler: Syncing mapping {$mapping_id} from mailbox '{$mailbox_email}' using token from '{$user_email}'", 'TEC');
+            
             // Get date range from mapping settings
             $lookback_days = $mapping->schedule_lookback_days ?? 30;
             $lookahead_days = $mapping->schedule_lookahead_days ?? 365;
@@ -287,7 +306,8 @@ class Azure_TEC_Sync_Scheduler {
                     array($mapping->outlook_calendar_id),  // Sync only this calendar
                     $start_date,
                     $end_date,
-                    $user_email
+                    $user_email,
+                    $mailbox_email
                 );
                 
                 if ($results && $results['success']) {

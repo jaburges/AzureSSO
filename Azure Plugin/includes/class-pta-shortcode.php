@@ -2,24 +2,61 @@
 /**
  * PTA Shortcode handler for Azure Plugin
  * 
- * TEAM MEMBERS INSPIRED LAYOUT USAGE:
+ * ROLES DIRECTORY SHORTCODE:
+ * [pta-roles-directory layout="grid" columns="3" show_image="true" photo_size="80"]
  * 
- * Basic Team Cards Layout:
- * [pta-roles-directory layout="team-cards" columns="3"]
+ * Parameters:
+ * - layout: grid, list, cards, team-cards (default: grid)
+ * - columns: 1-5 (default: 3)
+ * - department: filter by department slug/name
+ * - status: all, open, filled, partial (default: all)
+ * - description: true/false - show role description
+ * - show_count: true/false - show filled/total count
+ * - show_image: true/false - show WordPress profile photos (default: false)
+ * - include_photo: true/false - alias for show_image (default: false)
+ * - photo_size: number - photo size in pixels (default: 80)
+ * - show_avatars: true/false (for team-cards layout)
+ * - show_contact: true/false (show email links)
  * 
- * Advanced Team Cards with Custom Options:
- * [pta-roles-directory layout="team-cards" columns="4" department="communications" 
- *  show_avatars="true" show_contact="true" avatar_size="80" description="true"]
+ * LEADERSHIP STRUCTURE LAYOUT:
+ * [pta-roles-directory leadership_structure="true" leader_role="president" 
+ *  leader_photo_size="120" show_image="true" columns="4"]
  * 
- * Layout Options:
- * - grid: Traditional grid cards (default)
- * - list: Simple list view
- * - cards: Enhanced cards with borders
- * - team-cards: Team Members plugin inspired with circular avatars
+ * This displays the leader role (e.g., President) centered above all other roles:
+ * 
+ *                    ┌─────────────┐
+ *                    │   Photo     │
+ *                    │  President  │
+ *                    │    Name     │
+ *                    └─────────────┘
+ *  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
+ *  │  Photo  │  │  Photo  │  │  Photo  │  │  Photo  │
+ *  │  Role   │  │  Role   │  │  Role   │  │  Role   │
+ *  │  Name   │  │  Name   │  │  Name   │  │  Name   │
+ *  └─────────┘  └─────────┘  └─────────┘  └─────────┘
+ * 
+ * Leadership Structure Parameters:
+ * - leadership_structure: true/false - enable hierarchy layout (default: false)
+ * - leader_role: role slug/name to show as leader (default: "president")
+ * - leader_photo_size: leader photo size in pixels (default: 120)
+ * 
+ * ROLE CARD SHORTCODE:
+ * [pta-role-card role="president" show_image="true" photo_size="100" show_contact="true"]
+ * 
+ * Parameters:
+ * - role: role slug or name (required)
+ * - show_image: true/false - show WordPress profile photos (default: false)
+ * - include_photo: true/false - alias for show_image (default: false)
+ * - photo_size: number - photo size in pixels (default: 80)
+ * - show_contact: true/false - show email links
+ * - show_description: true/false - show role description
+ * - show_assignments: true/false - show assigned users
+ * 
+ * TEAM MEMBERS INSPIRED LAYOUT:
+ * [pta-roles-directory layout="team-cards" columns="4" show_avatars="true" show_contact="true"]
  * 
  * Team Cards Specific Options:
- * - show_avatars: true/false (show user avatars)
- * - show_contact: true/false (show email/phone links)
+ * - show_avatars: true/false (show user avatars in circular style)
  * - avatar_size: number (avatar size in pixels, default 80)
  * - columns: 1-5 (responsive: desktop full, tablet 2, mobile 1)
  */
@@ -95,8 +132,28 @@ class Azure_PTA_Shortcode {
             'layout' => 'grid', // grid, list, cards, team-cards
             'show_avatars' => true,
             'show_contact' => true,
-            'avatar_size' => 80
+            'avatar_size' => 80,
+            'include_photo' => false, // Show WordPress profile photos
+            'show_image' => false, // Alias for include_photo
+            'photo_size' => 80, // Photo size in pixels
+            'leadership_structure' => false, // Show leader role centered above others
+            'leader_role' => 'president', // Role slug/name to show as leader
+            'leader_photo_size' => 120 // Leader photo size (larger than others)
         ), $atts);
+        
+        // Convert string boolean values to actual booleans
+        $atts['description'] = filter_var($atts['description'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_count'] = filter_var($atts['show_count'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_vp'] = filter_var($atts['show_vp'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_avatars'] = filter_var($atts['show_avatars'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_contact'] = filter_var($atts['show_contact'], FILTER_VALIDATE_BOOLEAN);
+        $atts['include_photo'] = filter_var($atts['include_photo'], FILTER_VALIDATE_BOOLEAN);
+        $atts['leadership_structure'] = filter_var($atts['leadership_structure'], FILTER_VALIDATE_BOOLEAN);
+        
+        // Handle show_image as alias for include_photo
+        if (filter_var($atts['show_image'], FILTER_VALIDATE_BOOLEAN)) {
+            $atts['include_photo'] = true;
+        }
         
         // Get roles
         $department_id = null;
@@ -145,6 +202,10 @@ class Azure_PTA_Shortcode {
             'show_description' => false,
             'layout' => 'list'
         ), $atts);
+        
+        // Convert string boolean values to actual booleans
+        $atts['show_vp'] = filter_var($atts['show_vp'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_description'] = filter_var($atts['show_description'], FILTER_VALIDATE_BOOLEAN);
         
         if (empty($atts['department'])) {
             return '<p class="pta-error">Department parameter is required.</p>';
@@ -204,6 +265,9 @@ class Azure_PTA_Shortcode {
             'height' => '400px'
         ), $atts);
         
+        // Convert string boolean values to actual booleans
+        $atts['interactive'] = filter_var($atts['interactive'], FILTER_VALIDATE_BOOLEAN);
+        
         wp_enqueue_script('d3', 'https://d3js.org/d3.v7.min.js', array(), '7.0.0', true);
         
         $org_data = $this->get_org_chart_data($atts['department']);
@@ -229,7 +293,7 @@ class Azure_PTA_Shortcode {
     
     /**
      * Role Card shortcode
-     * Usage: [pta-role-card role="president" show_contact=true]
+     * Usage: [pta-role-card role="president" show_contact=true include_photo=true photo_size=80]
      */
     public function role_card_shortcode($atts) {
         // Check if PTA Manager is available
@@ -242,8 +306,22 @@ class Azure_PTA_Shortcode {
             'role' => '',
             'show_contact' => false,
             'show_description' => true,
-            'show_assignments' => true
+            'show_assignments' => true,
+            'include_photo' => false,
+            'show_image' => false, // Alias for include_photo
+            'photo_size' => 80
         ), $atts);
+        
+        // Convert string boolean values to actual booleans
+        $atts['show_contact'] = filter_var($atts['show_contact'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_description'] = filter_var($atts['show_description'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_assignments'] = filter_var($atts['show_assignments'], FILTER_VALIDATE_BOOLEAN);
+        $atts['include_photo'] = filter_var($atts['include_photo'], FILTER_VALIDATE_BOOLEAN);
+        
+        // Handle show_image as alias for include_photo
+        if (filter_var($atts['show_image'], FILTER_VALIDATE_BOOLEAN)) {
+            $atts['include_photo'] = true;
+        }
         
         if (empty($atts['role'])) {
             return '<p class="pta-error">Role parameter is required.</p>';
@@ -283,6 +361,10 @@ class Azure_PTA_Shortcode {
             'show_contact' => false,
             'show_email' => false
         ), $atts);
+        
+        // Convert string boolean values to actual booleans
+        $atts['show_contact'] = filter_var($atts['show_contact'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_email'] = filter_var($atts['show_email'], FILTER_VALIDATE_BOOLEAN);
         
         if (empty($atts['department'])) {
             return '<p class="pta-error">Department parameter is required.</p>';
@@ -338,6 +420,10 @@ class Azure_PTA_Shortcode {
             'show_description' => false
         ), $atts);
         
+        // Convert string boolean values to actual booleans
+        $atts['show_department'] = filter_var($atts['show_department'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_description'] = filter_var($atts['show_description'], FILTER_VALIDATE_BOOLEAN);
+        
         $department_id = null;
         if ($atts['department'] !== 'all') {
             $departments = $this->pta_manager->get_departments();
@@ -386,6 +472,10 @@ class Azure_PTA_Shortcode {
             'show_description' => false
         ), $atts);
         
+        // Convert string boolean values to actual booleans
+        $atts['show_department'] = filter_var($atts['show_department'], FILTER_VALIDATE_BOOLEAN);
+        $atts['show_description'] = filter_var($atts['show_description'], FILTER_VALIDATE_BOOLEAN);
+        
         if (empty($atts['user_id'])) {
             return '<p class="pta-error">No user specified and no current user.</p>';
         }
@@ -410,34 +500,118 @@ class Azure_PTA_Shortcode {
     private function render_roles_directory($roles, $atts) {
         $columns = max(1, min(5, intval($atts['columns'])));
         $layout = $atts['layout'];
+        $include_photo = filter_var($atts['include_photo'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $photo_size = intval($atts['photo_size'] ?? 80);
+        $leadership_structure = filter_var($atts['leadership_structure'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $leader_role_name = strtolower($atts['leader_role'] ?? 'president');
+        $leader_photo_size = intval($atts['leader_photo_size'] ?? 120);
         
-        $output = '<div class="pta-roles-directory pta-layout-' . esc_attr($layout) . '" data-columns="' . $columns . '">';
+        $output = '';
+        $leader_role = null;
+        $other_roles = array();
+        
+        // If leadership_structure is enabled, separate the leader role from others
+        if ($leadership_structure) {
+            foreach ($roles as $role) {
+                if (strtolower($role->slug) === $leader_role_name || strtolower($role->name) === $leader_role_name) {
+                    $leader_role = $role;
+                } else {
+                    $other_roles[] = $role;
+                }
+            }
+            
+            // Render the leader section if found
+            if ($leader_role) {
+                $output .= '<div class="pta-leadership-structure">';
+                $output .= '<div class="pta-leader-section">';
+                $output .= $this->render_single_role_card($leader_role, $atts, $leader_photo_size, true);
+                $output .= '</div>';
+                $output .= '<div class="pta-roles-directory pta-layout-' . esc_attr($layout) . '" data-columns="' . $columns . '">';
+                
+                foreach ($other_roles as $role) {
+                    $output .= $this->render_single_role_card($role, $atts, $photo_size, false);
+                }
+                
+                $output .= '</div>';
+                $output .= '</div>';
+                return $output;
+            }
+            // If leader role not found, fall through to normal rendering
+            $roles = array_merge(array($leader_role), $other_roles);
+            $roles = array_filter($roles); // Remove null
+        }
+        
+        // Normal rendering (no leadership structure or leader not found)
+        $output .= '<div class="pta-roles-directory pta-layout-' . esc_attr($layout) . '" data-columns="' . $columns . '">';
         
         foreach ($roles as $role) {
-            $status = $this->get_role_status($role);
-            
-            if ($layout === 'team-cards') {
-                $output .= $this->render_team_card($role, $atts, $status);
-            } else {
-                // Original grid/list/cards layout
-                $output .= '<div class="pta-role-item pta-status-' . esc_attr($status) . '">';
-                $output .= '<h4 class="pta-role-name">' . esc_html($role->name) . '</h4>';
-                
-                if ($atts['show_count']) {
-                    $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
-                }
-                
-                if ($atts['description'] && $role->description) {
-                    $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
-                }
-                
-                $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
-                $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
-                $output .= '</div>';
-            }
+            $output .= $this->render_single_role_card($role, $atts, $photo_size, false);
         }
         
         $output .= '</div>';
+        return $output;
+    }
+    
+    /**
+     * Render a single role card (used by render_roles_directory)
+     */
+    private function render_single_role_card($role, $atts, $photo_size, $is_leader = false) {
+        $layout = $atts['layout'];
+        $include_photo = filter_var($atts['include_photo'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $status = $this->get_role_status($role);
+        
+        if ($layout === 'team-cards') {
+            return $this->render_team_card($role, $atts, $status);
+        }
+        
+        // Original grid/list/cards layout
+        $leader_class = $is_leader ? ' pta-leader-card' : '';
+        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . $leader_class . '">';
+        
+        // Show photo if include_photo is true and role has assignments
+        if ($include_photo && !empty($role->assignments)) {
+            $first_user = get_user_by('ID', $role->assignments[0]->user_id);
+            if ($first_user) {
+                $output .= '<div class="pta-role-photo">';
+                $output .= get_avatar($first_user->ID, $photo_size, '', $first_user->display_name, array('class' => 'pta-user-avatar'));
+                $output .= '</div>';
+            }
+        } elseif ($include_photo) {
+            // Show placeholder for unfilled roles
+            $initials = $this->get_role_initials($role->name);
+            $output .= '<div class="pta-role-photo pta-photo-placeholder" style="width: ' . $photo_size . 'px; height: ' . $photo_size . 'px;">';
+            $output .= '<span class="pta-initials">' . esc_html($initials) . '</span>';
+            $output .= '</div>';
+        }
+        
+        $output .= '<h4 class="pta-role-name">' . esc_html($role->name) . '</h4>';
+        
+        // Show assigned user names if include_photo is true
+        if ($include_photo && !empty($role->assignments)) {
+            $user_names = array();
+            foreach ($role->assignments as $assignment) {
+                $user = get_user_by('ID', $assignment->user_id);
+                if ($user) {
+                    $user_names[] = esc_html($user->display_name);
+                }
+            }
+            if (!empty($user_names)) {
+                $output .= '<div class="pta-role-assigned-names">' . implode(', ', $user_names) . '</div>';
+            }
+        }
+        
+        if ($atts['show_count']) {
+            $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
+        }
+        
+        if ($atts['description'] && $role->description) {
+            $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
+        }
+        
+        $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
+        $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
+        $output .= '</div>';
+        
         return $output;
     }
     
@@ -524,8 +698,21 @@ class Azure_PTA_Shortcode {
     
     private function render_role_card($role, $atts) {
         $status = $this->get_role_status($role);
+        $include_photo = filter_var($atts['include_photo'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $photo_size = intval($atts['photo_size'] ?? 80);
         
         $output = '<div class="pta-role-card pta-status-' . esc_attr($status) . '">';
+        
+        // Show photo of first assigned user if include_photo is true
+        if ($include_photo && !empty($role->assignments)) {
+            $first_user = get_user_by('ID', $role->assignments[0]->user_id);
+            if ($first_user) {
+                $output .= '<div class="pta-role-photo">';
+                $output .= get_avatar($first_user->ID, $photo_size, '', $first_user->display_name, array('class' => 'pta-user-avatar'));
+                $output .= '</div>';
+            }
+        }
+        
         $output .= '<h3 class="pta-role-title">' . esc_html($role->name) . '</h3>';
         $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
         
@@ -538,13 +725,17 @@ class Azure_PTA_Shortcode {
         if ($atts['show_assignments'] && !empty($role->assignments)) {
             $output .= '<div class="pta-role-assignments">';
             $output .= '<h5>Current Assignments:</h5>';
-            $output .= '<ul>';
+            $output .= '<ul class="pta-assignments-list' . ($include_photo ? ' with-photos' : '') . '">';
             foreach ($role->assignments as $assignment) {
                 $user = get_user_by('ID', $assignment->user_id);
                 if ($user) {
-                    $output .= '<li>' . esc_html($user->display_name);
+                    $output .= '<li class="pta-assignment-item">';
+                    if ($include_photo) {
+                        $output .= '<span class="pta-assignment-photo">' . get_avatar($user->ID, 32, '', $user->display_name) . '</span>';
+                    }
+                    $output .= '<span class="pta-assignment-name">' . esc_html($user->display_name) . '</span>';
                     if ($atts['show_contact'] && $user->user_email) {
-                        $output .= ' - <a href="mailto:' . esc_attr($user->user_email) . '">' . esc_html($user->user_email) . '</a>';
+                        $output .= ' <span class="pta-assignment-email">- <a href="mailto:' . esc_attr($user->user_email) . '">' . esc_html($user->user_email) . '</a></span>';
                     }
                     $output .= '</li>';
                 }
@@ -632,6 +823,41 @@ class Azure_PTA_Shortcode {
         }
         
         return $org_data;
+    }
+    
+    /**
+     * Render a simple list of roles
+     */
+    private function render_roles_list($roles, $atts) {
+        $output = '<ul class="pta-roles-list">';
+        
+        foreach ($roles as $role) {
+            $status = $this->get_role_status($role);
+            $output .= '<li class="pta-role-list-item pta-status-' . esc_attr($status) . '">';
+            $output .= '<strong>' . esc_html($role->name) . '</strong>';
+            $output .= ' <span class="pta-role-count">(' . $role->assigned_count . '/' . $role->max_occupants . ')</span>';
+            
+            if (!empty($atts['show_description']) && $role->description) {
+                $output .= '<div class="pta-role-description">' . esc_html($role->description) . '</div>';
+            }
+            
+            // Show assigned users
+            if (!empty($role->assignments)) {
+                $output .= '<ul class="pta-role-assignments">';
+                foreach ($role->assignments as $assignment) {
+                    $user = get_user_by('ID', $assignment->user_id);
+                    if ($user) {
+                        $output .= '<li>' . esc_html($user->display_name) . '</li>';
+                    }
+                }
+                $output .= '</ul>';
+            }
+            
+            $output .= '</li>';
+        }
+        
+        $output .= '</ul>';
+        return $output;
     }
     
     private function render_open_positions($roles, $atts) {

@@ -32,14 +32,20 @@ class Azure_TEC_Integration_Ajax {
         add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_tec_manual_sync'));
         add_action('wp_ajax_azure_get_sync_history', array($this, 'ajax_get_sync_history'));
         
+        // Maintenance handlers
+        add_action('wp_ajax_azure_tec_repair_event_metadata', array($this, 'ajax_repair_event_metadata'));
+        
         Azure_Logger::debug('TEC Integration AJAX: Initialized', 'TEC');
     }
     
     /**
-     * Save TEC calendar email
+     * Save TEC calendar email settings (user email and mailbox email)
      */
     public function ajax_save_tec_calendar_email() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             Azure_Logger::warning('TEC Integration AJAX: Unauthorized attempt to save calendar email', 'TEC');
@@ -47,25 +53,40 @@ class Azure_TEC_Integration_Ajax {
             return;
         }
         
-        $email = sanitize_email($_POST['email'] ?? '');
+        // Get both user email and mailbox email
+        $user_email = sanitize_email($_POST['user_email'] ?? $_POST['email'] ?? '');
+        $mailbox_email = sanitize_email($_POST['mailbox_email'] ?? '');
         
-        if (empty($email) || !is_email($email)) {
-            Azure_Logger::warning('TEC Integration AJAX: Invalid email provided', 'TEC');
-            wp_send_json_error('Invalid email address');
+        if (empty($user_email) || !is_email($user_email)) {
+            Azure_Logger::warning('TEC Integration AJAX: Invalid user email provided', 'TEC');
+            wp_send_json_error('Invalid user email address');
             return;
         }
         
-        Azure_Settings::update_setting('tec_calendar_user_email', $email);
-        Azure_Logger::info("TEC Integration AJAX: Saved calendar email: {$email}", 'TEC');
+        if (empty($mailbox_email) || !is_email($mailbox_email)) {
+            Azure_Logger::warning('TEC Integration AJAX: Invalid mailbox email provided', 'TEC');
+            wp_send_json_error('Invalid mailbox email address');
+            return;
+        }
         
-        wp_send_json_success(array('email' => $email));
+        Azure_Settings::update_setting('tec_calendar_user_email', $user_email);
+        Azure_Settings::update_setting('tec_calendar_mailbox_email', $mailbox_email);
+        Azure_Logger::info("TEC Integration AJAX: Saved calendar settings - User: {$user_email}, Mailbox: {$mailbox_email}", 'TEC');
+        
+        wp_send_json_success(array(
+            'user_email' => $user_email,
+            'mailbox_email' => $mailbox_email
+        ));
     }
     
     /**
      * Generate OAuth authorization URL for TEC calendar
      */
     public function ajax_tec_calendar_authorize() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             Azure_Logger::warning('TEC Integration AJAX: Unauthorized calendar auth attempt', 'TEC');
@@ -119,7 +140,10 @@ class Azure_TEC_Integration_Ajax {
      * Check TEC calendar authentication status
      */
     public function ajax_tec_calendar_check_auth() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -153,7 +177,10 @@ class Azure_TEC_Integration_Ajax {
      * Get Outlook calendars for TEC mapping
      */
     public function ajax_get_outlook_calendars() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             Azure_Logger::warning('TEC Integration AJAX: Unauthorized calendar fetch attempt', 'TEC');
@@ -163,9 +190,15 @@ class Azure_TEC_Integration_Ajax {
         
         $settings = Azure_Settings::get_all_settings();
         $user_email = $settings['tec_calendar_user_email'] ?? '';
+        $mailbox_email = $settings['tec_calendar_mailbox_email'] ?? '';
         
         if (empty($user_email)) {
-            wp_send_json_error('Calendar email not configured');
+            wp_send_json_error('User email not configured');
+            return;
+        }
+        
+        if (empty($mailbox_email)) {
+            wp_send_json_error('Shared mailbox email not configured');
             return;
         }
         
@@ -177,13 +210,14 @@ class Azure_TEC_Integration_Ajax {
         
         try {
             $graph_api = new Azure_Calendar_GraphAPI();
-            $calendars = $graph_api->get_calendars($user_email, true);
+            // Use get_mailbox_calendars to access shared mailbox calendars with user's token
+            $calendars = $graph_api->get_mailbox_calendars($user_email, $mailbox_email, true);
             
             if (is_array($calendars) && !empty($calendars)) {
-                Azure_Logger::info("TEC Integration AJAX: Retrieved " . count($calendars) . " calendars for {$user_email}", 'TEC');
+                Azure_Logger::info("TEC Integration AJAX: Retrieved " . count($calendars) . " calendars from mailbox {$mailbox_email} using {$user_email}", 'TEC');
                 wp_send_json_success($calendars);
             } else {
-                Azure_Logger::warning("TEC Integration AJAX: No calendars found for {$user_email}", 'TEC');
+                Azure_Logger::warning("TEC Integration AJAX: No calendars found for mailbox {$mailbox_email}", 'TEC');
                 wp_send_json_success(array());
             }
         } catch (Exception $e) {
@@ -196,7 +230,10 @@ class Azure_TEC_Integration_Ajax {
      * Get TEC event categories
      */
     public function ajax_get_tec_categories() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -239,7 +276,10 @@ class Azure_TEC_Integration_Ajax {
      * Create new TEC event category
      */
     public function ajax_create_tec_category() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -291,7 +331,10 @@ class Azure_TEC_Integration_Ajax {
      * Get calendar mapping by ID
      */
     public function ajax_get_calendar_mapping() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -324,7 +367,10 @@ class Azure_TEC_Integration_Ajax {
      * Save calendar mapping (create or update)
      */
     public function ajax_save_calendar_mapping() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -410,7 +456,10 @@ class Azure_TEC_Integration_Ajax {
      * Delete calendar mapping
      */
     public function ajax_delete_calendar_mapping() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -444,7 +493,10 @@ class Azure_TEC_Integration_Ajax {
      * Toggle sync enabled status for mapping
      */
     public function ajax_toggle_calendar_sync() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -488,7 +540,10 @@ class Azure_TEC_Integration_Ajax {
      * Save TEC sync schedule settings
      */
     public function ajax_save_tec_sync_schedule() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -564,30 +619,40 @@ class Azure_TEC_Integration_Ajax {
         // Get settings for date range
         $settings = Azure_Settings::get_all_settings();
         $user_email = $settings['tec_calendar_user_email'] ?? '';
+        $mailbox_email = $settings['tec_calendar_mailbox_email'] ?? '';
         $lookback_days = intval($settings['tec_sync_lookback_days'] ?? 30);
         $lookahead_days = intval($settings['tec_sync_lookahead_days'] ?? 365);
         
         if (empty($user_email)) {
-            wp_send_json_error('Calendar email not configured');
+            wp_send_json_error('Calendar user email not configured');
             return;
         }
         
-        // Calculate date range
-        $start_date = date('Y-m-d', strtotime("-{$lookback_days} days"));
-        $end_date = date('Y-m-d', strtotime("+{$lookahead_days} days"));
+        if (empty($mailbox_email)) {
+            wp_send_json_error('Shared mailbox email not configured');
+            return;
+        }
+        
+        Azure_Logger::info("TEC Integration AJAX: Syncing from mailbox '{$mailbox_email}' using token from '{$user_email}'", 'TEC');
+        
+        // Calculate date range - use ISO 8601 format for Graph API
+        $start_date = date('Y-m-d\TH:i:s\Z', strtotime("-{$lookback_days} days"));
+        $end_date = date('Y-m-d\TH:i:s\Z', strtotime("+{$lookahead_days} days"));
+        
+        Azure_Logger::info("TEC Integration AJAX: Starting sync - User: {$user_email}, Mailbox: {$mailbox_email}, Start: {$start_date}, End: {$end_date}", 'TEC');
         
         try {
             $sync_engine = new Azure_TEC_Sync_Engine();
-            $results = $sync_engine->sync_multiple_calendars_to_tec(null, $start_date, $end_date, $user_email);
+            $results = $sync_engine->sync_multiple_calendars_to_tec(null, $start_date, $end_date, $user_email, $mailbox_email);
             
-            if ($results['success']) {
-                Azure_Logger::info("TEC Integration AJAX: Manual sync completed - Events: {$results['total_events_synced']}, Errors: {$results['total_errors']}", 'TEC');
+            if ($results && $results['success']) {
+                Azure_Logger::info("TEC Integration AJAX: Manual sync completed - Calendars: {$results['total_calendars']}, Events: {$results['total_events_synced']}, Errors: {$results['total_errors']}", 'TEC');
                 
                 wp_send_json_success(array(
-                    'calendars_synced' => $results['calendars_processed'],
+                    'calendars_synced' => $results['total_calendars'],
                     'total_events_synced' => $results['total_events_synced'],
                     'total_errors' => $results['total_errors'],
-                    'calendar_results' => $results['results']
+                    'calendar_results' => $results['calendar_results'] ?? array()
                 ));
             } else {
                 Azure_Logger::error('TEC Integration AJAX: Manual sync failed: ' . ($results['message'] ?? 'Unknown error'), 'TEC');
@@ -603,7 +668,10 @@ class Azure_TEC_Integration_Ajax {
      * Get sync history
      */
     public function ajax_get_sync_history() {
-        check_ajax_referer('azure_plugin_nonce', 'nonce');
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -670,5 +738,119 @@ class Azure_TEC_Integration_Ajax {
         
         Azure_Logger::debug('TEC Integration AJAX: Retrieved ' . count($formatted_history) . ' sync history records', 'TEC');
         wp_send_json_success($formatted_history);
+    }
+    
+    /**
+     * Repair event metadata for existing synced events
+     * This adds missing UTC dates, timezone, and duration fields required by TEC
+     */
+    public function ajax_repair_event_metadata() {
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        Azure_Logger::info('TEC Integration AJAX: Starting event metadata repair', 'TEC');
+        
+        try {
+            global $wpdb;
+            
+            // Get all events that were synced from Outlook
+            $events = $wpdb->get_results(
+                "SELECT p.ID, pm_start.meta_value as start_date, pm_end.meta_value as end_date
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm_outlook ON p.ID = pm_outlook.post_id AND pm_outlook.meta_key = '_outlook_event_id'
+                 LEFT JOIN {$wpdb->postmeta} pm_start ON p.ID = pm_start.post_id AND pm_start.meta_key = '_EventStartDate'
+                 LEFT JOIN {$wpdb->postmeta} pm_end ON p.ID = pm_end.post_id AND pm_end.meta_key = '_EventEndDate'
+                 WHERE p.post_type = 'tribe_events' AND p.post_status = 'publish'"
+            );
+            
+            if (empty($events)) {
+                wp_send_json_success(array(
+                    'message' => 'No synced events found to repair.',
+                    'repaired' => 0,
+                    'errors' => 0
+                ));
+                return;
+            }
+            
+            $timezone = get_option('timezone_string', 'UTC');
+            if (empty($timezone)) {
+                $timezone = 'UTC';
+            }
+            
+            $repaired = 0;
+            $errors = 0;
+            
+            foreach ($events as $event) {
+                try {
+                    $event_id = $event->ID;
+                    $start_date = $event->start_date;
+                    $end_date = $event->end_date;
+                    
+                    if (empty($start_date) || empty($end_date)) {
+                        $errors++;
+                        continue;
+                    }
+                    
+                    // Set UTC versions
+                    try {
+                        $start_dt = new DateTime($start_date, new DateTimeZone($timezone));
+                        $start_dt->setTimezone(new DateTimeZone('UTC'));
+                        update_post_meta($event_id, '_EventStartDateUTC', $start_dt->format('Y-m-d H:i:s'));
+                    } catch (Exception $e) {
+                        update_post_meta($event_id, '_EventStartDateUTC', $start_date);
+                    }
+                    
+                    try {
+                        $end_dt = new DateTime($end_date, new DateTimeZone($timezone));
+                        $end_dt->setTimezone(new DateTimeZone('UTC'));
+                        update_post_meta($event_id, '_EventEndDateUTC', $end_dt->format('Y-m-d H:i:s'));
+                    } catch (Exception $e) {
+                        update_post_meta($event_id, '_EventEndDateUTC', $end_date);
+                    }
+                    
+                    // Set timezone meta
+                    update_post_meta($event_id, '_EventTimezone', $timezone);
+                    
+                    // Get timezone abbreviation
+                    try {
+                        $tz = new DateTimeZone($timezone);
+                        $dt = new DateTime('now', $tz);
+                        $abbr = $dt->format('T');
+                    } catch (Exception $e) {
+                        $abbr = 'UTC';
+                    }
+                    update_post_meta($event_id, '_EventTimezoneAbbr', $abbr);
+                    
+                    // Set duration
+                    $duration = strtotime($end_date) - strtotime($start_date);
+                    update_post_meta($event_id, '_EventDuration', max(0, $duration));
+                    
+                    $repaired++;
+                    
+                } catch (Exception $e) {
+                    Azure_Logger::error("TEC Integration AJAX: Error repairing event {$event->ID}: " . $e->getMessage(), 'TEC');
+                    $errors++;
+                }
+            }
+            
+            Azure_Logger::info("TEC Integration AJAX: Metadata repair complete. Repaired: {$repaired}, Errors: {$errors}", 'TEC');
+            
+            wp_send_json_success(array(
+                'message' => "Repaired metadata for {$repaired} events.",
+                'repaired' => $repaired,
+                'errors' => $errors
+            ));
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('TEC Integration AJAX: Metadata repair failed - ' . $e->getMessage(), 'TEC');
+            wp_send_json_error('Repair failed: ' . $e->getMessage());
+        }
     }
 }

@@ -13,6 +13,11 @@ class Azure_SSO_Sync {
         add_action('wp_ajax_azure_sync_users', array($this, 'sync_users_ajax'));
         add_action('azure_sso_scheduled_sync', array($this, 'scheduled_sync'));
         
+        // Exclusion list AJAX handlers
+        add_action('wp_ajax_azure_get_all_ad_users', array($this, 'ajax_get_all_ad_users'));
+        add_action('wp_ajax_azure_add_user_to_exclusion', array($this, 'ajax_add_user_to_exclusion'));
+        add_action('wp_ajax_azure_remove_user_from_exclusion', array($this, 'ajax_remove_user_from_exclusion'));
+        
         // Schedule sync if enabled
         $this->setup_scheduled_sync();
     }
@@ -243,7 +248,7 @@ class Azure_SSO_Sync {
      */
     private function get_azure_users($access_token) {
         $users = array();
-        $next_link = 'https://graph.microsoft.com/v1.0/users?$select=id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled';
+        $next_link = 'https://graph.microsoft.com/v1.0/users?$select=id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled,department,jobTitle';
         
         do {
             $response = wp_remote_get($next_link, array(
@@ -284,18 +289,32 @@ class Azure_SSO_Sync {
     private function sync_single_user($azure_user) {
         global $wpdb;
         
-        // Skip disabled accounts
-        if (!($azure_user['accountEnabled'] ?? true)) {
-            return 'skipped';
-        }
-        
         $azure_user_id = $azure_user['id'];
         $email = $azure_user['mail'] ?? $azure_user['userPrincipalName'];
-        $display_name = $azure_user['displayName'];
+        $display_name = $azure_user['displayName'] ?? 'Unknown';
+        
+        // Skip users in the exclusion list (service accounts, shared mailboxes, etc.)
+        if (self::is_user_excluded($azure_user_id, $email)) {
+            return array(
+                'status' => 'skipped',
+                'message' => "User '{$display_name}' ({$email}): Excluded from sync (in Do Not Sync list)"
+            );
+        }
+        
+        // Skip disabled accounts
+        if (!($azure_user['accountEnabled'] ?? true)) {
+            return array(
+                'status' => 'skipped',
+                'message' => "User '{$display_name}' ({$email}): Account disabled in Azure AD"
+            );
+        }
         
         if (empty($email)) {
             Azure_Logger::warning('SSO: No email for user: ' . $azure_user_id);
-            return 'error';
+            return array(
+                'status' => 'error',
+                'message' => "User '{$display_name}' (ID: {$azure_user_id}): No email address"
+            );
         }
         
         $sso_users_table = Azure_Database::get_table_name('sso_users');
@@ -332,6 +351,12 @@ class Azure_SSO_Sync {
                         'first_name' => $azure_user['givenName'] ?? '',
                         'last_name' => $azure_user['surname'] ?? ''
                     ));
+                    
+                    // Update department from Azure AD
+                    if (!empty($azure_user['department'])) {
+                        update_user_meta($wp_user->ID, 'department', sanitize_text_field($azure_user['department']));
+                    }
+                    
                     Azure_Logger::info("SSO: Updated existing mapped user '$email' with Azure AD data");
                 } else {
                     Azure_Logger::info("SSO: Preserved local data for mapped user '$email' (preserve_local_data enabled)");
@@ -374,6 +399,16 @@ class Azure_SSO_Sync {
                 'role' => $role_to_assign
             ));
             
+            // Map department from Azure AD to WordPress user meta
+            if (!empty($azure_user['department'])) {
+                update_user_meta($user_id, 'department', sanitize_text_field($azure_user['department']));
+            }
+            
+            // Store Azure AD jobTitle for reference (but don't auto-assign)
+            if (!empty($azure_user['jobTitle'])) {
+                update_user_meta($user_id, 'azure_job_title', sanitize_text_field($azure_user['jobTitle']));
+            }
+            
             $wp_user = get_user_by('ID', $user_id);
             Azure_Logger::info("SSO: Created new user '$email' with role '$role_to_assign'");
             
@@ -389,6 +424,17 @@ class Azure_SSO_Sync {
                     'first_name' => $azure_user['givenName'] ?? '',
                     'last_name' => $azure_user['surname'] ?? ''
                 ));
+                
+                // Update department from Azure AD
+                if (!empty($azure_user['department'])) {
+                    update_user_meta($wp_user->ID, 'department', sanitize_text_field($azure_user['department']));
+                }
+                
+                // Store Azure AD jobTitle for reference (but don't auto-assign)
+                if (!empty($azure_user['jobTitle'])) {
+                    update_user_meta($wp_user->ID, 'azure_job_title', sanitize_text_field($azure_user['jobTitle']));
+                }
+                
                 Azure_Logger::info("SSO: Updated existing user '$email' with Azure AD data");
             } else {
                 Azure_Logger::info("SSO: Preserved local data for existing user '$email' (preserve_local_data enabled)");
@@ -509,5 +555,165 @@ class Azure_SSO_Sync {
             'recent_logins' => intval($recent_logins),
             'last_sync' => get_option('azure_sso_last_sync', 'Never')
         );
+    }
+    
+    /**
+     * AJAX handler to get all Azure AD users for exclusion dropdown
+     */
+    public function ajax_get_all_ad_users() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized access');
+        }
+        
+        try {
+            $credentials = Azure_Settings::get_credentials('sso');
+            
+            if (empty($credentials['client_id']) || empty($credentials['client_secret'])) {
+                wp_send_json_error('SSO credentials not configured');
+            }
+            
+            // Get access token
+            $access_token = $this->get_app_access_token($credentials);
+            
+            if (!$access_token) {
+                wp_send_json_error('Failed to get access token');
+            }
+            
+            // Get all users from Azure AD
+            $azure_users = $this->get_azure_users($access_token);
+            
+            if (!$azure_users) {
+                wp_send_json_error('Failed to retrieve users from Azure AD');
+            }
+            
+            // Format users for dropdown
+            $formatted_users = array();
+            foreach ($azure_users as $user) {
+                $formatted_users[] = array(
+                    'id' => $user['id'],
+                    'displayName' => $user['displayName'] ?? 'Unknown',
+                    'mail' => $user['mail'] ?? '',
+                    'userPrincipalName' => $user['userPrincipalName'] ?? ''
+                );
+            }
+            
+            // Sort by display name
+            usort($formatted_users, function($a, $b) {
+                return strcasecmp($a['displayName'], $b['displayName']);
+            });
+            
+            wp_send_json_success(array(
+                'users' => $formatted_users,
+                'count' => count($formatted_users)
+            ));
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('SSO: Failed to get AD users for exclusion dropdown - ' . $e->getMessage());
+            wp_send_json_error('Error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * AJAX handler to add user to exclusion list
+     */
+    public function ajax_add_user_to_exclusion() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized access');
+        }
+        
+        $user_id = sanitize_text_field($_POST['user_id'] ?? '');
+        $display_name = sanitize_text_field($_POST['display_name'] ?? '');
+        $email = sanitize_email($_POST['email'] ?? '');
+        
+        if (empty($user_id)) {
+            wp_send_json_error('User ID is required');
+        }
+        
+        // Get current exclusion list
+        $excluded_users = get_option('azure_sso_excluded_users', array());
+        
+        // Check if already excluded
+        if (isset($excluded_users[$user_id])) {
+            wp_send_json_error('User is already in the exclusion list');
+        }
+        
+        // Add to exclusion list
+        $added_at = current_time('mysql');
+        $excluded_users[$user_id] = array(
+            'display_name' => $display_name,
+            'email' => $email,
+            'added_at' => $added_at,
+            'added_by' => get_current_user_id()
+        );
+        
+        update_option('azure_sso_excluded_users', $excluded_users);
+        
+        Azure_Logger::info("SSO: User '{$display_name}' ({$email}) added to exclusion list by user " . get_current_user_id());
+        
+        wp_send_json_success(array(
+            'message' => 'User added to exclusion list',
+            'added_at' => date('M j, Y g:i A', strtotime($added_at))
+        ));
+    }
+    
+    /**
+     * AJAX handler to remove user from exclusion list
+     */
+    public function ajax_remove_user_from_exclusion() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized access');
+        }
+        
+        $user_id = sanitize_text_field($_POST['user_id'] ?? '');
+        
+        if (empty($user_id)) {
+            wp_send_json_error('User ID is required');
+        }
+        
+        // Get current exclusion list
+        $excluded_users = get_option('azure_sso_excluded_users', array());
+        
+        // Check if user is in the list
+        if (!isset($excluded_users[$user_id])) {
+            wp_send_json_error('User is not in the exclusion list');
+        }
+        
+        $removed_user = $excluded_users[$user_id];
+        unset($excluded_users[$user_id]);
+        
+        update_option('azure_sso_excluded_users', $excluded_users);
+        
+        Azure_Logger::info("SSO: User '{$removed_user['display_name']}' ({$removed_user['email']}) removed from exclusion list by user " . get_current_user_id());
+        
+        wp_send_json_success(array(
+            'message' => 'User removed from exclusion list'
+        ));
+    }
+    
+    /**
+     * Check if a user is in the exclusion list
+     * 
+     * @param string $azure_user_id The Azure AD user ID
+     * @param string $email The user's email (fallback check)
+     * @return bool True if user is excluded
+     */
+    public static function is_user_excluded($azure_user_id, $email = '') {
+        $excluded_users = get_option('azure_sso_excluded_users', array());
+        
+        // Check by Azure user ID
+        if (isset($excluded_users[$azure_user_id])) {
+            return true;
+        }
+        
+        // Also check by email as fallback
+        if (!empty($email)) {
+            foreach ($excluded_users as $excluded) {
+                if (isset($excluded['email']) && strtolower($excluded['email']) === strtolower($email)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 }

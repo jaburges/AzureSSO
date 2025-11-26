@@ -24,12 +24,14 @@ if (!empty($calendar_user_email) && class_exists('Azure_Calendar_Auth')) {
 
 // Get calendars from the shared mailbox if authenticated
 $mailbox_calendars = array();
-if ($calendar_authenticated && !empty($calendar_mailbox_email) && class_exists('Azure_Calendar_GraphAPI')) {
+if ($calendar_authenticated && !empty($calendar_user_email) && !empty($calendar_mailbox_email) && class_exists('Azure_Calendar_GraphAPI')) {
     try {
-    $graph_api = new Azure_Calendar_GraphAPI();
-        $mailbox_calendars = $graph_api->get_user_calendars($calendar_mailbox_email);
+        $graph_api = new Azure_Calendar_GraphAPI();
+        // Use authenticated user's token to access mailbox's calendars
+        $mailbox_calendars = $graph_api->get_mailbox_calendars($calendar_user_email, $calendar_mailbox_email);
     } catch (Exception $e) {
         // Silently handle error
+        Azure_Logger::error('Calendar Page: Failed to get mailbox calendars - ' . $e->getMessage());
         $mailbox_calendars = array();
     }
 }
@@ -87,7 +89,7 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                                id="calendar_embed_user_email" 
                                name="calendar_embed_user_email" 
                                value="<?php echo esc_attr($calendar_user_email); ?>"
-                               placeholder="jamie@wilderptsa.net" 
+                               placeholder="admin@wilderptsa.net" 
                                class="regular-text">
                         <p class="description">Your Microsoft 365 email address (the account you'll sign in with)</p>
                     </td>
@@ -415,16 +417,30 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                     <h4>Full Calendar Display</h4>
                     <code>[azure_calendar id="calendar_id" view="month" height="600px"]</code>
                     
-                    <h5>Parameters:</h5>
+                    <h5>Basic Parameters:</h5>
                     <ul>
                         <li><code>id</code> - Required. The calendar ID from above</li>
+                        <li><code>email</code> - Shared mailbox email (e.g., calendar@domain.com)</li>
                         <li><code>view</code> - month, week, day, list (default: month)</li>
                         <li><code>height</code> - CSS height value (default: 600px)</li>
                         <li><code>width</code> - CSS width value (default: 100%)</li>
                         <li><code>timezone</code> - Override default timezone</li>
-                        <li><code>max_events</code> - Maximum events to show</li>
+                        <li><code>max_events</code> - Maximum events to show (default: 100)</li>
                         <li><code>show_weekends</code> - true/false (default: true)</li>
+                        <li><code>first_day</code> - 0 = Sunday, 1 = Monday (default: 0)</li>
+                        <li><code>time_format</code> - 12h or 24h (default: 24h)</li>
                     </ul>
+                    
+                    <h5>Time Range Parameters (for week/day views):</h5>
+                    <ul>
+                        <li><code>slot_min_time</code> - Start time for day/week views (default: 08:00:00)</li>
+                        <li><code>slot_max_time</code> - End time for day/week views (default: 18:00:00)</li>
+                        <li><code>slot_duration</code> - Duration of each time slot (default: 00:30:00)</li>
+                    </ul>
+                    
+                    <h5>Example with Time Range:</h5>
+                    <code>[azure_calendar email="calendar@domain.com" id="calendar_id" view="week" slot_min_time="08:00:00" slot_max_time="18:00:00"]</code>
+                    <p class="description">This limits the week view to show only 8am - 6pm, hiding empty early morning and late evening hours.</p>
                 </div>
                 
                 <div class="shortcode-example">
@@ -434,12 +450,14 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                     <h5>Parameters:</h5>
                     <ul>
                         <li><code>id</code> - Required. The calendar ID</li>
+                        <li><code>email</code> - Shared mailbox email (e.g., calendar@domain.com)</li>
                         <li><code>limit</code> - Number of events to show (default: 10)</li>
                         <li><code>format</code> - list, grid, compact (default: list)</li>
                         <li><code>upcoming_only</code> - true/false (default: true)</li>
                         <li><code>show_dates</code> - true/false (default: true)</li>
                         <li><code>show_times</code> - true/false (default: true)</li>
                         <li><code>show_location</code> - true/false (default: true)</li>
+                        <li><code>show_description</code> - true/false (default: false)</li>
                     </ul>
                 </div>
             </div>
@@ -647,6 +665,30 @@ jQuery(document).ready(function($) {
                 alert('✅ Timezone saved successfully!');
             } else {
                 alert('❌ Failed to save timezone: ' + (response.data || 'Unknown error'));
+            }
+        });
+    });
+    
+    // Save calendar settings (for the calendar card "Save Calendar Settings" button)
+    $('.save-calendar-settings').click(function() {
+        var calendarId = $(this).data('calendar-id');
+        var timezone = $('.calendar-timezone-select[data-calendar-id="' + calendarId + '"]').val();
+        var button = $(this);
+        
+        button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Saving...');
+        
+        $.post(ajaxurl, {
+            action: 'azure_save_calendar_timezone',
+            calendar_id: calendarId,
+            timezone: timezone,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-saved"></span> Save Calendar Settings');
+            
+            if (response.success) {
+                alert('✅ Calendar settings saved successfully!');
+            } else {
+                alert('❌ Failed to save settings: ' + (response.data || 'Unknown error'));
             }
         });
     });
@@ -1249,5 +1291,15 @@ body.admin-color-midnight .calendar-item {
     background: #fff !important;
     color: #333 !important;
     border-color: #ccd0d4 !important;
+}
+
+/* Spinner animation for dashicons */
+.dashicons.spin {
+    animation: dashicons-spin 1s linear infinite;
+}
+
+@keyframes dashicons-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 </style>

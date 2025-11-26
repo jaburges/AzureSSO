@@ -296,7 +296,7 @@ class Azure_Admin {
         
         // Common credentials (only update if on main page or if explicitly posted)
         if ($current_page === 'azure-plugin' || isset($_POST['use_common_credentials'])) {
-        $settings['use_common_credentials'] = isset($_POST['use_common_credentials']);
+            $settings['use_common_credentials'] = isset($_POST['use_common_credentials']);
         }
         if (isset($_POST['common_client_id'])) {
             $settings['common_client_id'] = sanitize_text_field($_POST['common_client_id']);
@@ -309,6 +309,14 @@ class Azure_Admin {
         } else if ($current_page === 'azure-plugin') {
             // Set default tenant ID only on main page if not provided
             $settings['common_tenant_id'] = 'common';
+        }
+        
+        // Debug settings (only update from main page)
+        if ($current_page === 'azure-plugin') {
+            $settings['debug_mode'] = isset($_POST['debug_mode']);
+            $settings['debug_modules'] = isset($_POST['debug_modules']) 
+                ? array_map('sanitize_text_field', $_POST['debug_modules']) 
+                : array();
         }
         
         // Module-specific settings based on which page we're on
@@ -1465,9 +1473,9 @@ class Azure_Admin {
         }
         
         try {
-            $settings = Azure_Settings::get_all_settings();
-            $settings['calendar_timezone_' . $calendar_id] = $timezone;
-            Azure_Settings::save_all_settings($settings);
+            Azure_Settings::update_settings(array(
+                'calendar_timezone_' . $calendar_id => $timezone
+            ));
             
             Azure_Logger::info(
                 'Calendar Embed: Timezone saved', 
@@ -1522,14 +1530,15 @@ class Azure_Admin {
             }
             
             // Format events for display
+            // Note: Events are already processed by the GraphAPI class
             $formatted_events = array();
             foreach ($events as $event) {
                 $formatted_events[] = array(
-                    'title' => $event['subject'] ?? 'Untitled Event',
-                    'start' => $event['start']['dateTime'] ?? '',
-                    'end' => $event['end']['dateTime'] ?? '',
-                    'location' => $event['location']['displayName'] ?? '',
-                    'description' => $event['bodyPreview'] ?? ''
+                    'title' => $event['title'] ?? 'Untitled Event',
+                    'start' => $event['start'] ?? '',
+                    'end' => $event['end'] ?? '',
+                    'location' => $event['location'] ?? '',
+                    'description' => $event['description'] ?? ''
                 );
             }
             

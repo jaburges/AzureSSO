@@ -2,6 +2,59 @@
  * Azure Plugin - PTA Roles Frontend Styles
  */
 
+/* Leadership Structure Layout */
+.pta-leadership-structure {
+    margin: 20px 0;
+}
+
+.pta-leader-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.pta-leader-section .pta-role-item {
+    max-width: 280px;
+    min-width: 250px;
+    text-align: center;
+}
+
+.pta-leader-section .pta-role-item.pta-leader-card {
+    border-top: 4px solid #007cba;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.pta-leader-section .pta-role-photo {
+    margin: 0 auto 15px auto;
+}
+
+.pta-leader-section .pta-role-photo img.pta-user-avatar {
+    border-width: 4px;
+}
+
+.pta-leader-section .pta-role-photo.pta-photo-placeholder {
+    margin: 0 auto 15px auto;
+}
+
+.pta-leader-section .pta-role-name {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.pta-leader-section .pta-role-assigned-names {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.pta-leader-section .pta-role-status {
+    position: relative;
+    top: auto;
+    right: auto;
+    margin-top: 15px;
+    display: inline-block;
+}
+
 /* Roles Directory */
 .pta-roles-directory {
     display: grid;
@@ -220,6 +273,78 @@
     color: #721c24;
 }
 
+/* User Photo Styles */
+.pta-role-photo {
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.pta-role-photo img.pta-user-avatar {
+    border-radius: 50%;
+    border: 3px solid #e1e1e1;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.pta-role-photo.pta-photo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    margin: 0 auto 15px auto;
+}
+
+.pta-role-photo .pta-initials {
+    color: #fff;
+    font-size: 24px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.pta-role-assigned-names {
+    font-size: 14px;
+    color: #555;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+/* Assignments list with photos */
+.pta-assignments-list.with-photos {
+    padding-left: 0;
+}
+
+.pta-assignments-list.with-photos .pta-assignment-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-left: none;
+    padding: 10px 15px;
+}
+
+.pta-assignment-photo img {
+    border-radius: 50%;
+    border: 2px solid #e1e1e1;
+}
+
+.pta-assignment-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.pta-assignment-email {
+    color: #666;
+    font-size: 13px;
+}
+
+.pta-assignment-email a {
+    color: #007cba;
+    text-decoration: none;
+}
+
+.pta-assignment-email a:hover {
+    text-decoration: underline;
+}
+
 /* Role Card */
 .pta-role-card {
     background: #fff;
@@ -228,6 +353,20 @@
     padding: 25px;
     max-width: 400px;
     margin: 20px 0;
+}
+
+.pta-role-card .pta-role-photo {
+    margin-bottom: 20px;
+}
+
+.pta-role-card .pta-role-photo img.pta-user-avatar {
+    width: 100px;
+    height: 100px;
+}
+
+.pta-role-card .pta-role-photo.pta-photo-placeholder {
+    width: 100px;
+    height: 100px;
 }
 
 .pta-role-title {
@@ -553,6 +692,7 @@
         font-size: 20px;
     }
 }
+
 
 
 

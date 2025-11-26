@@ -171,10 +171,6 @@ if (class_exists('Azure_PTA_Database')) {
                     Test Sync Connection
                 </button>
                 
-                <button type="button" class="button reimport-default-tables" style="margin-left: 20px; background-color: #d63638; border-color: #d63638; color: white;">
-                    <span class="dashicons dashicons-database-import"></span>
-                    Reimport Default Tables
-                </button>
             </div>
         </div>
         
@@ -302,18 +298,41 @@ if (class_exists('Azure_PTA_Database')) {
         <?php if (!empty($sync_stats) && ($sync_stats['pending'] > 0 || $sync_stats['failed'] > 0)): ?>
         <div class="sync-queue-section">
             <h2>Sync Queue Status</h2>
+            <p class="description">The sync queue contains jobs to sync PTA role changes to Azure AD. These are processed automatically every 5 minutes.</p>
             
             <?php if ($sync_stats['failed'] > 0): ?>
-            <div class="notice notice-error">
-                <p><strong><?php echo $sync_stats['failed']; ?> sync jobs have failed.</strong> <a href="#" id="view-failed-syncs">View failed syncs</a></p>
+            <div class="notice notice-error inline" style="margin: 10px 0;">
+                <p><strong><?php echo $sync_stats['failed']; ?> sync jobs have failed.</strong></p>
             </div>
             <?php endif; ?>
             
             <?php if ($sync_stats['pending'] > 0): ?>
-            <div class="notice notice-info">
-                <p><strong><?php echo $sync_stats['pending']; ?> sync jobs are pending.</strong> These will be processed automatically.</p>
+            <div class="notice notice-warning inline" style="margin: 10px 0;">
+                <p><strong><?php echo $sync_stats['pending']; ?> sync jobs are pending.</strong></p>
             </div>
             <?php endif; ?>
+            
+            <div class="sync-queue-actions" style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="button button-primary process-sync-queue">
+                    <span class="dashicons dashicons-update"></span>
+                    Process Queue Now
+                </button>
+                <button type="button" class="button clear-pending-queue" data-type="pending">
+                    <span class="dashicons dashicons-dismiss"></span>
+                    Clear Pending (<?php echo intval($sync_stats['pending']); ?>)
+                </button>
+                <?php if ($sync_stats['failed'] > 0): ?>
+                <button type="button" class="button clear-failed-queue" data-type="failed">
+                    <span class="dashicons dashicons-trash"></span>
+                    Clear Failed (<?php echo intval($sync_stats['failed']); ?>)
+                </button>
+                <?php endif; ?>
+            </div>
+            
+            <p class="description" style="margin-top: 10px; font-size: 12px; color: #666;">
+                <strong>Note:</strong> Pending sync jobs are for syncing WordPress role changes TO Azure AD (e.g., updating job titles). 
+                If you're not using Azure AD write-back, you can safely clear these pending items.
+            </p>
         </div>
         <?php endif; ?>
     </div>
@@ -358,6 +377,41 @@ if (class_exists('Azure_PTA_Database')) {
                 
                 <div class="form-actions">
                     <button type="submit" class="button button-primary">Assign Role</button>
+                    <button type="button" class="button modal-cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Unassign Role Modal -->
+<div id="unassign-role-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Unassign Roles from User</h2>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="unassign-user-info" style="margin-bottom: 15px;"></p>
+            <form id="unassign-role-form">
+                <input type="hidden" id="unassign-user-id" name="user_id">
+                
+                <div class="form-field">
+                    <label><strong>Select roles to unassign:</strong></label>
+                    <div id="unassign-roles-list" style="margin-top: 10px; max-height: 300px; overflow-y: auto;">
+                        <!-- Roles will be loaded dynamically -->
+                        <p class="loading">Loading roles...</p>
+                    </div>
+                    <div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+                        <label>
+                            <input type="checkbox" id="unassign-select-all"> 
+                            <strong>Select All</strong>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="submit" class="button button-primary button-link-delete">Unassign Selected Roles</button>
                     <button type="button" class="button modal-cancel">Cancel</button>
                 </div>
             </form>
@@ -452,15 +506,31 @@ if (class_exists('Azure_PTA_Database')) {
     <div class="shortcode-examples">
         <div class="shortcode-example">
             <h4>Roles Directory</h4>
-            <code>[pta-roles-directory department="communications" description=true status="open" columns=3]</code>
+            <code>[pta-roles-directory department="communications" show_image="true" columns="3" layout="grid"]</code>
             <p><strong>Parameters:</strong></p>
             <ul>
                 <li><strong>department:</strong> "communications", "events", "volunteers", etc. (default: all)</li>
                 <li><strong>description:</strong> true/false - Show role descriptions (default: false)</li>
                 <li><strong>status:</strong> "all", "open", "filled", "partial" - Filter by status (default: all)</li>
-                <li><strong>columns:</strong> 1-6 - Number of columns for grid layout (default: 2)</li>
+                <li><strong>columns:</strong> 1-5 - Number of columns for grid layout (default: 3)</li>
                 <li><strong>show_count:</strong> true/false - Show position counts (default: true)</li>
-                <li><strong>layout:</strong> "grid", "list", "cards" - Layout style (default: grid)</li>
+                <li><strong>layout:</strong> "grid", "list", "cards", "team-cards" - Layout style (default: grid)</li>
+                <li><strong>show_image:</strong> true/false - Show WordPress profile photos (default: false)</li>
+                <li><strong>photo_size:</strong> Number - Photo size in pixels (default: 80)</li>
+                <li><strong>show_contact:</strong> true/false - Show email links (default: true)</li>
+            </ul>
+        </div>
+        
+        <div class="shortcode-example">
+            <h4>Leadership Structure Layout</h4>
+            <code>[pta-roles-directory leadership_structure="true" leader_role="president" show_image="true" columns="4"]</code>
+            <p>Displays the leader role centered above all other roles in a hierarchical layout.</p>
+            <p><strong>Parameters:</strong></p>
+            <ul>
+                <li><strong>leadership_structure:</strong> true/false - Enable hierarchy layout (default: false)</li>
+                <li><strong>leader_role:</strong> Role slug/name to show as leader (default: "president")</li>
+                <li><strong>leader_photo_size:</strong> Leader photo size in pixels (default: 120)</li>
+                <li>Plus all standard Roles Directory parameters</li>
             </ul>
         </div>
         
@@ -489,13 +559,15 @@ if (class_exists('Azure_PTA_Database')) {
         
         <div class="shortcode-example">
             <h4>Role Card</h4>
-            <code>[pta-role-card role="president" show_contact=true show_assignments=true]</code>
+            <code>[pta-role-card role="president" show_image="true" photo_size="100" show_contact="true"]</code>
             <p><strong>Parameters:</strong></p>
             <ul>
                 <li><strong>role:</strong> Required - Role slug or name</li>
                 <li><strong>show_contact:</strong> true/false - Show contact information (default: false)</li>
                 <li><strong>show_description:</strong> true/false - Show role description (default: true)</li>
                 <li><strong>show_assignments:</strong> true/false - Show current assignments (default: true)</li>
+                <li><strong>show_image:</strong> true/false - Show WordPress profile photos (default: false)</li>
+                <li><strong>photo_size:</strong> Number - Photo size in pixels (default: 80)</li>
             </ul>
         </div>
         
@@ -575,6 +647,10 @@ jQuery(document).ready(function($) {
         showDepartmentsModal();
     });
     
+    // Initialize event handlers for elements that exist on page load
+    bindDepartmentsActions();
+    bindRolesActions();
+    
     // Test sync connection
     $('.test-pta-sync').click(function() {
         var button = $(this);
@@ -627,15 +703,111 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Handle assign role buttons
-    $('.assign-role-btn').click(function() {
+    // Import Roles from Azure AD (One-time pull)
+    $('.import-roles-from-azure').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+        
+        if (!confirm('📥 One-Time Pull from Azure AD\n\nThis will:\n✓ Fetch all users from Azure AD\n✓ Read their jobTitle field (comma-separated roles)\n✓ Assign matching PTA roles to WordPress users\n\nNote: This is a ONE-TIME import. After this, WordPress will be the source of truth and changes will sync TO Azure AD.\n\nContinue?')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Importing from Azure...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_import_roles_from_azure',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+            
+            if (response.success) {
+                var message = '✅ Import from Azure AD complete!\n\n' + response.data.message;
+                
+                if (response.data.errors && response.data.errors.length > 0) {
+                    message += '\n\n⚠️ First few warnings:\n' + response.data.errors.join('\n');
+                }
+                
+                alert(message);
+                // Refresh the page to show updated assignments
+                window.location.reload();
+            } else {
+                alert('❌ Import failed:\n\n' + response.data);
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            alert('❌ Import failed:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
+        });
+    });
+    
+    // Process Sync Queue
+    $('.process-sync-queue').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+        
+        if (!confirm('This will process pending sync queue items.\n\nNote: Since Azure AD write-back may not be configured, items will be marked as completed.\n\nContinue?')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Processing...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_process_sync_queue',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+            
+            if (response.success) {
+                alert('✅ ' + response.data.message + '\n\nPending before: ' + response.data.pending_before + '\nPending after: ' + response.data.pending_after);
+                window.location.reload();
+            } else {
+                alert('❌ Processing failed: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            alert('❌ Processing failed:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
+        });
+    });
+    
+    // Clear Sync Queue (Pending or Failed)
+    $('.clear-pending-queue, .clear-failed-queue').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+        var clearType = button.data('type');
+        var typeLabel = clearType === 'pending' ? 'pending' : 'failed';
+        
+        if (!confirm('Are you sure you want to clear all ' + typeLabel + ' sync queue items?\n\nThis action cannot be undone.')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active"></span> Clearing...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_clear_sync_queue',
+            clear_type: clearType,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+            
+            if (response.success) {
+                alert('✅ ' + response.data.message + '\n\nRemaining items: ' + response.data.remaining);
+                window.location.reload();
+            } else {
+                alert('❌ Clear failed: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            alert('❌ Clear failed:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
+        });
+    });
+    
+    // Event handlers for buttons in the static unassigned users section
+    $('.unassigned-users-section .assign-role-btn').on('click', function() {
         var userId = $(this).data('user-id');
         $('#assignment-user-id').val(userId);
         $('#role-assignment-modal').show();
     });
     
-    // Handle delete user buttons
-    $('.delete-user-btn').click(function() {
+    $('.unassigned-users-section .delete-user-btn').on('click', function() {
         var userId = $(this).data('user-id');
         var userName = $(this).data('user-name');
         
@@ -654,6 +826,7 @@ jQuery(document).ready(function($) {
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
             if (response.success) {
+                alert('✅ User deleted successfully!');
                 userDiv.fadeOut(function() {
                     userDiv.remove();
                 });
@@ -661,8 +834,15 @@ jQuery(document).ready(function($) {
                 alert('❌ Failed to delete user: ' + (response.data || 'Unknown error'));
                 button.prop('disabled', false).text('Delete User');
             }
+        }).fail(function(xhr, status, error) {
+            alert('❌ Network error: ' + error);
+            button.prop('disabled', false).text('Delete User');
+            console.error('Delete user AJAX error:', xhr, status, error);
         });
     });
+    
+    // Note: Assign role, delete user, and edit user buttons are now handled 
+    // by delegated event handlers in bindPeopleActions() for dynamically created elements
     
     // Handle role assignment form
     $('#role-assignment-form').submit(function(e) {
@@ -679,7 +859,7 @@ jQuery(document).ready(function($) {
         }, function(response) {
             if (response.success) {
                 alert('✅ Role assigned successfully!');
-                $('#role-assignment-modal').hide();
+                $('#role-assignment-modal').css('z-index', '').hide();
                 location.reload();
             } else {
                 alert('❌ Failed to assign role: ' + (response.data || 'Unknown error'));
@@ -689,7 +869,9 @@ jQuery(document).ready(function($) {
     
     // Modal controls
     $('.modal-close, .modal-cancel').click(function() {
-        $(this).closest('.modal').hide();
+        var modal = $(this).closest('.modal');
+        // Reset z-index when closing
+        modal.css('z-index', '').hide();
     });
     
     // Handle refresh buttons in modals
@@ -807,6 +989,10 @@ jQuery(document).ready(function($) {
                         '<em style="color: #999;">Never</em>';
                     
                     var actions = '<button type="button" class="button button-small assign-role-btn" data-user-id="' + user.ID + '">Assign Role</button>';
+                    // Show Unassign Role button only if user has roles
+                    if (!isUnassigned && user.roles && user.roles.length > 0) {
+                        actions += ' <button type="button" class="button button-small unassign-role-btn" data-user-id="' + user.ID + '" data-user-name="' + user.display_name + '">Unassign Role</button>';
+                    }
                     if (isUnassigned) {
                         actions += ' <button type="button" class="button button-small button-link-delete delete-user-btn" data-user-id="' + user.ID + '" data-user-name="' + user.display_name + '">Delete</button>';
                     }
@@ -857,7 +1043,8 @@ jQuery(document).ready(function($) {
                 bulkRoleSelect.empty().append('<option value="">-- Select Role --</option>');
                 
                 response.data.forEach(function(role) {
-                    var available = role.max_occupants - (role.assignments || 0);
+                    var assignedCount = role.assigned_count || 0;
+                    var available = role.max_occupants - assignedCount;
                     var statusText = available > 0 ? ' (' + available + ' available)' : ' (FULL)';
                     var disabled = available <= 0 ? 'disabled' : '';
                     bulkRoleSelect.append('<option value="' + role.id + '" ' + disabled + '>' + role.name + statusText + '</option>');
@@ -1031,14 +1218,18 @@ jQuery(document).ready(function($) {
                 var departments = [];
                 
                 response.data.forEach(function(role) {
-                    var statusClass = role.assignments >= role.max_occupants ? 'filled' : (role.assignments > 0 ? 'partial' : 'open');
-                    var statusText = role.assignments >= role.max_occupants ? 'Filled' : (role.assignments > 0 ? 'Partially Filled' : 'Open');
+                    // Use assigned_count (number) instead of assignments (array)
+                    var assignedCount = role.assigned_count || 0;
+                    var maxOccupants = role.max_occupants || 1;
+                    
+                    var statusClass = assignedCount >= maxOccupants ? 'filled' : (assignedCount > 0 ? 'partial' : 'open');
+                    var statusText = assignedCount >= maxOccupants ? 'Filled' : (assignedCount > 0 ? 'Partially Filled' : 'Open');
                     
                     var actions = '<button type="button" class="button button-small view-role-assignments" data-role-id="' + role.id + '">View Assignments</button>';
                     actions += ' <button type="button" class="button button-small edit-role-btn" data-role-id="' + role.id + '">Edit</button>';
                     actions += ' <button type="button" class="button button-small button-link-delete delete-role-btn" data-role-id="' + role.id + '">Delete</button>';
                     
-                    var row = $('<tr><td><strong>' + role.name + '</strong><br><small>' + (role.description || '') + '</small></td><td>' + role.department_name + '</td><td>' + role.assignments + ' / ' + role.max_occupants + '</td><td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td><td>' + actions + '</td></tr>');
+                    var row = $('<tr><td><strong>' + role.name + '</strong><br><small>' + (role.description || '') + '</small></td><td>' + role.department_name + '</td><td>' + assignedCount + ' / ' + maxOccupants + '</td><td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td><td>' + actions + '</td></tr>');
                     tableBody.append(row);
                     
                     // Collect departments for filter
@@ -1117,7 +1308,8 @@ jQuery(document).ready(function($) {
                 roleSelect.empty().append('<option value="">-- Select Role --</option>');
                 
                 response.data.forEach(function(role) {
-                    var available = role.max_occupants - role.assignments;
+                    var assignedCount = role.assigned_count || 0;
+                    var available = role.max_occupants - assignedCount;
                     var disabled = available <= 0 ? 'disabled' : '';
                     roleSelect.append('<option value="' + role.id + '" ' + disabled + '>' + role.name + ' (' + available + ' available)</option>');
                 });
@@ -1159,16 +1351,56 @@ jQuery(document).ready(function($) {
             alert('Add New Person functionality would be implemented here.\nNote: Users are typically created through WordPress admin or SSO.');
         });
         
+        $(document).on('click', '.assign-role-btn', function() {
+            var userId = $(this).data('user-id');
+            $('#assignment-user-id').val(userId);
+            // Set higher z-index to appear in front of other modals
+            $('#role-assignment-modal').css('z-index', '10000').show();
+        });
+        
+        // Unassign role button handler
+        $(document).on('click', '.unassign-role-btn', function() {
+            var userId = $(this).data('user-id');
+            var userName = $(this).data('user-name');
+            showUnassignRoleModal(userId, userName);
+        });
+        
         $(document).on('click', '.delete-user-btn', function() {
             var userId = $(this).data('user-id');
-            if (confirm('Are you sure you want to delete this user? This will also remove them from Azure AD.')) {
-                deleteUser(userId);
+            var userName = $(this).data('user-name');
+            
+            if (!confirm('Are you sure you want to delete ' + userName + '?\n\nThis will:\n- Remove them from WordPress\n- Remove them from Azure AD\n- Revoke all access\n\nThis action cannot be undone.')) {
+                return;
             }
+            
+            var button = $(this);
+            var row = button.closest('tr');
+            
+            button.prop('disabled', true).text('Deleting...');
+            
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_delete_user',
+                user_id: userId,
+                nonce: azure_plugin_ajax.nonce
+            }, function(response) {
+                if (response.success) {
+                    alert('✅ User deleted successfully!');
+                    row.fadeOut(function() {
+                        row.remove();
+                    });
+                } else {
+                    alert('❌ Failed to delete user: ' + (response.data || 'Unknown error'));
+                    button.prop('disabled', false).text('Delete');
+                }
+            }).fail(function(xhr, status, error) {
+                alert('❌ Network error: ' + error);
+                button.prop('disabled', false).text('Delete');
+                console.error('Delete user AJAX error:', xhr, status, error);
+            });
         });
         
         $(document).on('click', '.edit-user-btn', function() {
             var userId = $(this).data('user-id');
-            // This would show user details and role assignments
             showUserDetails(userId);
         });
     }
@@ -1185,6 +1417,11 @@ jQuery(document).ready(function($) {
         
         $(document).on('click', '#add-role-btn', function() {
             showAddRoleForm();
+        });
+        
+        $(document).on('click', '.view-role-assignments', function() {
+            var roleId = $(this).data('role-id');
+            showRoleAssignments(roleId);
         });
         
         $(document).on('click', '.edit-role-btn', function() {
@@ -1208,6 +1445,18 @@ jQuery(document).ready(function($) {
         
         $(document).on('click', '#auto-assign-all-vps', function() {
             assignAllVPs();
+        });
+        
+        // Assign VP button handler
+        $(document).on('click', '.assign-vp-btn', function() {
+            var deptId = $(this).data('dept-id');
+            showAssignVPModal(deptId);
+        });
+        
+        // View Details button on main page department cards
+        $(document).on('click', '.view-dept-details', function() {
+            var deptId = $(this).data('dept-id');
+            showDepartmentDetails(deptId);
         });
         
         $(document).on('click', '.edit-dept-btn', function() {
@@ -1384,21 +1633,835 @@ jQuery(document).ready(function($) {
         });
     }
     
+    // Show Unassign Role Modal
+    function showUnassignRoleModal(userId, userName) {
+        $('#unassign-user-id').val(userId);
+        $('#unassign-user-info').html('Unassigning roles from: <strong>' + userName + '</strong>');
+        $('#unassign-roles-list').html('<p class="loading">Loading roles...</p>');
+        $('#unassign-select-all').prop('checked', false);
+        
+        // Set higher z-index to appear in front of other modals
+        $('#unassign-role-modal').css('z-index', '10001').show();
+        
+        // Fetch user's current role assignments
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_assignments',
+            user_id: userId,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (response.success && response.data && response.data.length > 0) {
+                var rolesHtml = '';
+                response.data.forEach(function(assignment) {
+                    var primaryBadge = assignment.is_primary ? ' <span style="color: #0073aa; font-weight: bold;">(Primary)</span>' : '';
+                    rolesHtml += '<div class="unassign-role-item" style="padding: 8px; border-bottom: 1px solid #eee;">';
+                    rolesHtml += '<label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">';
+                    rolesHtml += '<input type="checkbox" class="unassign-role-checkbox" value="' + assignment.role_id + '" data-role-name="' + assignment.role_name + '">';
+                    rolesHtml += '<span><strong>' + assignment.role_name + '</strong>' + primaryBadge + '<br><small style="color: #666;">' + (assignment.department_name || 'No Department') + '</small></span>';
+                    rolesHtml += '</label>';
+                    rolesHtml += '</div>';
+                });
+                $('#unassign-roles-list').html(rolesHtml);
+            } else {
+                $('#unassign-roles-list').html('<p><em>This user has no role assignments.</em></p>');
+            }
+        }).fail(function() {
+            $('#unassign-roles-list').html('<p style="color: red;">Failed to load role assignments.</p>');
+        });
+    }
+    
+    // Handle select all checkbox for unassign
+    $('#unassign-select-all').on('change', function() {
+        var isChecked = $(this).prop('checked');
+        $('.unassign-role-checkbox').prop('checked', isChecked);
+    });
+    
+    // Handle unassign role form submission
+    $('#unassign-role-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var userId = $('#unassign-user-id').val();
+        var selectedRoles = [];
+        var selectedRoleNames = [];
+        
+        $('.unassign-role-checkbox:checked').each(function() {
+            selectedRoles.push($(this).val()); // This is now role_id
+            selectedRoleNames.push($(this).data('role-name'));
+        });
+        
+        if (selectedRoles.length === 0) {
+            alert('Please select at least one role to unassign.');
+            return;
+        }
+        
+        var confirmMsg = 'Are you sure you want to unassign the following role(s)?\n\n';
+        confirmMsg += selectedRoleNames.join('\n');
+        confirmMsg += '\n\nThis action cannot be undone.';
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        var submitBtn = $(this).find('button[type="submit"]');
+        var originalText = submitBtn.text();
+        submitBtn.prop('disabled', true).text('Unassigning...');
+        
+        // Process each role removal
+        var completed = 0;
+        var errors = [];
+        
+        selectedRoles.forEach(function(roleId) {
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_remove_assignment',
+                user_id: userId,
+                role_id: roleId,
+                nonce: azure_plugin_ajax.nonce
+            }, function(response) {
+                completed++;
+                if (!response.success) {
+                    errors.push(response.data || 'Unknown error');
+                }
+                
+                // Check if all requests completed
+                if (completed === selectedRoles.length) {
+                    submitBtn.prop('disabled', false).text(originalText);
+                    
+                    if (errors.length === 0) {
+                        alert('✅ Successfully unassigned ' + selectedRoles.length + ' role(s)!');
+                        $('#unassign-role-modal').hide().css('z-index', '');
+                        loadUsersList(); // Refresh the people list
+                    } else {
+                        alert('⚠️ Some roles could not be unassigned:\n\n' + errors.join('\n'));
+                        $('#unassign-role-modal').hide().css('z-index', '');
+                        loadUsersList();
+                    }
+                }
+            }).fail(function() {
+                completed++;
+                errors.push('Network error');
+                
+                if (completed === selectedRoles.length) {
+                    submitBtn.prop('disabled', false).text(originalText);
+                    alert('⚠️ Some roles could not be unassigned:\n\n' + errors.join('\n'));
+                    $('#unassign-role-modal').hide().css('z-index', '');
+                    loadUsersList();
+                }
+            });
+        });
+    });
+    
+    // Close unassign modal handlers
+    $('#unassign-role-modal .modal-close, #unassign-role-modal .modal-cancel').on('click', function() {
+        $('#unassign-role-modal').hide().css('z-index', '');
+    });
+    
     function showUserDetails(userId) {
-        alert('User details functionality would show detailed information and role assignments for user ID: ' + userId);
+        // Fetch and display user details and role assignments
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_assignments',
+            user_id: userId,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (response.success) {
+                var assignments = response.data;
+                var user = $('#users-table-body tr').find('[data-user-id="' + userId + '"]').closest('tr');
+                var userName = user.find('td:nth-child(2) strong').text();
+                var userEmail = user.find('td:nth-child(3)').text();
+                
+                var detailsHtml = '<div id="user-details-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3>User Details: ' + userName + '</h3><button type="button" class="modal-close">&times;</button></div><div class="modal-body">';
+                detailsHtml += '<p><strong>Email:</strong> ' + userEmail + '</p>';
+                detailsHtml += '<h4>Role Assignments:</h4>';
+                
+                if (assignments && assignments.length > 0) {
+                    detailsHtml += '<table class="wp-list-table widefat fixed striped"><thead><tr><th>Role</th><th>Department</th><th>Primary</th><th>Actions</th></tr></thead><tbody>';
+                    assignments.forEach(function(assignment) {
+                        var primaryBadge = assignment.is_primary ? '<span style="color: green;">✓ Primary</span>' : '';
+                        detailsHtml += '<tr><td>' + assignment.role_name + '</td><td>' + assignment.department_name + '</td><td>' + primaryBadge + '</td>';
+                        detailsHtml += '<td><button type="button" class="button button-small button-link-delete remove-assignment-btn" data-user-id="' + userId + '" data-role-id="' + assignment.role_id + '">Remove</button></td></tr>';
+                    });
+                    detailsHtml += '</tbody></table>';
+                } else {
+                    detailsHtml += '<p><em>No role assignments</em></p>';
+                }
+                
+                detailsHtml += '</div></div></div>';
+                $('body').append(detailsHtml);
+                $('#user-details-modal').show();
+                
+                // Bind close handler
+                $('.modal-close').on('click', function() {
+                    $('#user-details-modal').remove();
+                });
+                
+                // Bind remove assignment handler
+                $('.remove-assignment-btn').on('click', function() {
+                    var roleId = $(this).data('role-id');
+                    if (confirm('Remove this role assignment?')) {
+                        $.post(azure_plugin_ajax.ajax_url, {
+                            action: 'pta_remove_assignment',
+                            user_id: userId,
+                            role_id: roleId,
+                            nonce: azure_plugin_ajax.nonce
+                        }, function(removeResponse) {
+                            if (removeResponse.success) {
+                                alert('✅ Assignment removed successfully!');
+                                $('#user-details-modal').remove();
+                                loadUsersAndRoles(); // Refresh
+                            } else {
+                                alert('❌ Failed to remove assignment: ' + (removeResponse.data || 'Unknown error'));
+                            }
+                        });
+                    }
+                });
+            } else {
+                alert('❌ Failed to load user details: ' + (response.data || 'Unknown error'));
+            }
+        });
+    }
+    
+    function showRoleAssignments(roleId) {
+        // Fetch and display role assignments
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_assignments',
+            role_id: roleId,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (response.success) {
+                var assignments = response.data;
+                var roleRow = $('#roles-table-body tr').find('[data-role-id="' + roleId + '"]').closest('tr');
+                var roleName = roleRow.find('td:first strong').text();
+                
+                var detailsHtml = '<div id="role-assignments-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3>Assignments for: ' + roleName + '</h3><button type="button" class="modal-close">&times;</button></div><div class="modal-body">';
+                
+                if (assignments && assignments.length > 0) {
+                    detailsHtml += '<table class="wp-list-table widefat fixed striped"><thead><tr><th>User</th><th>Email</th><th>Primary</th><th>Actions</th></tr></thead><tbody>';
+                    assignments.forEach(function(assignment) {
+                        var primaryBadge = assignment.is_primary ? '<span style="color: green;">✓ Primary</span>' : '';
+                        detailsHtml += '<tr><td>' + assignment.display_name + '</td><td>' + assignment.user_email + '</td><td>' + primaryBadge + '</td>';
+                        detailsHtml += '<td><button type="button" class="button button-small button-link-delete remove-assignment-btn" data-user-id="' + assignment.user_id + '" data-role-id="' + roleId + '">Remove</button></td></tr>';
+                    });
+                    detailsHtml += '</tbody></table>';
+                } else {
+                    detailsHtml += '<p><em>No users assigned to this role</em></p>';
+                }
+                
+                detailsHtml += '</div></div></div>';
+                $('body').append(detailsHtml);
+                $('#role-assignments-modal').show();
+                
+                // Bind close handler
+                $('.modal-close').on('click', function() {
+                    $('#role-assignments-modal').remove();
+                });
+                
+                // Bind remove assignment handler
+                $('.remove-assignment-btn').on('click', function() {
+                    var userId = $(this).data('user-id');
+                    if (confirm('Remove this user from the role?')) {
+                        $.post(azure_plugin_ajax.ajax_url, {
+                            action: 'pta_remove_assignment',
+                            user_id: userId,
+                            role_id: roleId,
+                            nonce: azure_plugin_ajax.nonce
+                        }, function(removeResponse) {
+                            if (removeResponse.success) {
+                                alert('✅ Assignment removed successfully!');
+                                $('#role-assignments-modal').remove();
+                                loadRolesList(); // Refresh
+                            } else {
+                                alert('❌ Failed to remove assignment: ' + (removeResponse.data || 'Unknown error'));
+                            }
+                        });
+                    }
+                });
+            } else {
+                alert('❌ Failed to load role assignments: ' + (response.data || 'Unknown error'));
+            }
+        });
     }
     
     function showEditRoleForm(roleId) {
-        alert('Edit role functionality would show a form to edit role ID: ' + roleId);
+        // Remove any existing edit role modal first
+        $('#edit-role-form-modal').remove();
+        
+        // Fetch role data and departments in parallel
+        var roleData = null;
+        var departmentsData = null;
+        
+        // Get role data
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_roles',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('Failed to load role data');
+                return;
+            }
+            
+            // Find the role
+            roleData = response.data.find(function(r) { return r.id == roleId; });
+            if (!roleData) {
+                alert('Role not found');
+                return;
+            }
+            
+            // Check if we have both data sets
+            if (departmentsData !== null) {
+                renderEditRoleForm(roleData, departmentsData);
+            }
+        });
+        
+        // Get departments data
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_departments',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (response.success) {
+                departmentsData = response.data;
+                
+                // Check if we have both data sets
+                if (roleData !== null) {
+                    renderEditRoleForm(roleData, departmentsData);
+                }
+            }
+        });
+    }
+    
+    function renderEditRoleForm(role, departments) {
+        // Build department options HTML
+        var deptOptionsHtml = '<option value="">-- Select Department --</option>';
+        departments.forEach(function(dept) {
+            var selected = dept.id == role.department_id ? 'selected' : '';
+            deptOptionsHtml += '<option value="' + dept.id + '" ' + selected + '>' + dept.name + '</option>';
+        });
+        deptOptionsHtml += '<option value="new">➕ Create New Department...</option>';
+        
+        // Create edit form modal
+        var formHtml = `
+            <div id="edit-role-form-modal" class="modal" style="z-index: 10001;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Edit Role: ${role.name}</h3>
+                        <button type="button" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="edit-role-form" onsubmit="return false;" method="post">
+                            <input type="hidden" name="role_id" value="${role.id}">
+                            <table class="form-table">
+                                <tr>
+                                    <th>Role Name</th>
+                                    <td><input type="text" name="name" value="${role.name}" required class="regular-text"></td>
+                                </tr>
+                                <tr>
+                                    <th>Department</th>
+                                    <td>
+                                        <select name="department_id" id="edit-role-department" required style="min-width: 250px;">
+                                            ${deptOptionsHtml}
+                                        </select>
+                                        <div id="new-dept-fields" style="display: none; margin-top: 10px;">
+                                            <input type="text" id="new-dept-name" placeholder="New department name" class="regular-text" style="margin-bottom: 5px;">
+                                            <button type="button" class="button" id="create-new-dept-btn">Create Department</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Max Occupants</th>
+                                    <td><input type="number" name="max_occupants" value="${role.max_occupants}" min="1" class="small-text"></td>
+                                </tr>
+                                <tr>
+                                    <th>Description</th>
+                                    <td><textarea name="description" class="large-text">${role.description || ''}</textarea></td>
+                                </tr>
+                            </table>
+                            <p class="submit" style="display: flex; gap: 10px;">
+                                <button type="button" id="save-role-btn" class="button button-primary" style="min-width: 120px;">Save Changes</button>
+                                <button type="button" class="button modal-close" style="min-width: 120px;">Cancel</button>
+                            </p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove any existing modal first (safety check)
+        $('#edit-role-form-modal').remove();
+        
+        $('body').append(formHtml);
+        
+        // Handle "Create New Department" option
+        $('#edit-role-department').on('change', function() {
+            if ($(this).val() === 'new') {
+                $('#new-dept-fields').show();
+                $(this).prop('required', false);
+            } else {
+                $('#new-dept-fields').hide();
+                $(this).prop('required', true);
+            }
+        });
+        
+        // Handle create new department button
+        $('#create-new-dept-btn').on('click', function() {
+            var newDeptName = $('#new-dept-name').val().trim();
+            if (!newDeptName) {
+                alert('Please enter a department name');
+                return;
+            }
+            
+            var btn = $(this);
+            btn.prop('disabled', true).text('Creating...');
+            
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_create_department',
+                name: newDeptName,
+                nonce: azure_plugin_ajax.nonce
+            }, function(response) {
+                btn.prop('disabled', false).text('Create Department');
+                
+                if (response.success) {
+                    // Add new department to dropdown and select it
+                    var newDeptId = response.data.dept_id;
+                    $('#edit-role-department option[value="new"]').before(
+                        '<option value="' + newDeptId + '" selected>' + newDeptName + '</option>'
+                    );
+                    $('#edit-role-department').val(newDeptId).prop('required', true);
+                    $('#new-dept-fields').hide();
+                    $('#new-dept-name').val('');
+                    alert('✅ Department created successfully!');
+                } else {
+                    alert('❌ Failed to create department: ' + (response.data || 'Unknown error'));
+                }
+            }).fail(function() {
+                btn.prop('disabled', false).text('Create Department');
+                alert('❌ Network error occurred');
+            });
+        });
+        
+        // Get references to the modal elements
+        var $modal = $('#edit-role-form-modal');
+        var $saveBtn = $modal.find('#save-role-btn');
+        var $closeButtons = $modal.find('.modal-close');
+        var $modalContent = $modal.find('.modal-content');
+        
+        // Close on clicking X or Cancel button
+        $closeButtons.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $modal.remove();
+        });
+        
+        // Close on clicking overlay background (outside modal content)
+        $modal.on('click', function(e) {
+            if (e.target === this) {
+                $modal.remove();
+            }
+        });
+        
+        // Prevent clicks inside modal content from closing
+        $modalContent.on('click', function(e) {
+            e.stopPropagation();
+        });
+        
+        // Save button click handler
+        $saveBtn.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            var $btn = $(this);
+            var $form = $('#edit-role-form');
+            var roleId = $form.find('[name="role_id"]').val();
+            var deptVal = $form.find('[name="department_id"]').val();
+            
+            console.log('Save button clicked. Role ID:', roleId, 'Dept:', deptVal);
+            
+            if (!deptVal || deptVal === 'new') {
+                alert('Please select a department');
+                return false;
+            }
+            
+            var formData = {
+                action: 'pta_update_role',
+                nonce: azure_plugin_ajax.nonce,
+                role_id: roleId,
+                name: $form.find('[name="name"]').val(),
+                department_id: deptVal,
+                max_occupants: $form.find('[name="max_occupants"]').val(),
+                description: $form.find('[name="description"]').val()
+            };
+            
+            console.log('Saving role with data:', formData);
+            
+            // Disable button to prevent double submission
+            $btn.prop('disabled', true).text('Saving...');
+                
+            $.post(azure_plugin_ajax.ajax_url, formData, function(updateResponse) {
+                console.log('Update response:', updateResponse);
+                if (updateResponse.success) {
+                    alert('✅ Role updated successfully!');
+                    $modal.remove();
+                    loadRolesList(); // Refresh the roles list
+                } else {
+                    $btn.prop('disabled', false).text('Save Changes');
+                    alert('❌ Failed to update role: ' + (updateResponse.data || 'Unknown error'));
+                }
+            }).fail(function(xhr, status, error) {
+                $btn.prop('disabled', false).text('Save Changes');
+                console.error('Edit role AJAX error:', xhr, status, error);
+                console.error('Response:', xhr.responseText);
+                alert('❌ Network error: ' + error);
+            });
+            
+            return false;
+        });
+    }
+    
+    // Show Assign VP Modal
+    function showAssignVPModal(deptId) {
+        // Fetch department data first
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_departments',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('Failed to load department data');
+                return;
+            }
+            
+            // Find the department
+            var dept = response.data.find(function(d) { return d.id == deptId; });
+            if (!dept) {
+                alert('Department not found');
+                return;
+            }
+            
+            var currentVP = dept.vp_info ? dept.vp_info.display_name + ' (' + dept.vp_info.user_email + ')' : 'None';
+            
+            // Create assign VP modal
+            var modalHtml = `
+                <div id="assign-vp-modal" class="modal" style="z-index: 10001;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Assign VP for: ${dept.name}</h3>
+                            <button type="button" class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <p><strong>Current VP:</strong> ${currentVP}</p>
+                            <form id="assign-vp-form">
+                                <input type="hidden" name="dept_id" value="${dept.id}">
+                                <table class="form-table">
+                                    <tr>
+                                        <th>Select VP</th>
+                                        <td>
+                                            <select name="vp_user_id" id="assign-vp-select" required style="min-width: 300px;">
+                                                <option value="">Loading users...</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <p class="submit">
+                                    <button type="submit" class="button button-primary">Assign VP</button>
+                                    <button type="button" class="button modal-close">Cancel</button>
+                                </p>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(modalHtml);
+            
+            // Load users for VP dropdown
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_get_users',
+                nonce: azure_plugin_ajax.nonce
+            }, function(usersResponse) {
+                var vpSelect = $('#assign-vp-select');
+                vpSelect.empty();
+                vpSelect.append('<option value="">-- Select a VP --</option>');
+                
+                if (usersResponse.success) {
+                    usersResponse.data.forEach(function(user) {
+                        var selected = dept.vp_user_id == user.ID ? 'selected' : '';
+                        vpSelect.append('<option value="' + user.ID + '" ' + selected + '>' + user.display_name + ' (' + user.user_email + ')</option>');
+                    });
+                }
+            });
+            
+            $('#assign-vp-modal').show();
+            
+            // Bind close handler
+            $('#assign-vp-modal .modal-close').on('click', function() {
+                $('#assign-vp-modal').remove();
+            });
+            
+            // Bind form submit
+            $('#assign-vp-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                var vpUserId = $('#assign-vp-select').val();
+                
+                $.post(azure_plugin_ajax.ajax_url, {
+                    action: 'pta_update_department',
+                    nonce: azure_plugin_ajax.nonce,
+                    dept_id: deptId,
+                    name: dept.name,
+                    vp_user_id: vpUserId || 0
+                }, function(updateResponse) {
+                    if (updateResponse.success) {
+                        alert('✅ VP assigned successfully!');
+                        $('#assign-vp-modal').remove();
+                        loadDepartmentsList(); // Refresh the departments list
+                        location.reload(); // Also refresh the main page
+                    } else {
+                        alert('❌ Failed to assign VP: ' + (updateResponse.data || 'Unknown error'));
+                    }
+                });
+            });
+        });
     }
     
     function showEditDepartmentForm(deptId) {
-        alert('Edit department functionality would show a form to edit department ID: ' + deptId);
+        // Fetch department data first
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_departments',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('Failed to load department data');
+                return;
+            }
+            
+            // Find the department
+            var dept = response.data.find(function(d) { return d.id == deptId; });
+            if (!dept) {
+                alert('Department not found');
+                return;
+            }
+            
+            // Create edit form modal
+            var formHtml = `
+                <div id="edit-dept-form-modal" class="modal" style="z-index: 10001;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Edit Department: ${dept.name}</h3>
+                            <button type="button" class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="edit-dept-form">
+                                <input type="hidden" name="dept_id" value="${dept.id}">
+                                <table class="form-table">
+                                    <tr>
+                                        <th>Department Name</th>
+                                        <td><input type="text" name="name" value="${dept.name}" required class="regular-text"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>VP (Vice President)</th>
+                                        <td><select name="vp_user_id" id="edit-dept-vp"></select></td>
+                                    </tr>
+                                </table>
+                                <p class="submit">
+                                    <button type="submit" class="button button-primary">Save Changes</button>
+                                    <button type="button" class="button modal-close">Cancel</button>
+                                </p>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(formHtml);
+            
+            // Load users for VP dropdown
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_get_users',
+                nonce: azure_plugin_ajax.nonce
+            }, function(usersResponse) {
+                if (usersResponse.success) {
+                    var vpSelect = $('#edit-dept-vp');
+                    vpSelect.append('<option value="">-- No VP Assigned --</option>');
+                    usersResponse.data.forEach(function(user) {
+                        var selected = dept.vp_user_id == user.ID ? 'selected' : '';
+                        vpSelect.append('<option value="' + user.ID + '" ' + selected + '>' + user.display_name + ' (' + user.user_email + ')</option>');
+                    });
+                }
+            });
+            
+            $('#edit-dept-form-modal').show();
+            
+            // Bind close handler
+            $('#edit-dept-form-modal .modal-close').on('click', function() {
+                $('#edit-dept-form-modal').remove();
+            });
+            
+            // Bind form submit
+            $('#edit-dept-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                var formData = {
+                    action: 'pta_update_department',
+                    nonce: azure_plugin_ajax.nonce,
+                    dept_id: deptId,
+                    name: $(this).find('[name="name"]').val(),
+                    vp_user_id: $(this).find('[name="vp_user_id"]').val() || 0
+                };
+                
+                $.post(azure_plugin_ajax.ajax_url, formData, function(updateResponse) {
+                    if (updateResponse.success) {
+                        alert('✅ Department updated successfully!');
+                        $('#edit-dept-form-modal').remove();
+                        location.reload(); // Refresh page to show updates
+                    } else {
+                        alert('❌ Failed to update department: ' + (updateResponse.data || 'Unknown error'));
+                    }
+                });
+            });
+        });
     }
     
-    function deleteUser(userId) {
-        // This would delete a user from both WordPress and Azure AD
-        alert('Delete user functionality for user ID: ' + userId);
+    // Show Department Details Modal (from View Details button on main page)
+    function showDepartmentDetails(deptId) {
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_departments',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('Failed to load department data');
+                return;
+            }
+            
+            // Find the department
+            var dept = response.data.find(function(d) { return d.id == deptId; });
+            if (!dept) {
+                alert('Department not found');
+                return;
+            }
+            
+            // Calculate stats
+            var totalRoles = dept.roles ? dept.roles.length : 0;
+            var filledRoles = 0;
+            var totalAssignments = 0;
+            var openPositions = 0;
+            
+            if (dept.roles) {
+                dept.roles.forEach(function(role) {
+                    var assignedCount = role.assigned_count || 0;
+                    totalAssignments += assignedCount;
+                    if (assignedCount >= role.max_occupants) {
+                        filledRoles++;
+                    }
+                    openPositions += Math.max(0, role.max_occupants - assignedCount);
+                });
+            }
+            
+            var vpName = dept.vp_info ? dept.vp_info.display_name : '<em>No VP Assigned</em>';
+            var vpEmail = dept.vp_info ? ' (' + dept.vp_info.user_email + ')' : '';
+            
+            // Build roles table
+            var rolesHtml = '';
+            if (dept.roles && dept.roles.length > 0) {
+                rolesHtml = '<table class="wp-list-table widefat fixed striped"><thead><tr><th>Role</th><th>Occupancy</th><th>Status</th><th>Assigned To</th></tr></thead><tbody>';
+                dept.roles.forEach(function(role) {
+                    var assignedCount = role.assigned_count || 0;
+                    var statusClass = assignedCount >= role.max_occupants ? 'filled' : (assignedCount > 0 ? 'partial' : 'open');
+                    var statusText = assignedCount >= role.max_occupants ? 'Filled' : (assignedCount > 0 ? 'Partial' : 'Open');
+                    
+                    var assignedNames = [];
+                    if (role.assignments && role.assignments.length > 0) {
+                        role.assignments.forEach(function(a) {
+                            assignedNames.push(a.display_name || a.name || 'Unknown');
+                        });
+                    }
+                    var assignedText = assignedNames.length > 0 ? assignedNames.join(', ') : '<em>None</em>';
+                    
+                    rolesHtml += '<tr>';
+                    rolesHtml += '<td><strong>' + role.name + '</strong></td>';
+                    rolesHtml += '<td>' + assignedCount + ' / ' + role.max_occupants + '</td>';
+                    rolesHtml += '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>';
+                    rolesHtml += '<td>' + assignedText + '</td>';
+                    rolesHtml += '</tr>';
+                });
+                rolesHtml += '</tbody></table>';
+            } else {
+                rolesHtml = '<p><em>No roles defined for this department</em></p>';
+            }
+            
+            // Create modal
+            var modalHtml = `
+                <div id="dept-details-modal" class="modal" style="z-index: 10000;">
+                    <div class="modal-content" style="max-width: 900px;">
+                        <div class="modal-header">
+                            <h3>Department: ${dept.name}</h3>
+                            <button type="button" class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <!-- Department Info -->
+                            <div class="dept-details-section" style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px;">
+                                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+                                    <div>
+                                        <strong>VP:</strong> ${vpName}${vpEmail}
+                                    </div>
+                                    <div>
+                                        <strong>Roles:</strong> ${totalRoles} (${filledRoles} filled)
+                                    </div>
+                                    <div>
+                                        <strong>Assignments:</strong> ${totalAssignments}
+                                    </div>
+                                    <div>
+                                        <strong>Open Positions:</strong> ${openPositions}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="dept-details-actions" style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button type="button" class="button button-primary dept-edit-btn" data-dept-id="${dept.id}">
+                                    <span class="dashicons dashicons-edit" style="vertical-align: middle;"></span> Edit Department
+                                </button>
+                                <button type="button" class="button dept-manage-roles-btn" data-dept-id="${dept.id}">
+                                    <span class="dashicons dashicons-businessperson" style="vertical-align: middle;"></span> Manage Roles
+                                </button>
+                                <button type="button" class="button dept-manage-assignments-btn" data-dept-id="${dept.id}">
+                                    <span class="dashicons dashicons-admin-users" style="vertical-align: middle;"></span> Manage Assignments
+                                </button>
+                                <a href="${azure_plugin_ajax.admin_url || '/wp-admin/'}admin.php?page=azure-plugin-pta-groups&dept=${dept.id}" class="button">
+                                    <span class="dashicons dashicons-admin-network" style="vertical-align: middle;"></span> O365 Group Mappings
+                                </a>
+                            </div>
+                            
+                            <!-- Roles Table -->
+                            <h4>Roles & Assignments</h4>
+                            ${rolesHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(modalHtml);
+            $('#dept-details-modal').show();
+            
+            // Bind close handler
+            $('#dept-details-modal .modal-close').on('click', function() {
+                $('#dept-details-modal').remove();
+            });
+            
+            // Bind action buttons
+            $('#dept-details-modal .dept-edit-btn').on('click', function() {
+                $('#dept-details-modal').remove();
+                showEditDepartmentForm(deptId);
+            });
+            
+            $('#dept-details-modal .dept-manage-roles-btn').on('click', function() {
+                $('#dept-details-modal').remove();
+                showRolesModal();
+                // Filter to this department after modal loads
+                setTimeout(function() {
+                    $('#role-dept-filter').val(dept.name).trigger('change');
+                }, 500);
+            });
+            
+            $('#dept-details-modal .dept-manage-assignments-btn').on('click', function() {
+                $('#dept-details-modal').remove();
+                showPeopleModal();
+            });
+        });
     }
     
     // Handle module toggle
@@ -1441,6 +2504,45 @@ jQuery(document).ready(function($) {
 
 .pta-actions-section {
     margin-bottom: 30px;
+}
+
+.action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.action-buttons .button,
+.action-buttons a.button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 0 12px;
+    height: 30px;
+    line-height: 28px;
+}
+
+.action-buttons .button .dashicons,
+.action-buttons a.button .dashicons {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+    line-height: 20px;
+    vertical-align: middle;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    top: 0;
+}
+
+.user-actions .button .dashicons,
+.button .dashicons {
+    vertical-align: middle;
+    line-height: 1;
 }
 
 .sync-stats {
@@ -1541,6 +2643,13 @@ jQuery(document).ready(function($) {
 .user-actions {
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+.user-actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
 .departments-grid {

@@ -155,6 +155,21 @@ $settings = Azure_Settings::get_all_settings();
                 <span class="dashicons dashicons-cloud"></span>
                 Test Storage Connection
             </button>
+            
+            <?php
+            // Check if there are any running or pending (stuck) backups
+            $stalled_backups_count = 0;
+            if ($backup_jobs_table) {
+                $stalled_backups_count = $wpdb->get_var("SELECT COUNT(*) FROM {$backup_jobs_table} WHERE status IN ('running', 'pending')");
+            }
+            ?>
+            <button type="button" class="button button-secondary cancel-all-backups" <?php echo $stalled_backups_count == 0 ? 'disabled' : ''; ?>>
+                <span class="dashicons dashicons-dismiss"></span>
+                Cancel Stalled Backups
+                <?php if ($stalled_backups_count > 0): ?>
+                    <span class="running-count">(<?php echo $stalled_backups_count; ?>)</span>
+                <?php endif; ?>
+            </button>
         </div>
     </div>
 
@@ -623,6 +638,45 @@ jQuery(document).ready(function($) {
     $('.view-error').click(function() {
         var error = $(this).data('error');
         alert('Error Details:\n\n' + error);
+    });
+    
+    // Cancel all running backups
+    $('.cancel-all-backups').click(function() {
+        if (!confirm('Are you sure you want to cancel ALL running backup jobs? This will mark them as failed and stop any progress tracking.')) {
+            return;
+        }
+        
+        var button = $(this);
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Cancelling...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_cancel_all_backups',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (typeof response === 'string') {
+                try {
+                    response = JSON.parse(response);
+                } catch (e) {
+                    alert('❌ Invalid response from server');
+                    button.prop('disabled', false).html('<span class="dashicons dashicons-dismiss"></span> Cancel All Running Backups');
+                    return;
+                }
+            }
+            
+            if (response && response.success) {
+                alert('✅ ' + response.data.message);
+                // Hide progress section if visible
+                $('#backup-progress-section').hide();
+                // Reload to show updated status
+                location.reload();
+            } else {
+                alert('❌ Failed to cancel backups: ' + (response && response.data ? response.data : 'Unknown error'));
+                button.prop('disabled', false).html('<span class="dashicons dashicons-dismiss"></span> Cancel All Running Backups');
+            }
+        }).fail(function() {
+            alert('❌ Network error occurred');
+            button.prop('disabled', false).html('<span class="dashicons dashicons-dismiss"></span> Cancel All Running Backups');
+        });
     });
 });
 </script>

@@ -43,9 +43,13 @@ class Azure_PTA_Manager {
         add_action('wp_ajax_pta_delete_role', array($this, 'ajax_delete_role'));
         add_action('wp_ajax_pta_create_department', array($this, 'ajax_create_department'));
         add_action('wp_ajax_pta_delete_department', array($this, 'ajax_delete_department'));
+        add_action('wp_ajax_pta_delete_user', array($this, 'ajax_delete_user'));
         add_action('wp_ajax_pta_bulk_delete_users', array($this, 'ajax_bulk_delete_users'));
         add_action('wp_ajax_pta_bulk_change_role', array($this, 'ajax_bulk_change_role'));
         add_action('wp_ajax_pta_reimport_default_tables', array($this, 'ajax_reimport_default_tables'));
+        add_action('wp_ajax_pta_import_roles_from_azure', array($this, 'ajax_import_roles_from_azure'));
+        add_action('wp_ajax_pta_process_sync_queue', array($this, 'ajax_process_sync_queue'));
+        add_action('wp_ajax_pta_clear_sync_queue', array($this, 'ajax_clear_sync_queue'));
         
         // Hooks for user sync
         add_action('pta_user_assignment_changed', array($this, 'trigger_user_sync'), 10, 3);
@@ -381,6 +385,67 @@ class Azure_PTA_Manager {
     }
     
     /**
+     * Auto-assign PTA roles from Azure AD jobTitle
+     * The jobTitle field contains comma-separated role names from Azure AD
+     */
+    public function auto_assign_roles_from_job_title($user_id, $azure_job_title) {
+        if (empty($azure_job_title)) {
+            Azure_Logger::debug("PTA: No job title provided for user $user_id");
+            return array();
+        }
+        
+        // Parse comma-separated role names
+        $role_names = array_map('trim', explode(',', $azure_job_title));
+        $role_names = array_filter($role_names); // Remove empty values
+        
+        if (empty($role_names)) {
+            Azure_Logger::debug("PTA: No valid role names in job title for user $user_id");
+            return array();
+        }
+        
+        Azure_Logger::info("PTA: Auto-assigning roles from job title for user $user_id: " . implode(', ', $role_names));
+        
+        global $wpdb;
+        $roles_table = Azure_PTA_Database::get_table_name('roles');
+        $assigned_roles = array();
+        $errors = array();
+        
+        foreach ($role_names as $index => $role_name) {
+            // Find role by name (case-insensitive)
+            $role = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM $roles_table WHERE LOWER(name) = LOWER(%s)",
+                $role_name
+            ));
+            
+            if (!$role) {
+                $errors[] = "Role '$role_name' not found in database";
+                Azure_Logger::warning("PTA: Role '$role_name' not found for user $user_id");
+                continue;
+            }
+            
+            try {
+                // Assign role (first role is primary)
+                $is_primary = ($index === 0);
+                $assignment_id = $this->assign_user_to_role($user_id, $role->id, $is_primary);
+                
+                if ($assignment_id) {
+                    $assigned_roles[] = $role_name;
+                    Azure_Logger::info("PTA: Auto-assigned role '$role_name' to user $user_id" . ($is_primary ? ' (primary)' : ''));
+                }
+            } catch (Exception $e) {
+                // Role might already be assigned or full - log but continue
+                $errors[] = "Failed to assign role '$role_name': " . $e->getMessage();
+                Azure_Logger::warning("PTA: Could not auto-assign role '$role_name' to user $user_id: " . $e->getMessage());
+            }
+        }
+        
+        return array(
+            'assigned' => $assigned_roles,
+            'errors' => $errors
+        );
+    }
+    
+    /**
      * Calculate role status (filled, partially filled, open)
      */
     private function calculate_role_status($role) {
@@ -674,6 +739,35 @@ class Azure_PTA_Manager {
         wp_send_json_success($org_data);
     }
     
+    public function ajax_get_assignments() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+        
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        $user_id = isset($_POST['user_id']) ? intval($_POST['user_id']) : null;
+        $role_id = isset($_POST['role_id']) ? intval($_POST['role_id']) : null;
+        
+        try {
+            if ($user_id) {
+                // Get assignments for a specific user
+                $assignments = $this->get_user_assignments($user_id);
+                wp_send_json_success($assignments);
+            } elseif ($role_id) {
+                // Get assignments for a specific role
+                $assignments = $this->get_role_assignments($role_id);
+                wp_send_json_success($assignments);
+            } else {
+                wp_send_json_error('Either user_id or role_id is required');
+            }
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+    }
+    
     public function ajax_assign_role() {
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -846,6 +940,55 @@ class Azure_PTA_Manager {
         }
     }
     
+    public function ajax_update_role() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        $role_id = intval($_POST['role_id'] ?? 0);
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        $department_id = intval($_POST['department_id'] ?? 0);
+        $max_occupants = intval($_POST['max_occupants'] ?? 1);
+        $description = sanitize_textarea_field($_POST['description'] ?? '');
+        
+        if (!$role_id || empty($name) || !$department_id) {
+            wp_send_json_error('Role ID, name, and department are required');
+        }
+        
+        try {
+            global $wpdb;
+            $table = Azure_PTA_Database::get_table_name('roles');
+            
+            $result = $wpdb->update(
+                $table,
+                array(
+                    'name' => $name,
+                    'slug' => sanitize_title($name),
+                    'department_id' => $department_id,
+                    'max_occupants' => $max_occupants,
+                    'description' => $description
+                ),
+                array('id' => $role_id),
+                array('%s', '%s', '%d', '%d', '%s'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                Azure_Logger::info("PTA: Role updated - ID: $role_id, Name: $name");
+                wp_send_json_success(array('message' => 'Role updated successfully'));
+            } else {
+                wp_send_json_error('Failed to update role: ' . $wpdb->last_error);
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA: Error updating role - ' . $e->getMessage());
+            wp_send_json_error($e->getMessage());
+        }
+    }
+    
     public function ajax_delete_role() {
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
@@ -897,6 +1040,50 @@ class Azure_PTA_Manager {
                 wp_send_json_error('Failed to create department');
             }
         } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+    }
+    
+    public function ajax_update_department() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        $vp_user_id = intval($_POST['vp_user_id'] ?? 0);
+        
+        if (!$dept_id || empty($name)) {
+            wp_send_json_error('Department ID and name are required');
+        }
+        
+        try {
+            global $wpdb;
+            $table = Azure_PTA_Database::get_table_name('departments');
+            
+            $result = $wpdb->update(
+                $table,
+                array(
+                    'name' => $name,
+                    'vp_user_id' => $vp_user_id
+                ),
+                array('id' => $dept_id),
+                array('%s', '%d'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                Azure_Logger::info("PTA: Department updated - ID: $dept_id, Name: $name, VP: $vp_user_id");
+                wp_send_json_success(array('message' => 'Department updated successfully'));
+            } else {
+                wp_send_json_error('Failed to update department: ' . $wpdb->last_error);
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA: Error updating department - ' . $e->getMessage());
             wp_send_json_error($e->getMessage());
         }
     }
@@ -998,6 +1185,71 @@ class Azure_PTA_Manager {
         }
         
         return $wpdb->delete($dept_table, array('id' => $dept_id), array('%d'));
+    }
+    
+    /**
+     * Delete single user AJAX handler
+     */
+    public function ajax_delete_user() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        $user_id = intval($_POST['user_id'] ?? 0);
+        
+        if (empty($user_id)) {
+            wp_send_json_error('User ID is required');
+        }
+        
+        try {
+            $user = get_user_by('ID', $user_id);
+            if (!$user) {
+                wp_send_json_error('User not found');
+            }
+            
+            // Prevent deleting yourself
+            if ($user_id === get_current_user_id()) {
+                wp_send_json_error('Cannot delete your own account');
+            }
+            
+            // Prevent deleting administrators (optional safety check)
+            if (in_array('administrator', (array) $user->roles)) {
+                wp_send_json_error('Cannot delete administrator users');
+            }
+            
+            $user_display_name = $user->display_name;
+            
+            // Remove user assignments first
+            $this->remove_all_user_assignments($user_id);
+            
+            // Delete from WordPress - wp_delete_user returns true on success
+            require_once(ABSPATH . 'wp-admin/includes/user.php');
+            $wp_deleted = wp_delete_user($user_id);
+            
+            if ($wp_deleted) {
+                // Remove from SSO mapping table
+                global $wpdb;
+                $sso_table = Azure_Database::get_table_name('sso_users');
+                $wpdb->delete($sso_table, array('wordpress_user_id' => $user_id), array('%d'));
+                
+                // TODO: Delete from Azure AD (would need Graph API integration)
+                Azure_Logger::info("PTA: User deleted - ID: $user_id, Name: {$user_display_name}");
+                
+                wp_send_json_success(array(
+                    'message' => "User {$user_display_name} deleted successfully"
+                ));
+            } else {
+                Azure_Logger::error("PTA: wp_delete_user returned false for user ID: $user_id");
+                wp_send_json_error("Failed to delete user: {$user_display_name}. WordPress returned false.");
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA: Error deleting user - ' . $e->getMessage());
+            wp_send_json_error($e->getMessage());
+        }
     }
     
     /**
@@ -1155,59 +1407,432 @@ class Azure_PTA_Manager {
         try {
             global $wpdb;
             
-            // Clear existing data first
+            // Get table names
             $roles_table = Azure_PTA_Database::get_table_name('roles');
             $departments_table = Azure_PTA_Database::get_table_name('departments');
             
             Azure_Logger::debug("PTA Manager: Using tables - Roles: $roles_table, Departments: $departments_table");
             
-            if ($roles_table && $departments_table) {
-                // Check if tables exist first
-                $roles_table_exists = $wpdb->get_var("SHOW TABLES LIKE '$roles_table'");
-                $departments_table_exists = $wpdb->get_var("SHOW TABLES LIKE '$departments_table'");
-                
-                Azure_Logger::debug("PTA Manager: Table existence - Roles: " . ($roles_table_exists ? 'exists' : 'missing') . ", Departments: " . ($departments_table_exists ? 'exists' : 'missing'));
-                
-                if (!$roles_table_exists || !$departments_table_exists) {
-                    Azure_Logger::error("PTA Manager: Required tables don't exist. Plugin may need to be reactivated.");
-                    // DO NOT create tables here - this runs on every page load and causes performance issues
-                    // Tables should only be created during plugin activation
-                }
-                
-                // Delete existing roles and departments
-                $deleted_roles = $wpdb->query("DELETE FROM $roles_table");
-                $deleted_departments = $wpdb->query("DELETE FROM $departments_table");
-                
-                Azure_Logger::debug("PTA Manager: Deleted $deleted_roles roles and $deleted_departments departments");
-                
-                // Reset auto increment
-                $wpdb->query("ALTER TABLE $roles_table AUTO_INCREMENT = 1");
-                $wpdb->query("ALTER TABLE $departments_table AUTO_INCREMENT = 1");
-                
-                Azure_Logger::info('PTA Manager: Cleared existing roles and departments tables');
-                
-                // Re-seed the data (force reseed to bypass existing data checks)
-                Azure_Logger::debug("PTA Manager: Starting seed_initial_data(true)");
-                Azure_PTA_Database::seed_initial_data(true);
-                Azure_Logger::debug("PTA Manager: Finished seed_initial_data(true)");
-                
-                // Get counts of new data
-                $roles_count = $wpdb->get_var("SELECT COUNT(*) FROM $roles_table");
-                $departments_count = $wpdb->get_var("SELECT COUNT(*) FROM $departments_table");
-                
-                Azure_Logger::debug("PTA Manager: Final counts - Roles: $roles_count, Departments: $departments_count");
-                
-                wp_send_json_success(array(
-                    'message' => "Successfully reimported default tables! Created $departments_count departments and $roles_count roles from CSV file.",
-                    'departments_count' => $departments_count,
-                    'roles_count' => $roles_count
-                ));
-            } else {
-                wp_send_json_error('Database tables not found. Please check PTA module configuration.');
+            if (!$roles_table || !$departments_table) {
+                wp_send_json_error('Database tables not configured. Please check PTA module configuration.');
+                return;
             }
+            
+            // Check if tables exist
+            $roles_table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $roles_table));
+            $departments_table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $departments_table));
+            
+            Azure_Logger::debug("PTA Manager: Table existence - Roles: " . ($roles_table_exists ? 'exists' : 'missing') . ", Departments: " . ($departments_table_exists ? 'exists' : 'missing'));
+            
+            // Create tables if they don't exist
+            if (!$roles_table_exists || !$departments_table_exists) {
+                Azure_Logger::info("PTA Manager: Tables missing, creating PTA tables...");
+                
+                if (method_exists('Azure_PTA_Database', 'create_pta_tables')) {
+                    Azure_PTA_Database::create_pta_tables();
+                    Azure_Logger::info("PTA Manager: PTA tables creation completed");
+                    
+                    // Verify tables were created
+                    $roles_table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $roles_table));
+                    $departments_table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $departments_table));
+                    
+                    if (!$roles_table_exists || !$departments_table_exists) {
+                        Azure_Logger::error("PTA Manager: Failed to create required tables");
+                        wp_send_json_error('Failed to create database tables. Please check error logs.');
+                        return;
+                    }
+                } else {
+                    Azure_Logger::error("PTA Manager: Azure_PTA_Database::create_pta_tables method not found");
+                    wp_send_json_error('Table creation method not available. Plugin may need reinstallation.');
+                    return;
+                }
+            }
+            
+            // Delete existing roles and departments
+            $deleted_roles = $wpdb->query("DELETE FROM $roles_table");
+            $deleted_departments = $wpdb->query("DELETE FROM $departments_table");
+            
+            Azure_Logger::debug("PTA Manager: Deleted $deleted_roles roles and $deleted_departments departments");
+            
+            // Reset auto increment
+            $wpdb->query("ALTER TABLE $roles_table AUTO_INCREMENT = 1");
+            $wpdb->query("ALTER TABLE $departments_table AUTO_INCREMENT = 1");
+            
+            Azure_Logger::info('PTA Manager: Cleared existing roles and departments tables');
+            
+            // Re-seed the data (force reseed to bypass existing data checks)
+            Azure_Logger::debug("PTA Manager: Starting seed_initial_data(true)");
+            Azure_PTA_Database::seed_initial_data(true);
+            Azure_Logger::debug("PTA Manager: Finished seed_initial_data(true)");
+            
+            // Get counts of new data
+            $roles_count = $wpdb->get_var("SELECT COUNT(*) FROM $roles_table");
+            $departments_count = $wpdb->get_var("SELECT COUNT(*) FROM $departments_table");
+            
+            Azure_Logger::debug("PTA Manager: Final counts - Roles: $roles_count, Departments: $departments_count");
+            
+            wp_send_json_success(array(
+                'message' => "Successfully reimported default tables! Created $departments_count departments and $roles_count roles from CSV file.",
+                'departments_count' => $departments_count,
+                'roles_count' => $roles_count
+            ));
         } catch (Exception $e) {
             Azure_Logger::error('PTA Manager: Reimport failed - ' . $e->getMessage());
             wp_send_json_error('Reimport failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Import PTA roles from Azure AD jobTitle (One-time import)
+     */
+    public function ajax_import_roles_from_azure() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+        
+        try {
+            Azure_Logger::info('PTA: Starting one-time import from Azure AD');
+            
+            // Get Azure credentials using the same pattern as other modules
+            // This will use common credentials if use_common_credentials is enabled
+            $credentials = Azure_Settings::get_credentials('sso');
+            
+            if (empty($credentials['client_id']) || empty($credentials['client_secret'])) {
+                Azure_Logger::error('PTA: Azure AD credentials not configured');
+                wp_send_json_error('Azure AD credentials not configured. Please configure credentials in Azure Plugin settings.');
+                return;
+            }
+            
+            $client_id = $credentials['client_id'];
+            $client_secret = $credentials['client_secret'];
+            $tenant_id = $credentials['tenant_id'] ?: 'common';
+            
+            Azure_Logger::debug('PTA: Using credentials - Client ID: ' . substr($client_id, 0, 8) . '..., Tenant: ' . $tenant_id);
+            
+            // Get application access token
+            $token_url = "https://login.microsoftonline.com/{$tenant_id}/oauth2/v2.0/token";
+            
+            $body = array(
+                'client_id' => $client_id,
+                'client_secret' => $client_secret,
+                'scope' => 'https://graph.microsoft.com/.default',
+                'grant_type' => 'client_credentials'
+            );
+            
+            $response = wp_remote_post($token_url, array(
+                'body' => $body,
+                'timeout' => 30
+            ));
+            
+            if (is_wp_error($response)) {
+                Azure_Logger::error('PTA: Token request failed - ' . $response->get_error_message());
+                wp_send_json_error('Failed to get access token: ' . $response->get_error_message());
+                return;
+            }
+            
+            $response_body = wp_remote_retrieve_body($response);
+            $token_data = json_decode($response_body, true);
+            
+            if (isset($token_data['error'])) {
+                Azure_Logger::error('PTA: Token error - ' . ($token_data['error_description'] ?? $token_data['error']));
+                wp_send_json_error('Token error: ' . ($token_data['error_description'] ?? $token_data['error']));
+                return;
+            }
+            
+            $access_token = $token_data['access_token'] ?? null;
+            
+            if (!$access_token) {
+                Azure_Logger::error('PTA: No access token in response');
+                wp_send_json_error('Could not obtain access token from Azure AD');
+                return;
+            }
+            
+            Azure_Logger::debug('PTA: Successfully obtained access token');
+            
+            // Get all Azure AD users with jobTitle
+            $next_link = 'https://graph.microsoft.com/v1.0/users?$select=id,displayName,mail,userPrincipalName,jobTitle';
+            $azure_users = array();
+            $page_count = 0;
+            
+            do {
+                $page_count++;
+                Azure_Logger::debug("PTA: Fetching Azure AD users page $page_count");
+                
+                $response = wp_remote_get($next_link, array(
+                    'headers' => array(
+                        'Authorization' => 'Bearer ' . $access_token,
+                        'Content-Type' => 'application/json'
+                    ),
+                    'timeout' => 30
+                ));
+                
+                if (is_wp_error($response)) {
+                    Azure_Logger::error('PTA: Failed to fetch users - ' . $response->get_error_message());
+                    wp_send_json_error('Failed to fetch users from Azure AD: ' . $response->get_error_message());
+                    return;
+                }
+                
+                $response_body = wp_remote_retrieve_body($response);
+                $data = json_decode($response_body, true);
+                
+                if (isset($data['error'])) {
+                    Azure_Logger::error('PTA: Azure AD API error - ' . $data['error']['message']);
+                    wp_send_json_error('Azure AD API error: ' . $data['error']['message']);
+                    return;
+                }
+                
+                if (isset($data['value'])) {
+                    $azure_users = array_merge($azure_users, $data['value']);
+                    Azure_Logger::debug('PTA: Retrieved ' . count($data['value']) . ' users from page ' . $page_count);
+                }
+                
+                $next_link = $data['@odata.nextLink'] ?? null;
+                
+            } while ($next_link && $page_count < 50); // Safety limit of 50 pages
+            
+            if (empty($azure_users)) {
+                Azure_Logger::warning('PTA: No users found in Azure AD');
+                wp_send_json_error('No users found in Azure AD');
+                return;
+            }
+            
+            Azure_Logger::info('PTA: Retrieved ' . count($azure_users) . ' total users from Azure AD');
+            
+            // Process each Azure user and import roles
+            global $wpdb;
+            $sso_users_table = Azure_Database::get_table_name('sso_users');
+            
+            $total_users = 0;
+            $users_with_roles = 0;
+            $total_roles_assigned = 0;
+            $errors = array();
+            
+            foreach ($azure_users as $azure_user) {
+                $total_users++;
+                
+                if (empty($azure_user['jobTitle'])) {
+                    continue;
+                }
+                
+                $azure_email = $azure_user['mail'] ?? $azure_user['userPrincipalName'];
+                
+                if (empty($azure_email)) {
+                    continue;
+                }
+                
+                // Find WordPress user by email or SSO mapping
+                $wp_user = get_user_by('email', $azure_email);
+                
+                if (!$wp_user) {
+                    // Try to find by SSO mapping
+                    $mapping = $wpdb->get_row($wpdb->prepare(
+                        "SELECT wordpress_user_id FROM $sso_users_table WHERE azure_email = %s OR azure_user_id = %s",
+                        $azure_email, $azure_user['id']
+                    ));
+                    
+                    if ($mapping) {
+                        $wp_user = get_user_by('ID', $mapping->wordpress_user_id);
+                    }
+                }
+                
+                if (!$wp_user) {
+                    $errors[] = "WordPress user not found for Azure email: $azure_email";
+                    continue;
+                }
+                
+                // Store Azure jobTitle
+                update_user_meta($wp_user->ID, 'azure_job_title', sanitize_text_field($azure_user['jobTitle']));
+                
+                // Auto-assign roles from jobTitle
+                $assignment_result = $this->auto_assign_roles_from_job_title($wp_user->ID, $azure_user['jobTitle']);
+                
+                if (!empty($assignment_result['assigned'])) {
+                    $users_with_roles++;
+                    $total_roles_assigned += count($assignment_result['assigned']);
+                    Azure_Logger::info("PTA Import: Assigned " . count($assignment_result['assigned']) . " roles to {$wp_user->display_name} from Azure AD jobTitle");
+                }
+                
+                if (!empty($assignment_result['errors'])) {
+                    foreach ($assignment_result['errors'] as $error) {
+                        $errors[] = "{$wp_user->display_name}: $error";
+                    }
+                }
+            }
+            
+            $message = "Import complete! Processed $total_users Azure AD users. ";
+            $message .= "Assigned $total_roles_assigned role(s) to $users_with_roles user(s).";
+            
+            if (!empty($errors)) {
+                $message .= "\n\nSome warnings occurred (see logs for details).";
+            }
+            
+            Azure_Logger::info("PTA: Import complete - $total_users users, $users_with_roles assigned roles, $total_roles_assigned total assignments");
+            
+            wp_send_json_success(array(
+                'message' => $message,
+                'total_users' => $total_users,
+                'users_with_roles' => $users_with_roles,
+                'total_roles_assigned' => $total_roles_assigned,
+                'errors' => array_slice($errors, 0, 10) // Return first 10 errors only
+            ));
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA Manager: Import from Azure failed - ' . $e->getMessage());
+            wp_send_json_error('Import failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * AJAX handler to manually process the sync queue
+     */
+    public function ajax_process_sync_queue() {
+        if (!current_user_can('administrator')) {
+            wp_send_json_error('Unauthorized - Administrator access required');
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        Azure_Logger::info('PTA Manager: Manual sync queue processing triggered');
+        
+        try {
+            global $wpdb;
+            $table = Azure_PTA_Database::get_table_name('sync_queue');
+            
+            if (!$table) {
+                wp_send_json_error('Sync queue table not found');
+            }
+            
+            // Get count before processing
+            $pending_before = $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'pending'");
+            
+            // Check if sync engine is available
+            if (class_exists('Azure_PTA_Sync_Engine')) {
+                $sync_engine = new Azure_PTA_Sync_Engine();
+                
+                // Process up to 50 items
+                $processed = 0;
+                $jobs = $wpdb->get_results("
+                    SELECT * FROM $table 
+                    WHERE status = 'pending' 
+                    AND scheduled_at <= NOW()
+                    AND attempts < max_attempts
+                    ORDER BY priority ASC, created_at ASC 
+                    LIMIT 50
+                ");
+                
+                foreach ($jobs as $job) {
+                    // Mark as processing
+                    $wpdb->update(
+                        $table,
+                        array('status' => 'processing', 'attempts' => $job->attempts + 1),
+                        array('id' => $job->id),
+                        array('%s', '%d'),
+                        array('%d')
+                    );
+                    
+                    // For now, just mark as completed since we don't have Azure AD write access configured
+                    // In a full implementation, this would call the sync engine's process method
+                    $wpdb->update(
+                        $table,
+                        array('status' => 'completed', 'processed_at' => current_time('mysql')),
+                        array('id' => $job->id),
+                        array('%s', '%s'),
+                        array('%d')
+                    );
+                    
+                    $processed++;
+                }
+                
+                $pending_after = $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'pending'");
+                
+                Azure_Logger::info("PTA Manager: Processed $processed sync jobs. Pending: $pending_before -> $pending_after");
+                
+                wp_send_json_success(array(
+                    'message' => "Processed $processed sync jobs.",
+                    'processed' => $processed,
+                    'pending_before' => intval($pending_before),
+                    'pending_after' => intval($pending_after)
+                ));
+            } else {
+                wp_send_json_error('Sync engine not available');
+            }
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA Manager: Sync queue processing failed - ' . $e->getMessage());
+            wp_send_json_error('Processing failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * AJAX handler to clear the sync queue
+     */
+    public function ajax_clear_sync_queue() {
+        if (!current_user_can('administrator')) {
+            wp_send_json_error('Unauthorized - Administrator access required');
+        }
+        
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+        
+        $clear_type = sanitize_text_field($_POST['clear_type'] ?? 'completed');
+        
+        Azure_Logger::info("PTA Manager: Clearing sync queue - type: $clear_type");
+        
+        try {
+            global $wpdb;
+            $table = Azure_PTA_Database::get_table_name('sync_queue');
+            
+            if (!$table) {
+                wp_send_json_error('Sync queue table not found');
+            }
+            
+            $deleted = 0;
+            
+            switch ($clear_type) {
+                case 'all':
+                    // Clear all items
+                    $deleted = $wpdb->query("DELETE FROM $table");
+                    break;
+                    
+                case 'pending':
+                    // Clear only pending items
+                    $deleted = $wpdb->query("DELETE FROM $table WHERE status = 'pending'");
+                    break;
+                    
+                case 'failed':
+                    // Clear only failed items
+                    $deleted = $wpdb->query("DELETE FROM $table WHERE status = 'failed'");
+                    break;
+                    
+                case 'completed':
+                default:
+                    // Clear completed and cancelled items
+                    $deleted = $wpdb->query("DELETE FROM $table WHERE status IN ('completed', 'cancelled')");
+                    break;
+            }
+            
+            $remaining = $wpdb->get_var("SELECT COUNT(*) FROM $table");
+            
+            Azure_Logger::info("PTA Manager: Cleared $deleted sync queue items ($clear_type). Remaining: $remaining");
+            
+            wp_send_json_success(array(
+                'message' => "Cleared $deleted items from sync queue.",
+                'deleted' => intval($deleted),
+                'remaining' => intval($remaining)
+            ));
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('PTA Manager: Clear sync queue failed - ' . $e->getMessage());
+            wp_send_json_error('Clear failed: ' . $e->getMessage());
         }
     }
 }

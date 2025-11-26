@@ -129,11 +129,12 @@ class Azure_TEC_Integration {
             add_action('admin_menu', array($this, 'add_admin_menu'), 20);
             add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
             
-            // AJAX handlers
-            add_action('wp_ajax_azure_tec_manual_sync', array($this, 'ajax_manual_sync'));
-            add_action('wp_ajax_azure_tec_bulk_sync', array($this, 'ajax_bulk_sync'));
-            add_action('wp_ajax_azure_tec_break_sync', array($this, 'ajax_break_sync'));
-            add_action('wp_ajax_azure_tec_get_sync_status', array($this, 'ajax_get_sync_status'));
+            // Note: AJAX handlers are now in Azure_TEC_Integration_Ajax class
+            // Removed duplicate registrations to avoid conflicts:
+            // - azure_tec_manual_sync (now in Azure_TEC_Integration_Ajax)
+            // - azure_tec_bulk_sync (deprecated)
+            // - azure_tec_break_sync (deprecated)
+            // - azure_tec_get_sync_status (deprecated)
             
         } catch (Exception $e) {
             Azure_Logger::fatal('TEC Integration: init_admin Exception: ' . $e->getMessage(), 'TEC');
@@ -469,14 +470,22 @@ class Azure_TEC_Integration {
      * AJAX handler for manual sync
      */
     public function ajax_manual_sync() {
-        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_tec_action')) {
-            wp_die('Unauthorized access');
+        // Check nonce with JSON-friendly error handling
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
         }
         
         $post_id = intval($_POST['post_id']);
         
         if (!$post_id || get_post_type($post_id) !== 'tribe_events') {
             wp_send_json_error('Invalid event ID');
+            return;
         }
         
         $post = get_post($post_id);
@@ -489,8 +498,15 @@ class Azure_TEC_Integration {
      * AJAX handler for bulk sync
      */
     public function ajax_bulk_sync() {
-        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_tec_action')) {
-            wp_die('Unauthorized access');
+        // Check nonce with JSON-friendly error handling
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
         }
         
         $action = sanitize_text_field($_POST['action_type']);
@@ -502,6 +518,7 @@ class Azure_TEC_Integration {
                 $result = $this->sync_engine->sync_outlook_to_tec();
             } else {
                 wp_send_json_error('Invalid action type');
+                return;
             }
             
             if ($result) {
@@ -518,14 +535,22 @@ class Azure_TEC_Integration {
      * AJAX handler for breaking sync relationship
      */
     public function ajax_break_sync() {
-        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_tec_action')) {
-            wp_die('Unauthorized access');
+        // Check nonce with JSON-friendly error handling
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
         }
         
         $post_id = intval($_POST['post_id']);
         
         if (!$post_id || get_post_type($post_id) !== 'tribe_events') {
             wp_send_json_error('Invalid event ID');
+            return;
         }
         
         // Remove sync metadata
@@ -541,14 +566,22 @@ class Azure_TEC_Integration {
      * AJAX handler for getting sync status
      */
     public function ajax_get_sync_status() {
-        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_tec_action')) {
-            wp_die('Unauthorized access');
+        // Check nonce with JSON-friendly error handling
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        
+        if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
+            wp_send_json_error('Invalid nonce');
+            return;
         }
         
         $post_id = intval($_POST['post_id']);
         
         if (!$post_id || get_post_type($post_id) !== 'tribe_events') {
             wp_send_json_error('Invalid event ID');
+            return;
         }
         
         $status = array(

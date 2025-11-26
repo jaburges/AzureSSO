@@ -539,6 +539,70 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
             </form>
         </div>
         
+        <!-- Do Not Sync Exclusion List -->
+        <div class="sso-exclusion-section">
+            <h2><span class="dashicons dashicons-dismiss"></span> Do Not Sync - Exclusion List</h2>
+            <p class="description">Exclude service accounts, shared mailboxes, and other non-user accounts from syncing to WordPress and from SSO login. These accounts will be blocked from authentication.</p>
+            
+            <div class="exclusion-add-section">
+                <h4>Add Account to Exclusion List</h4>
+                <div class="exclusion-add-form">
+                    <select id="azure-users-dropdown" class="regular-text" style="min-width: 350px;">
+                        <option value="">-- Click "Load Azure AD Users" to populate --</option>
+                    </select>
+                    <button type="button" class="button" id="load-azure-users">
+                        <span class="dashicons dashicons-download"></span> Load Azure AD Users
+                    </button>
+                    <button type="button" class="button button-primary" id="add-to-exclusion" disabled>
+                        <span class="dashicons dashicons-plus-alt"></span> Add to Exclusion List
+                    </button>
+                </div>
+                <p class="description" style="margin-top: 10px;">Select a user from the dropdown and click "Add to Exclusion List" to prevent them from syncing or logging in.</p>
+            </div>
+            
+            <div class="exclusion-list-section" style="margin-top: 20px;">
+                <h4>Currently Excluded Accounts</h4>
+                <?php
+                $excluded_users = get_option('azure_sso_excluded_users', array());
+                ?>
+                <table class="wp-list-table widefat fixed striped" id="exclusion-list-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Display Name</th>
+                            <th style="width: 35%;">Email / UPN</th>
+                            <th style="width: 20%;">Date Added</th>
+                            <th style="width: 15%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($excluded_users)): ?>
+                        <tr class="no-exclusions">
+                            <td colspan="4" style="text-align: center; color: #666;">
+                                <em>No accounts are currently excluded. Add service accounts or shared mailboxes above.</em>
+                            </td>
+                        </tr>
+                        <?php else: ?>
+                        <?php foreach ($excluded_users as $user_id => $user_data): ?>
+                        <tr data-user-id="<?php echo esc_attr($user_id); ?>">
+                            <td><?php echo esc_html($user_data['display_name']); ?></td>
+                            <td><?php echo esc_html($user_data['email']); ?></td>
+                            <td><?php echo esc_html(date('M j, Y g:i A', strtotime($user_data['added_at']))); ?></td>
+                            <td>
+                                <button type="button" class="button button-small remove-from-exclusion" data-user-id="<?php echo esc_attr($user_id); ?>">
+                                    <span class="dashicons dashicons-no-alt"></span> Remove
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                <p class="description" style="margin-top: 10px;">
+                    <strong>Note:</strong> Excluded accounts cannot log in via SSO and will not be synced to WordPress during user sync operations.
+                </p>
+            </div>
+        </div>
+        
         <!-- Recent Login Activity -->
         <div class="sso-activity-section">
             <h2>Recent Login Activity</h2>
@@ -887,6 +951,150 @@ jQuery(document).ready(function($) {
         }
     });
     <?php endif; ?>
+    
+    // ===== Do Not Sync Exclusion List Handlers =====
+    
+    // Load Azure AD Users into dropdown
+    $('#load-azure-users').click(function() {
+        var button = $(this);
+        var dropdown = $('#azure-users-dropdown');
+        
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0;"></span> Loading...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_get_all_ad_users',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-download"></span> Load Azure AD Users');
+            
+            if (response.success && response.data.users) {
+                dropdown.empty();
+                dropdown.append('<option value="">-- Select an account to exclude --</option>');
+                
+                // Get currently excluded user IDs
+                var excludedIds = [];
+                $('#exclusion-list-table tbody tr[data-user-id]').each(function() {
+                    excludedIds.push($(this).data('user-id'));
+                });
+                
+                response.data.users.forEach(function(user) {
+                    // Skip already excluded users
+                    if (excludedIds.indexOf(user.id) === -1) {
+                        var optionText = user.displayName + ' (' + (user.mail || user.userPrincipalName) + ')';
+                        dropdown.append('<option value="' + user.id + '" data-display-name="' + user.displayName + '" data-email="' + (user.mail || user.userPrincipalName) + '">' + optionText + '</option>');
+                    }
+                });
+                
+                $('#add-to-exclusion').prop('disabled', false);
+                alert('✅ Loaded ' + response.data.users.length + ' users from Azure AD');
+            } else {
+                alert('❌ Failed to load users: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-download"></span> Load Azure AD Users');
+            alert('❌ Network error occurred');
+        });
+    });
+    
+    // Add user to exclusion list
+    $('#add-to-exclusion').click(function() {
+        var dropdown = $('#azure-users-dropdown');
+        var selectedOption = dropdown.find('option:selected');
+        var userId = dropdown.val();
+        
+        if (!userId) {
+            alert('Please select a user from the dropdown');
+            return;
+        }
+        
+        var displayName = selectedOption.data('display-name');
+        var email = selectedOption.data('email');
+        
+        if (!confirm('Are you sure you want to exclude "' + displayName + '" (' + email + ') from syncing and SSO login?')) {
+            return;
+        }
+        
+        var button = $(this);
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0;"></span> Adding...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_add_user_to_exclusion',
+            user_id: userId,
+            display_name: displayName,
+            email: email,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-plus-alt"></span> Add to Exclusion List');
+            
+            if (response.success) {
+                // Remove the "no exclusions" row if present
+                $('#exclusion-list-table tbody .no-exclusions').remove();
+                
+                // Add new row to table
+                var newRow = '<tr data-user-id="' + userId + '">' +
+                    '<td>' + displayName + '</td>' +
+                    '<td>' + email + '</td>' +
+                    '<td>' + response.data.added_at + '</td>' +
+                    '<td><button type="button" class="button button-small remove-from-exclusion" data-user-id="' + userId + '"><span class="dashicons dashicons-no-alt"></span> Remove</button></td>' +
+                    '</tr>';
+                $('#exclusion-list-table tbody').append(newRow);
+                
+                // Remove from dropdown
+                selectedOption.remove();
+                dropdown.val('');
+                
+                alert('✅ ' + displayName + ' has been added to the exclusion list');
+            } else {
+                alert('❌ Failed to add user: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-plus-alt"></span> Add to Exclusion List');
+            alert('❌ Network error occurred');
+        });
+    });
+    
+    // Remove user from exclusion list
+    $(document).on('click', '.remove-from-exclusion', function() {
+        var button = $(this);
+        var userId = button.data('user-id');
+        var row = button.closest('tr');
+        var displayName = row.find('td:first').text();
+        
+        if (!confirm('Are you sure you want to remove "' + displayName + '" from the exclusion list? They will be able to sync and log in again.')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0;"></span>');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_remove_user_from_exclusion',
+            user_id: userId,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (response.success) {
+                row.fadeOut(function() {
+                    row.remove();
+                    
+                    // Show "no exclusions" message if table is empty
+                    if ($('#exclusion-list-table tbody tr').length === 0) {
+                        $('#exclusion-list-table tbody').append(
+                            '<tr class="no-exclusions"><td colspan="4" style="text-align: center; color: #666;">' +
+                            '<em>No accounts are currently excluded. Add service accounts or shared mailboxes above.</em>' +
+                            '</td></tr>'
+                        );
+                    }
+                });
+                
+                alert('✅ ' + displayName + ' has been removed from the exclusion list');
+            } else {
+                button.prop('disabled', false).html('<span class="dashicons dashicons-no-alt"></span> Remove');
+                alert('❌ Failed to remove user: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-no-alt"></span> Remove');
+            alert('❌ Network error occurred');
+        });
+    });
 });
 </script>
 
@@ -1075,9 +1283,64 @@ input:checked + .slider:before {
 .sso-authentication,
 .sso-sync,
 .sso-redirects,
-.sso-shortcodes-section {
+.sso-shortcodes-section,
+.sso-exclusion-section {
     background: #fff !important;
     color: #333 !important;
+}
+
+/* Exclusion List Section */
+.sso-exclusion-section {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.sso-exclusion-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #d63638 !important;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 10px;
+}
+
+.exclusion-add-form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.exclusion-add-form select {
+    padding: 5px 10px;
+}
+
+#exclusion-list-table {
+    margin-top: 10px;
+}
+
+#exclusion-list-table th {
+    background: #f9f9f9;
+}
+
+#exclusion-list-table .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+}
+
+.remove-from-exclusion {
+    color: #d63638 !important;
+    border-color: #d63638 !important;
+}
+
+.remove-from-exclusion:hover {
+    background: #d63638 !important;
+    color: #fff !important;
 }
 
 .form-table th {

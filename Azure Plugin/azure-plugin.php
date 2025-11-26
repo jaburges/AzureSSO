@@ -2,11 +2,13 @@
 /**
  * Plugin Name: Microsoft WP
  * Plugin URI: https://github.com/jamieburgess/microsoft-wp
- * Description: Complete Microsoft integration plugin for WordPress - includes SSO authentication, backup to Azure Storage, calendar embedding, and email sending via Microsoft Graph API.
- * Version: 1.1
+ * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, email via Microsoft Graph API, PTA role management with O365 Groups sync, and The Events Calendar integration with multi-calendar support.
+ * Version: 1.4
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
+ * Requires at least: 5.0
+ * Requires PHP: 7.4
  */
 
 // Prevent direct access
@@ -17,20 +19,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '1.1');
-
-// Early debug logging - write to logs.md
-$log_file = AZURE_PLUGIN_PATH . 'logs.md';
-$timestamp = date('Y-m-d H:i:s');
-$header = file_exists($log_file) ? '' : "# Microsoft WP Debug Logs\n\n";
-$log_entry = $header . "**{$timestamp}** 🚀 **[INIT]** Microsoft WP main file loaded - Constants defined  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** Plugin URL: " . AZURE_PLUGIN_URL . "  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** Plugin Path: " . AZURE_PLUGIN_PATH . "  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** Plugin Version: " . AZURE_PLUGIN_VERSION . "  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** WordPress Version: " . (function_exists('get_bloginfo') ? get_bloginfo('version') : 'Unknown') . "  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** PHP Version: " . PHP_VERSION . "  \n";
-$log_entry .= "**{$timestamp}** 📍 **[DEBUG]** Memory Limit: " . ini_get('memory_limit') . "  \n";
-file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+define('AZURE_PLUGIN_VERSION', '1.4');
 
 // Main plugin class for Microsoft WP
 class AzurePlugin {
@@ -45,59 +34,31 @@ class AzurePlugin {
     }
     
     private function __construct() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
-        $log_entry = "**{$timestamp}** 🔧 **[CONSTRUCT]** Plugin constructor started  \n";
-        file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-        
         try {
-            // Register hooks - these can be registered immediately
-            $log_entry = "**{$timestamp}** ⏳ **[CONSTRUCT]** Registering WordPress hooks  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            
-            // Use plugins_loaded for initialization to ensure WordPress is ready
+            // Register hooks
             add_action('plugins_loaded', array($this, 'load_dependencies'), 5);
-            file_put_contents($log_file, "**{$timestamp}** ✅ **[CONSTRUCT]** plugins_loaded hook registered  \n", FILE_APPEND | LOCK_EX);
-            
             add_action('init', array($this, 'init'), 10);
-            file_put_contents($log_file, "**{$timestamp}** ✅ **[CONSTRUCT]** init hook registered  \n", FILE_APPEND | LOCK_EX);
             
             // Activation/deactivation hooks must be registered immediately
             register_activation_hook(__FILE__, array($this, 'activate'));
             register_deactivation_hook(__FILE__, array($this, 'deactivate'));
-            file_put_contents($log_file, "**{$timestamp}** ✅ **[CONSTRUCT]** activation/deactivation hooks registered  \n", FILE_APPEND | LOCK_EX);
-            
-            $log_entry = "**{$timestamp}** ✅ **[CONSTRUCT]** WordPress hooks registered successfully  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            
-            $log_entry = "**{$timestamp}** 🎉 **[CONSTRUCT]** Plugin constructor completed successfully  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
         } catch (Exception $e) {
-            $log_entry = "**{$timestamp}** ❌ **[CONSTRUCT ERROR]** " . $e->getMessage() . "  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+            // Log critical constructor errors only
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::error('Plugin constructor failed: ' . $e->getMessage(), array(
+                    'module' => 'Core',
+                    'file' => __FILE__,
+                    'line' => __LINE__
+                ));
+            }
             error_log('Azure Plugin: Constructor error - ' . $e->getMessage());
             throw $e;
         }
     }
     
     public function load_dependencies() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
-        // First thing - log that we're being called
-        file_put_contents($log_file, "**{$timestamp}** 🚨 **[LOAD]** load_dependencies() METHOD CALLED  \n", FILE_APPEND | LOCK_EX);
-        error_log('Azure Plugin: load_dependencies() called');
-        
-        $write_log = function($message) use ($log_file, $timestamp) {
-            $log_entry = "**{$timestamp}** {$message}  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-        };
-        
         try {
-            $write_log("🔄 **[LOAD]** Loading plugin dependencies");
-            
             // Common utilities - CRITICAL FILES
             $critical_files = array(
                 'class-logger.php' => 'Logger class',
@@ -112,6 +73,9 @@ class AzurePlugin {
                 'class-sso-auth.php' => 'SSO Auth class',
                 'class-sso-shortcode.php' => 'SSO Shortcode class',
                 'class-sso-sync.php' => 'SSO Sync class',
+                
+                // User Account functionality
+                'class-user-account-shortcode.php' => 'User Account Shortcode class',
                 
                 // Backup functionality
                 'class-backup.php' => 'Backup class',
@@ -135,19 +99,17 @@ class AzurePlugin {
                 'class-email-shortcode.php' => 'Email Shortcode class',
                 'class-email-logger.php' => 'Email Logger class',
                 
-                // TEC Integration functionality - FULL PRODUCTION VERSION (duplicate method fixed)
-                // 'class-tec-integration-test.php' => 'TEC Integration TEST class',
+                // TEC Integration functionality
                 'class-tec-integration.php' => 'TEC Integration class',
                 'class-tec-sync-engine.php' => 'TEC Sync Engine class',
                 'class-tec-data-mapper.php' => 'TEC Data Mapper class',
                 'class-tec-calendar-mapping-manager.php' => 'TEC Calendar Mapping Manager class',
                 'class-tec-sync-scheduler.php' => 'TEC Sync Scheduler class',
                 'class-tec-integration-ajax.php' => 'TEC Integration AJAX handlers class',
-                // 'class-tec-integration-minimal.php' => 'MINIMAL TEC Integration class',
                 
                 // PTA functionality
                 'class-pta-database.php' => 'PTA Database class',
-                'class-pta-manager.php' => 'PTA Manager class',  // ENABLED FOR DEBUGGING
+                'class-pta-manager.php' => 'PTA Manager class',
                 'class-pta-sync-engine.php' => 'PTA Sync Engine class',
                 'class-pta-groups-manager.php' => 'PTA Groups Manager class',
                 'class-pta-shortcode.php' => 'PTA Shortcode class',
@@ -162,375 +124,254 @@ class AzurePlugin {
             // Load critical files first - these must succeed
             foreach ($critical_files as $file => $description) {
                 $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
-                $write_log("⏳ **[LOAD CRITICAL]** Loading {$description}: {$file}");
                 
                 if (!file_exists($file_path)) {
                     $error_msg = "Critical file not found: {$file_path}";
-                    $write_log("💀 **[LOAD CRITICAL ERROR]** {$error_msg}");
+                    error_log('Azure Plugin: ' . $error_msg);
                     throw new Exception($error_msg);
                 }
                 
                 try {
                     require_once $file_path;
-                    $write_log("✅ **[LOAD CRITICAL]** {$description} loaded successfully");
                 } catch (ParseError $e) {
                     $error_msg = "Parse error in critical file {$file}: " . $e->getMessage();
-                    $write_log("💀 **[LOAD CRITICAL PARSE ERROR]** {$error_msg}");
-                    $write_log("📍 **[PARSE ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    error_log('Azure Plugin: ' . $error_msg . ' at ' . $e->getFile() . ':' . $e->getLine());
                     throw new Exception($error_msg);
                 } catch (Error $e) {
                     $error_msg = "Fatal error in critical file {$file}: " . $e->getMessage();
-                    $write_log("💀 **[LOAD CRITICAL FATAL ERROR]** {$error_msg}");
-                    $write_log("📍 **[FATAL ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    error_log('Azure Plugin: ' . $error_msg . ' at ' . $e->getFile() . ':' . $e->getLine());
                     throw new Exception($error_msg);
                 } catch (Exception $e) {
                     $error_msg = "Error loading critical file {$file}: " . $e->getMessage();
-                    $write_log("❌ **[LOAD CRITICAL ERROR]** {$error_msg}");
-                    $write_log("📍 **[ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
+                    error_log('Azure Plugin: ' . $error_msg);
                     throw new Exception($error_msg);
                 }
             }
             
             // Load optional files - failures are logged but don't stop loading
-            $missing_optional_files = array();
             foreach ($optional_files as $file => $description) {
                 $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
-                $write_log("⏳ **[LOAD]** Loading {$description}: {$file}");
                 
                 if (!file_exists($file_path)) {
-                    $write_log("⚠️ **[LOAD WARNING]** Optional file not found: {$file_path}");
-                    $missing_optional_files[] = $file;
+                    if (WP_DEBUG) {
+                        error_log("Azure Plugin: Optional file not found: {$file_path}");
+                    }
                     continue;
                 }
                 
                 try {
-                    // Special handling for class-calendar-auth.php
-                    if ($file === 'class-calendar-auth.php') {
-                        $write_log("⏳ **[LOAD]** Loading class-calendar-auth.php (simplified version)");
-                    }
-                    
                     require_once $file_path;
-                    
-                    if ($file === 'class-calendar-auth.php') {
-                        restore_error_handler(); // Restore previous error handler
-                        $write_log("✅ **[DEBUG]** calendar-auth require_once completed - class exists: " . (class_exists('Azure_Calendar_Auth') ? 'YES' : 'NO'));
-                    }
-                    
-                    $write_log("✅ **[LOAD]** {$description} loaded successfully");
-                } catch (ParseError $e) {
-                    $write_log("💀 **[LOAD PARSE ERROR]** Parse error in optional file {$file}: " . $e->getMessage());
-                    $write_log("📍 **[PARSE ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    error_log("Azure Plugin PARSE ERROR in {$file}: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
-                    $missing_optional_files[] = $file;
-                } catch (Error $e) {
-                    $write_log("💀 **[LOAD FATAL ERROR]** Fatal error in optional file {$file}: " . $e->getMessage());
-                    $write_log("📍 **[FATAL ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    $write_log("📋 **[STACK TRACE]** " . str_replace("\n", " | ", $e->getTraceAsString()));
-                    error_log("Azure Plugin FATAL ERROR in {$file}: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
-                    error_log("Stack: " . $e->getTraceAsString());
-                    $missing_optional_files[] = $file;
                 } catch (Exception $e) {
-                    $write_log("❌ **[LOAD ERROR]** Error loading optional file {$file}: " . $e->getMessage());
-                    $write_log("📍 **[ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                    error_log("Azure Plugin ERROR in {$file}: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
-                    $missing_optional_files[] = $file;
+                    error_log("Azure Plugin: Error loading optional file {$file}: " . $e->getMessage());
                 }
             }
             
-            if (!empty($missing_optional_files)) {
-                $write_log("⚠️ **[LOAD SUMMARY]** " . count($missing_optional_files) . " optional files failed to load: " . implode(', ', $missing_optional_files));
-            }
-            
-            $write_log("🎉 **[LOAD]** All dependencies loaded successfully");
-            
         } catch (Exception $e) {
-            $write_log("❌ **[LOAD ERROR]** " . $e->getMessage());
-            $write_log("📍 **[LOAD ERROR FILE]** " . $e->getFile() . " line " . $e->getLine());
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::error('Failed to load dependencies: ' . $e->getMessage(), array(
+                    'module' => 'Core',
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ));
+            }
+            error_log('Azure Plugin: load_dependencies failed - ' . $e->getMessage());
             throw $e;
         }
     }
     
     public function init() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        $log_entry = "**{$timestamp}** 🔄 **[INIT]** Plugin init started  \n";
-        file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-        
         try {
             // Initialize logger first if not already initialized
             if (class_exists('Azure_Logger') && !Azure_Logger::is_initialized()) {
                 Azure_Logger::init();
             }
             
-            // Only initialize if we're loaded and dependencies are available
-            if (!class_exists('Azure_Logger')) {
-                $log_entry = "**{$timestamp}** ⚠️ **[INIT]** Logger class not found, exiting init  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-                return;
+            // Register scheduled log cleanup
+            if (!wp_next_scheduled('azure_plugin_cleanup_logs')) {
+                wp_schedule_event(time(), 'daily', 'azure_plugin_cleanup_logs');
             }
-            $log_entry = "**{$timestamp}** ✅ **[INIT]** Logger class available  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+            add_action('azure_plugin_cleanup_logs', array('Azure_Logger', 'scheduled_cleanup'));
             
             // Load plugin textdomain
-            $log_entry = "**{$timestamp}** ⏳ **[INIT]** Loading textdomain  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             load_plugin_textdomain('azure-plugin', false, dirname(plugin_basename(__FILE__)) . '/languages');
-            $log_entry = "**{$timestamp}** ✅ **[INIT]** Textdomain loaded  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
-            // Initialize settings system FIRST (before Admin, as Admin depends on it)
+            // Initialize settings system
             if (class_exists('Azure_Settings')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[SETTINGS]** Creating Azure_Settings instance  \n", FILE_APPEND | LOCK_EX);
                 Azure_Settings::get_instance();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[SETTINGS]** Azure_Settings instance created successfully  \n", FILE_APPEND | LOCK_EX);
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** Settings initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize admin components (AFTER Settings)
-            if (is_admin()) {
-                $log_entry = "**{$timestamp}** ⏳ **[INIT]** Initializing admin components  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-                if (class_exists('Azure_Admin')) {
-                    file_put_contents($log_file, "**{$timestamp}** ⏳ **[ADMIN]** Creating Azure_Admin instance  \n", FILE_APPEND | LOCK_EX);
-                    Azure_Admin::get_instance();
-                    file_put_contents($log_file, "**{$timestamp}** ✅ **[ADMIN]** Azure_Admin instance created successfully  \n", FILE_APPEND | LOCK_EX);
-                }
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** Admin initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+            // Initialize admin components
+            if (is_admin() && class_exists('Azure_Admin')) {
+                Azure_Admin::get_instance();
             }
             
-            // Initialize SSO functionality if enabled
+            // Get settings for module initialization
             $settings = get_option('azure_plugin_settings', array());
+            
+            // Initialize enabled modules
             if (!empty($settings['enable_sso'])) {
                 $this->init_sso_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** SSO components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize Backup functionality if enabled
             if (!empty($settings['enable_backup'])) {
                 $this->init_backup_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** Backup components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize Calendar functionality if enabled
             if (!empty($settings['enable_calendar'])) {
                 $this->init_calendar_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** Calendar components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize TEC Integration
             if ($settings['enable_tec_integration'] ?? false) {
                 $this->init_tec_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** TEC Integration components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             }
             
             // Always initialize Email Logger (logs all WordPress emails)
             $this->init_email_logger();
-            $log_entry = "**{$timestamp}** ✅ **[INIT]** Email logger initialized  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
-            // Check email functionality setting
-            file_put_contents($log_file, "**{$timestamp}** 🔍 **[DEBUG]** Checking email functionality setting...  \n", FILE_APPEND | LOCK_EX);
-            
-            // Initialize Email functionality if enabled
             if (!empty($settings['enable_email'])) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[DEBUG]** Email functionality enabled, initializing components...  \n", FILE_APPEND | LOCK_EX);
                 $this->init_email_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** Email components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            } else {
-                file_put_contents($log_file, "**{$timestamp}** ℹ️ **[DEBUG]** Email functionality disabled, skipping...  \n", FILE_APPEND | LOCK_EX);
             }
             
-            // Check PTA functionality setting
-            file_put_contents($log_file, "**{$timestamp}** 🔍 **[DEBUG]** Checking PTA functionality setting...  \n", FILE_APPEND | LOCK_EX);
-            
-            // Initialize PTA functionality if enabled
             if (!empty($settings['enable_pta'])) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[DEBUG]** PTA functionality enabled, initializing components...  \n", FILE_APPEND | LOCK_EX);
                 $this->init_pta_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** PTA components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            } else {
-                file_put_contents($log_file, "**{$timestamp}** ℹ️ **[DEBUG]** PTA functionality disabled, skipping...  \n", FILE_APPEND | LOCK_EX);
             }
             
-            // Initialize OneDrive Media functionality if enabled
             if (!empty($settings['enable_onedrive_media'])) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[DEBUG]** OneDrive Media functionality enabled, initializing components...  \n", FILE_APPEND | LOCK_EX);
                 $this->init_onedrive_media_components();
-                $log_entry = "**{$timestamp}** ✅ **[INIT]** OneDrive Media components initialized  \n";
-                file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            } else {
-                file_put_contents($log_file, "**{$timestamp}** ℹ️ **[DEBUG]** OneDrive Media functionality disabled, skipping...  \n", FILE_APPEND | LOCK_EX);
             }
-            
-            file_put_contents($log_file, "**{$timestamp}** 🏁 **[DEBUG]** About to log completion message...  \n", FILE_APPEND | LOCK_EX);
-            
-            $log_entry = "**{$timestamp}** 🎉 **[INIT]** Plugin init completed successfully  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
             
         } catch (Exception $e) {
-            $log_entry = "**{$timestamp}** ❌ **[INIT ERROR]** " . $e->getMessage() . "  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            $log_entry = "**{$timestamp}** 📍 **[INIT ERROR FILE]** " . $e->getFile() . " line " . $e->getLine() . "  \n";
-            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-            throw $e;
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::error('Plugin init failed: ' . $e->getMessage(), array(
+                    'module' => 'Core',
+                    'file' => __FILE__,
+                    'line' => __LINE__
+                ));
+            }
+            error_log('Azure Plugin: init error - ' . $e->getMessage());
         }
     }
     
     private function init_sso_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
             if (class_exists('Azure_SSO_Auth')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[SSO]** Initializing Azure_SSO_Auth  \n", FILE_APPEND | LOCK_EX);
                 new Azure_SSO_Auth();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[SSO]** Azure_SSO_Auth initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('SSO', 'Azure_SSO_Auth initialized successfully');
             }
             if (class_exists('Azure_SSO_Shortcode')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[SSO]** Initializing Azure_SSO_Shortcode  \n", FILE_APPEND | LOCK_EX);
                 new Azure_SSO_Shortcode();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[SSO]** Azure_SSO_Shortcode initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('SSO', 'Azure_SSO_Shortcode initialized successfully');
             }
             if (class_exists('Azure_SSO_Sync')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[SSO]** Initializing Azure_SSO_Sync  \n", FILE_APPEND | LOCK_EX);
                 new Azure_SSO_Sync();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[SSO]** Azure_SSO_Sync initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('SSO', 'Azure_SSO_Sync initialized successfully');
             }
-        } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[SSO FATAL]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[SSO FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
+            if (class_exists('Azure_User_Account_Shortcode')) {
+                new Azure_User_Account_Shortcode();
+                Azure_Logger::debug_module('SSO', 'Azure_User_Account_Shortcode initialized successfully');
+            }
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[SSO ERROR]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[SSO ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
+            Azure_Logger::error('SSO init failed: ' . $e->getMessage(), array(
+                'module' => 'SSO',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: SSO init error - ' . $e->getMessage());
         }
     }
     
     private function init_backup_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
             // Initialize backup components in the correct order to avoid dependency issues
             // Storage class should NOT be instantiated here as it's only used internally by other classes
             if (class_exists('Azure_Backup')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[BACKUP]** Initializing Azure_Backup  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Backup();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[BACKUP]** Azure_Backup initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Backup', 'Azure_Backup initialized successfully');
             }
             if (class_exists('Azure_Backup_Restore')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[BACKUP]** Initializing Azure_Backup_Restore  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Backup_Restore();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[BACKUP]** Azure_Backup_Restore initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Backup', 'Azure_Backup_Restore initialized successfully');
             }
             if (class_exists('Azure_Backup_Scheduler')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[BACKUP]** Initializing Azure_Backup_Scheduler  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Backup_Scheduler();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[BACKUP]** Azure_Backup_Scheduler initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Backup', 'Azure_Backup_Scheduler initialized successfully');
             }
             // Note: Azure_Backup_Storage is not instantiated here - it's created on-demand by other classes
-        } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[BACKUP FATAL]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[BACKUP FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[BACKUP ERROR]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[BACKUP ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
+            Azure_Logger::error('Backup init failed: ' . $e->getMessage(), array(
+                'module' => 'Backup',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Backup init error - ' . $e->getMessage());
         }
     }
     
     private function init_calendar_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = current_time('Y-m-d H:i:s');
-        
-        $write_log = function($message) use ($log_file, $timestamp) {
-            file_put_contents($log_file, "**{$timestamp}** {$message}  \n", FILE_APPEND | LOCK_EX);
-        };
-        
-        $write_log("🔧 **[CALENDAR]** Initializing calendar components");
-        
-        if (class_exists('Azure_Calendar_Auth')) {
-            $write_log("🔍 **[CALENDAR]** Azure_Calendar_Auth class exists");
-            try {
-                $write_log("⏳ **[CALENDAR]** Creating Azure_Calendar_Auth instance...");
+        try {
+            if (class_exists('Azure_Calendar_Auth')) {
                 new Azure_Calendar_Auth();
-                $write_log("✅ **[CALENDAR]** Azure_Calendar_Auth instantiated successfully");
-            } catch (Error $e) {
-                $write_log("💀 **[CALENDAR FATAL]** " . $e->getMessage());
-                $write_log("📍 **[CALENDAR FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                throw $e;
-            } catch (Exception $e) {
-                $write_log("❌ **[CALENDAR ERROR]** " . $e->getMessage());
-                $write_log("📍 **[CALENDAR ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine());
-                throw $e;
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_Auth initialized successfully');
             }
-        } else {
-            $write_log("⚠️ **[CALENDAR]** Azure_Calendar_Auth class NOT found");
-        }
-        if (class_exists('Azure_Calendar_GraphAPI')) {
-            new Azure_Calendar_GraphAPI();
-        }
-        if (class_exists('Azure_Calendar_Manager')) {
-            new Azure_Calendar_Manager();
-        }
-        if (class_exists('Azure_Calendar_Shortcode')) {
-            new Azure_Calendar_Shortcode();
-        }
-        if (class_exists('Azure_Calendar_EventsCPT')) {
-            new Azure_Calendar_EventsCPT();
-        }
-        if (class_exists('Azure_Calendar_ICalSync')) {
-            new Azure_Calendar_ICalSync();
-        }
-        if (class_exists('Azure_Calendar_EventsShortcode')) {
-            new Azure_Calendar_EventsShortcode();
+            if (class_exists('Azure_Calendar_GraphAPI')) {
+                new Azure_Calendar_GraphAPI();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_GraphAPI initialized successfully');
+            }
+            if (class_exists('Azure_Calendar_Manager')) {
+                new Azure_Calendar_Manager();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_Manager initialized successfully');
+            }
+            if (class_exists('Azure_Calendar_Shortcode')) {
+                new Azure_Calendar_Shortcode();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_Shortcode initialized successfully');
+            }
+            if (class_exists('Azure_Calendar_EventsCPT')) {
+                new Azure_Calendar_EventsCPT();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_EventsCPT initialized successfully');
+            }
+            if (class_exists('Azure_Calendar_ICalSync')) {
+                new Azure_Calendar_ICalSync();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_ICalSync initialized successfully');
+            }
+            if (class_exists('Azure_Calendar_EventsShortcode')) {
+                new Azure_Calendar_EventsShortcode();
+                Azure_Logger::debug_module('Calendar', 'Azure_Calendar_EventsShortcode initialized successfully');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Calendar init failed: ' . $e->getMessage(), array(
+                'module' => 'Calendar',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Calendar init error - ' . $e->getMessage());
         }
     }
     
     private function init_tec_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
             if (class_exists('Azure_TEC_Integration')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[TEC]** Initializing Azure_TEC_Integration  \n", FILE_APPEND | LOCK_EX);
                 Azure_TEC_Integration::get_instance();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[TEC]** Azure_TEC_Integration initialized successfully  \n", FILE_APPEND | LOCK_EX);
-            } else {
-                file_put_contents($log_file, "**{$timestamp}** ⚠️ **[TEC]** Azure_TEC_Integration class not found  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('TEC', 'Azure_TEC_Integration initialized successfully');
             }
             
             // Initialize TEC AJAX handlers
             if (class_exists('Azure_TEC_Integration_Ajax')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[TEC]** Initializing Azure_TEC_Integration_Ajax  \n", FILE_APPEND | LOCK_EX);
                 new Azure_TEC_Integration_Ajax();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[TEC]** Azure_TEC_Integration_Ajax initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('TEC', 'Azure_TEC_Integration_Ajax initialized successfully');
             }
             
             // Initialize TEC Sync Scheduler
             if (class_exists('Azure_TEC_Sync_Scheduler')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[TEC]** Initializing Azure_TEC_Sync_Scheduler  \n", FILE_APPEND | LOCK_EX);
                 new Azure_TEC_Sync_Scheduler();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[TEC]** Azure_TEC_Sync_Scheduler initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('TEC', 'Azure_TEC_Sync_Scheduler initialized successfully');
             }
-        } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[TEC FATAL]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[TEC FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[TEC ERROR]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[TEC ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
+            Azure_Logger::error('TEC init failed: ' . $e->getMessage(), array(
+                'module' => 'TEC',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: TEC init error - ' . $e->getMessage());
         }
     }
     
@@ -545,150 +386,105 @@ class AzurePlugin {
     }
     
     private function init_email_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
             if (class_exists('Azure_Email_Auth')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[EMAIL]** Initializing Azure_Email_Auth  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Email_Auth();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[EMAIL]** Azure_Email_Auth initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Email', 'Azure_Email_Auth initialized successfully');
             }
             
             if (class_exists('Azure_Email_Mailer')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[EMAIL]** Initializing Azure_Email_Mailer  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Email_Mailer();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[EMAIL]** Azure_Email_Mailer initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Email', 'Azure_Email_Mailer initialized successfully');
             }
             
             if (class_exists('Azure_Email_Shortcode')) {
-                file_put_contents($log_file, "**{$timestamp}** ⏳ **[EMAIL]** Initializing Azure_Email_Shortcode  \n", FILE_APPEND | LOCK_EX);
                 new Azure_Email_Shortcode();
-                file_put_contents($log_file, "**{$timestamp}** ✅ **[EMAIL]** Azure_Email_Shortcode initialized successfully  \n", FILE_APPEND | LOCK_EX);
+                Azure_Logger::debug_module('Email', 'Azure_Email_Shortcode initialized successfully');
             }
-        } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[EMAIL FATAL]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[EMAIL FATAL LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[EMAIL ERROR]** " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[EMAIL ERROR LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
-            throw $e;
+            Azure_Logger::error('Email init failed: ' . $e->getMessage(), array(
+                'module' => 'Email',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Email init error - ' . $e->getMessage());
         }
     }
     
     private function init_pta_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
-            Azure_Logger::loading('Starting PTA components initialization', 'PTA');
+            Azure_Logger::debug_module('PTA', 'Starting PTA components initialization');
             
             if (class_exists('Azure_PTA_Database')) {
-                Azure_Logger::loading('Initializing Azure_PTA_Database', 'PTA');
                 Azure_PTA_Database::init();
-                Azure_Logger::complete('Azure_PTA_Database initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::warning('PTA: Azure_PTA_Database class not found');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Database initialized successfully');
             }
             
-            // Initialize PTA Manager - RE-ENABLED AFTER SUCCESSFUL DEBUGGING
             if (class_exists('Azure_PTA_Manager')) {
-                Azure_Logger::loading('Initializing Azure_PTA_Manager', 'PTA');
                 Azure_PTA_Manager::get_instance();
-                Azure_Logger::complete('Azure_PTA_Manager initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::warning('PTA: Azure_PTA_Manager class not found');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Manager initialized successfully');
             }
             
             if (class_exists('Azure_PTA_Sync_Engine')) {
-                Azure_Logger::loading('Initializing Azure_PTA_Sync_Engine', 'PTA');
                 new Azure_PTA_Sync_Engine();
-                Azure_Logger::complete('Azure_PTA_Sync_Engine initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::info('PTA: Azure_PTA_Sync_Engine class not found - this is optional');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Sync_Engine initialized successfully');
             }
             
             if (class_exists('Azure_PTA_Groups_Manager')) {
-                Azure_Logger::loading('Initializing Azure_PTA_Groups_Manager', 'PTA');
                 new Azure_PTA_Groups_Manager();
-                Azure_Logger::complete('Azure_PTA_Groups_Manager initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::info('PTA: Azure_PTA_Groups_Manager class not found - this is optional');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Groups_Manager initialized successfully');
             }
             
-            // Initialize PTA shortcodes
             if (class_exists('Azure_PTA_Shortcode')) {
-                Azure_Logger::loading('Initializing Azure_PTA_Shortcode', 'PTA');
                 new Azure_PTA_Shortcode();
-                Azure_Logger::complete('Azure_PTA_Shortcode initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::warning('PTA: Azure_PTA_Shortcode class not found');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Shortcode initialized successfully');
             }
             
-            // Initialize Beaver Builder integration (only if Beaver Builder is active)
             if (class_exists('Azure_PTA_BeaverBuilder')) {
-                Azure_Logger::loading('Initializing Azure_PTA_BeaverBuilder', 'PTA');
-                // Constructor will check if Beaver Builder is available
                 new Azure_PTA_BeaverBuilder();
-                Azure_Logger::complete('Azure_PTA_BeaverBuilder initialized successfully', 'PTA');
-            } else {
-                Azure_Logger::warning('PTA: Azure_PTA_BeaverBuilder class not found');
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_BeaverBuilder initialized successfully');
             }
             
-            Azure_Logger::success('All PTA components initialized successfully', 'PTA');
+            Azure_Logger::debug_module('PTA', 'All PTA components initialized successfully');
             
-        } catch (Error $e) {
-            Azure_Logger::fatal('PTA: ' . $e->getMessage(), $e->getFile() . ' line ' . $e->getLine());
-            throw $e;
         } catch (Exception $e) {
-            Azure_Logger::error('PTA: ' . $e->getMessage(), array('location' => $e->getFile() . ' line ' . $e->getLine()));
-            throw $e;
+            Azure_Logger::error('PTA init failed: ' . $e->getMessage(), array(
+                'module' => 'PTA',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: PTA init error - ' . $e->getMessage());
         }
     }
     
     private function init_onedrive_media_components() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        
         try {
-            Azure_Logger::loading('Starting OneDrive Media components initialization', 'OneDrive Media');
+            Azure_Logger::debug_module('OneDrive', 'Starting OneDrive Media components initialization');
             
-            // Initialize OneDrive Media Auth
             if (class_exists('Azure_OneDrive_Media_Auth')) {
-                Azure_Logger::loading('Initializing Azure_OneDrive_Media_Auth', 'OneDrive Media');
                 new Azure_OneDrive_Media_Auth();
-                Azure_Logger::complete('Azure_OneDrive_Media_Auth initialized successfully', 'OneDrive Media');
-            } else {
-                Azure_Logger::warning('OneDrive Media: Azure_OneDrive_Media_Auth class not found');
+                Azure_Logger::debug_module('OneDrive', 'Azure_OneDrive_Media_Auth initialized successfully');
             }
             
-            // Initialize OneDrive Media Graph API
             if (class_exists('Azure_OneDrive_Media_GraphAPI')) {
-                Azure_Logger::loading('Initializing Azure_OneDrive_Media_GraphAPI', 'OneDrive Media');
                 new Azure_OneDrive_Media_GraphAPI();
-                Azure_Logger::complete('Azure_OneDrive_Media_GraphAPI initialized successfully', 'OneDrive Media');
-            } else {
-                Azure_Logger::warning('OneDrive Media: Azure_OneDrive_Media_GraphAPI class not found');
+                Azure_Logger::debug_module('OneDrive', 'Azure_OneDrive_Media_GraphAPI initialized successfully');
             }
             
-            // Initialize OneDrive Media Manager (main orchestration)
             if (class_exists('Azure_OneDrive_Media_Manager')) {
-                Azure_Logger::loading('Initializing Azure_OneDrive_Media_Manager', 'OneDrive Media');
                 Azure_OneDrive_Media_Manager::get_instance();
-                Azure_Logger::complete('Azure_OneDrive_Media_Manager initialized successfully', 'OneDrive Media');
-            } else {
-                Azure_Logger::warning('OneDrive Media: Azure_OneDrive_Media_Manager class not found');
+                Azure_Logger::debug_module('OneDrive', 'Azure_OneDrive_Media_Manager initialized successfully');
             }
             
-            Azure_Logger::success('All OneDrive Media components initialized successfully', 'OneDrive Media');
+            Azure_Logger::debug_module('OneDrive', 'All OneDrive Media components initialized successfully');
             
-        } catch (Error $e) {
-            Azure_Logger::fatal('OneDrive Media: ' . $e->getMessage(), $e->getFile() . ' line ' . $e->getLine());
-            throw $e;
         } catch (Exception $e) {
-            Azure_Logger::error('OneDrive Media: ' . $e->getMessage(), array('location' => $e->getFile() . ' line ' . $e->getLine()));
-            throw $e;
+            Azure_Logger::error('OneDrive Media init failed: ' . $e->getMessage(), array(
+                'module' => 'OneDrive',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: OneDrive Media init error - ' . $e->getMessage());
         }
     }
     
@@ -780,16 +576,23 @@ class AzurePlugin {
             if (class_exists('Azure_PTA_Database')) {
                 try {
                     Azure_Logger::info('Creating PTA database tables');
-                    Azure_PTA_Database::create_tables();
+                    Azure_PTA_Database::create_pta_tables();  // Fixed: correct method name
                     Azure_Logger::info('PTA database tables created successfully');
+                    
+                    // Seed initial data from CSV (only if tables are empty)
+                    $write_log("⏳ **[STEP 6b]** Seeding PTA data from CSV");
+                    Azure_Logger::info('Seeding PTA initial data from CSV');
+                    Azure_PTA_Database::seed_initial_data(false);  // false = skip if already populated
+                    Azure_Logger::info('PTA initial data seeded successfully');
+                    $write_log("✅ **[STEP 6b]** PTA data seeded from CSV");
                 } catch (Exception $e) {
-                    $write_log("❌ **[STEP 6 ERROR]** Failed to create PTA tables: " . $e->getMessage());
-                    Azure_Logger::error('Failed to create PTA database tables: ' . $e->getMessage());
+                    $write_log("❌ **[STEP 6 ERROR]** Failed to create/seed PTA tables: " . $e->getMessage());
+                    Azure_Logger::error('Failed to create/seed PTA database tables: ' . $e->getMessage());
                     // Continue with activation but log the error
                 }
             }
             
-            $write_log("✅ **[STEP 6]** Database tables created");
+            $write_log("✅ **[STEP 6]** Database tables created and seeded");
             
             $write_log("⏳ **[STEP 7]** Creating AzureAD role");
             // Create AzureAD WordPress role
@@ -993,26 +796,16 @@ class AzurePlugin {
     }
 }
 
-// Initialize the plugin with debugging
+// Initialize the plugin
 try {
-    $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-    $timestamp = date('Y-m-d H:i:s');
-    $log_entry = "**{$timestamp}** 🏁 **[MAIN]** Initializing plugin instance  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-    
     AzurePlugin::get_instance();
-    
-    $log_entry = "**{$timestamp}** ✅ **[MAIN]** Plugin instance initialized successfully  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-    
 } catch (Exception $e) {
-    $log_entry = "**{$timestamp}** ❌ **[MAIN ERROR]** " . $e->getMessage() . "  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-    $log_entry = "**{$timestamp}** 📍 **[MAIN ERROR FILE]** " . $e->getFile() . " line " . $e->getLine() . "  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-} catch (Error $e) {
-    $log_entry = "**{$timestamp}** 💀 **[MAIN FATAL]** " . $e->getMessage() . "  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
-    $log_entry = "**{$timestamp}** 📍 **[MAIN FATAL FILE]** " . $e->getFile() . " line " . $e->getLine() . "  \n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+    if (class_exists('Azure_Logger')) {
+        Azure_Logger::error('Plugin initialization failed: ' . $e->getMessage(), array(
+            'module' => 'Core',
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ));
+    }
+    error_log('Azure Plugin: Fatal initialization error - ' . $e->getMessage());
 }

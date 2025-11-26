@@ -1,5 +1,111 @@
 /* Azure Plugin Admin Styles */
 
+/* =============================================
+   GLOBAL BUTTON ICON STYLES
+   Ensures dashicons are properly centered in all buttons
+   ============================================= */
+
+/* WordPress buttons with dashicons - force flex alignment */
+.wrap .button,
+.wrap .button-primary,
+.wrap .button-secondary,
+.wrap .button-small,
+.wrap a.button,
+.modal .button,
+.modal .button-primary,
+.modal .button-secondary,
+.credentials-section .button,
+.module-card .button,
+.auth-actions-inline .button,
+.auth-actions .button {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px;
+    vertical-align: middle;
+}
+
+/* All dashicons inside buttons - consistent sizing and alignment */
+.wrap .button .dashicons,
+.wrap .button-primary .dashicons,
+.wrap .button-secondary .dashicons,
+.wrap .button-small .dashicons,
+.wrap .button-link-delete .dashicons,
+.wrap a.button .dashicons,
+.modal .button .dashicons,
+.credentials-section .button .dashicons,
+.module-card .button .dashicons,
+.auth-actions-inline .button .dashicons,
+.auth-actions .button .dashicons,
+button .dashicons,
+.button .dashicons {
+    display: inline-block !important;
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative;
+    top: 0;
+    flex-shrink: 0;
+}
+
+/* Specific fix for buttons that still have issues */
+.button > .dashicons:first-child,
+.button-primary > .dashicons:first-child,
+.button-secondary > .dashicons:first-child {
+    margin-right: 2px !important;
+}
+
+/* Status badges with icons */
+.status-badge,
+.status-success,
+.status-error,
+.status-warning {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px;
+}
+
+.status-badge .dashicons,
+.status-success .dashicons,
+.status-error .dashicons,
+.status-warning .dashicons {
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+
+/* Spinner animation for loading states */
+.dashicons.spin,
+.dashicons-update.spin,
+.spin .dashicons {
+    animation: dashicons-spin 1s linear infinite;
+}
+
+@keyframes dashicons-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Ensure inline buttons in action areas align properly */
+.auth-actions-inline,
+.auth-actions,
+.button-group,
+.action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+/* =============================================
+   END GLOBAL BUTTON ICON STYLES
+   ============================================= */
+
 .azure-plugin-dashboard {
     display: grid;
     grid-template-columns: 1fr 1fr;
