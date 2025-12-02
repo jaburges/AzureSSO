@@ -123,6 +123,22 @@ if (!defined('ABSPATH')) {
                         <p>Store WordPress media files in OneDrive/SharePoint with CDN optimization.</p>
                     </div>
                 </div>
+                
+                <div class="module-card <?php echo ($settings['enable_classes'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                    <div class="module-header">
+                        <h3><span class="dashicons dashicons-welcome-learn-more"></span> Classes</h3>
+                        <div class="module-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="module-toggle" data-module="classes" <?php checked($settings['enable_classes'] ?? false); ?> />
+                                <span class="slider"></span>
+                            </label>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-classes'); ?>" class="button button-configure">Configure</a>
+                        </div>
+                    </div>
+                    <div class="module-description">
+                        <p>Create class products with TEC events, variable pricing, and commit-to-buy flow.</p>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -138,6 +154,7 @@ if (!defined('ABSPATH')) {
                 <input type="hidden" name="enable_pta" id="hidden_enable_pta" value="<?php echo $settings['enable_pta'] ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_tec_integration" id="hidden_enable_tec_integration" value="<?php echo ($settings['enable_tec_integration'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_onedrive_media" id="hidden_enable_onedrive_media" value="<?php echo ($settings['enable_onedrive_media'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_classes" id="hidden_enable_classes" value="<?php echo ($settings['enable_classes'] ?? false) ? '1' : '0'; ?>" />
                 
                 <div class="credentials-section">
                     <h2>Azure Credentials</h2>

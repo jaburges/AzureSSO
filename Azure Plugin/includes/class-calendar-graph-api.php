@@ -256,10 +256,30 @@ class Azure_Calendar_GraphAPI {
             
             Azure_Logger::debug("Calendar API: Full URL: " . substr($api_url, 0, 200) . "...", 'Calendar');
             
+            // Get the preferred timezone for this calendar from settings
+            $settings = Azure_Settings::get_all_settings();
+            $preferred_timezone = '';
+            
+            // Check for per-calendar timezone setting first
+            if (!empty($settings['calendar_timezone_' . $calendar_id])) {
+                $preferred_timezone = $settings['calendar_timezone_' . $calendar_id];
+            } elseif (!empty($settings['calendar_default_timezone'])) {
+                $preferred_timezone = $settings['calendar_default_timezone'];
+            } else {
+                // Fall back to WordPress timezone
+                $preferred_timezone = wp_timezone_string();
+            }
+            
+            // Convert IANA timezone to Windows format for Graph API if needed
+            $outlook_timezone = $this->convert_iana_to_windows_timezone($preferred_timezone);
+            
+            Azure_Logger::debug("Calendar API: Using timezone preference: {$outlook_timezone} (from: {$preferred_timezone})", 'Calendar');
+            
             $response = wp_remote_get($api_url, array(
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $access_token,
-                    'Content-Type' => 'application/json'
+                    'Content-Type' => 'application/json',
+                    'Prefer' => 'outlook.timezone="' . $outlook_timezone . '"'
                 ),
                 'timeout' => 30
             ));
@@ -506,14 +526,170 @@ class Azure_Calendar_GraphAPI {
         
         $timezone = $datetime_obj['timeZone'] ?? 'UTC';
         
+        // Convert Windows timezone names to IANA format that PHP understands
+        $timezone = $this->convert_windows_timezone($timezone);
+        
         try {
             $dt = new DateTime($datetime_obj['dateTime'], new DateTimeZone($timezone));
             // Return ISO 8601 format WITH timezone offset so FullCalendar knows the correct time
             // Example: 2025-12-04T09:00:00-08:00 (Pacific Time)
             return $dt->format('c'); // 'c' = ISO 8601 with timezone offset
         } catch (Exception $e) {
-            return $datetime_obj['dateTime'];
+            Azure_Logger::warning("Calendar: Failed to parse datetime with timezone '{$timezone}': " . $e->getMessage(), 'Calendar');
+            // Fall back to treating the datetime as UTC
+            try {
+                $dt = new DateTime($datetime_obj['dateTime'], new DateTimeZone('UTC'));
+                return $dt->format('c');
+            } catch (Exception $e2) {
+                return $datetime_obj['dateTime'];
+            }
         }
+    }
+    
+    /**
+     * Convert Windows timezone names to IANA timezone identifiers
+     * Microsoft Graph API returns Windows timezone names, but PHP requires IANA names
+     */
+    private function convert_windows_timezone($windows_tz) {
+        // Common Windows to IANA timezone mappings
+        $timezone_map = array(
+            // US Timezones
+            'Pacific Standard Time' => 'America/Los_Angeles',
+            'Pacific Daylight Time' => 'America/Los_Angeles',
+            'Mountain Standard Time' => 'America/Denver',
+            'Mountain Daylight Time' => 'America/Denver',
+            'Central Standard Time' => 'America/Chicago',
+            'Central Daylight Time' => 'America/Chicago',
+            'Eastern Standard Time' => 'America/New_York',
+            'Eastern Daylight Time' => 'America/New_York',
+            'Alaska Standard Time' => 'America/Anchorage',
+            'Alaska Daylight Time' => 'America/Anchorage',
+            'Hawaii-Aleutian Standard Time' => 'Pacific/Honolulu',
+            'Hawaiian Standard Time' => 'Pacific/Honolulu',
+            
+            // Europe
+            'GMT Standard Time' => 'Europe/London',
+            'British Summer Time' => 'Europe/London',
+            'W. Europe Standard Time' => 'Europe/Berlin',
+            'Central European Standard Time' => 'Europe/Budapest',
+            'Romance Standard Time' => 'Europe/Paris',
+            'Central Europe Standard Time' => 'Europe/Prague',
+            'E. Europe Standard Time' => 'Europe/Bucharest',
+            'FLE Standard Time' => 'Europe/Helsinki',
+            'GTB Standard Time' => 'Europe/Athens',
+            'Russian Standard Time' => 'Europe/Moscow',
+            
+            // Asia Pacific
+            'China Standard Time' => 'Asia/Shanghai',
+            'Tokyo Standard Time' => 'Asia/Tokyo',
+            'Korea Standard Time' => 'Asia/Seoul',
+            'Singapore Standard Time' => 'Asia/Singapore',
+            'India Standard Time' => 'Asia/Kolkata',
+            'AUS Eastern Standard Time' => 'Australia/Sydney',
+            'AUS Central Standard Time' => 'Australia/Darwin',
+            'E. Australia Standard Time' => 'Australia/Brisbane',
+            'Cen. Australia Standard Time' => 'Australia/Adelaide',
+            'W. Australia Standard Time' => 'Australia/Perth',
+            'New Zealand Standard Time' => 'Pacific/Auckland',
+            
+            // Others
+            'UTC' => 'UTC',
+            'Coordinated Universal Time' => 'UTC',
+            'tzone://Microsoft/Utc' => 'UTC',
+        );
+        
+        // Check if it's already a valid IANA timezone
+        try {
+            new DateTimeZone($windows_tz);
+            return $windows_tz; // It's already valid
+        } catch (Exception $e) {
+            // Not a valid IANA timezone, try to map it
+        }
+        
+        // Look up in our mapping
+        if (isset($timezone_map[$windows_tz])) {
+            return $timezone_map[$windows_tz];
+        }
+        
+        // Try case-insensitive lookup
+        foreach ($timezone_map as $win_tz => $iana_tz) {
+            if (strcasecmp($win_tz, $windows_tz) === 0) {
+                return $iana_tz;
+            }
+        }
+        
+        // Log unknown timezone and fall back to UTC
+        Azure_Logger::warning("Calendar: Unknown timezone '{$windows_tz}', falling back to UTC", 'Calendar');
+        return 'UTC';
+    }
+    
+    /**
+     * Convert IANA timezone identifiers to Windows timezone names
+     * Used when making requests to Microsoft Graph API with Prefer header
+     */
+    private function convert_iana_to_windows_timezone($iana_tz) {
+        // IANA to Windows timezone mappings (reverse of the above)
+        $timezone_map = array(
+            // US Timezones
+            'America/Los_Angeles' => 'Pacific Standard Time',
+            'America/Denver' => 'Mountain Standard Time',
+            'America/Phoenix' => 'US Mountain Standard Time',
+            'America/Chicago' => 'Central Standard Time',
+            'America/New_York' => 'Eastern Standard Time',
+            'America/Anchorage' => 'Alaskan Standard Time',
+            'Pacific/Honolulu' => 'Hawaiian Standard Time',
+            
+            // Europe
+            'Europe/London' => 'GMT Standard Time',
+            'Europe/Berlin' => 'W. Europe Standard Time',
+            'Europe/Paris' => 'Romance Standard Time',
+            'Europe/Budapest' => 'Central European Standard Time',
+            'Europe/Prague' => 'Central Europe Standard Time',
+            'Europe/Bucharest' => 'E. Europe Standard Time',
+            'Europe/Helsinki' => 'FLE Standard Time',
+            'Europe/Athens' => 'GTB Standard Time',
+            'Europe/Moscow' => 'Russian Standard Time',
+            
+            // Asia Pacific
+            'Asia/Shanghai' => 'China Standard Time',
+            'Asia/Hong_Kong' => 'China Standard Time',
+            'Asia/Tokyo' => 'Tokyo Standard Time',
+            'Asia/Seoul' => 'Korea Standard Time',
+            'Asia/Singapore' => 'Singapore Standard Time',
+            'Asia/Kolkata' => 'India Standard Time',
+            'Australia/Sydney' => 'AUS Eastern Standard Time',
+            'Australia/Melbourne' => 'AUS Eastern Standard Time',
+            'Australia/Darwin' => 'AUS Central Standard Time',
+            'Australia/Brisbane' => 'E. Australia Standard Time',
+            'Australia/Adelaide' => 'Cen. Australia Standard Time',
+            'Australia/Perth' => 'W. Australia Standard Time',
+            'Pacific/Auckland' => 'New Zealand Standard Time',
+            
+            // Others
+            'UTC' => 'UTC',
+        );
+        
+        // Direct lookup
+        if (isset($timezone_map[$iana_tz])) {
+            return $timezone_map[$iana_tz];
+        }
+        
+        // Try case-insensitive lookup
+        foreach ($timezone_map as $iana => $windows) {
+            if (strcasecmp($iana, $iana_tz) === 0) {
+                return $windows;
+            }
+        }
+        
+        // If the timezone is already a Windows name (like from WordPress settings), return it
+        // Check if it looks like a Windows timezone name (contains "Standard Time" or "Daylight Time")
+        if (strpos($iana_tz, 'Standard Time') !== false || strpos($iana_tz, 'Daylight Time') !== false) {
+            return $iana_tz;
+        }
+        
+        // Log and fall back to UTC
+        Azure_Logger::debug("Calendar: No Windows timezone mapping for '{$iana_tz}', using UTC", 'Calendar');
+        return 'UTC';
     }
     
     /**

@@ -31,10 +31,10 @@ class Azure_TEC_Integration {
             
             if (!$this->is_tec_active()) {
                 add_action('admin_notices', array($this, 'tec_dependency_notice'));
-                Azure_Logger::info('TEC Integration: The Events Calendar not active, showing dependency notice', 'TEC');
+                Azure_Logger::debug('TEC Integration: The Events Calendar not active, showing dependency notice', 'TEC');
                 return;
             }
-            Azure_Logger::info('TEC Integration: The Events Calendar is active, proceeding with initialization', 'TEC');
+            Azure_Logger::debug('TEC Integration: The Events Calendar is active, proceeding with initialization', 'TEC');
             
             $this->init_components();
             $this->register_hooks();
@@ -43,7 +43,7 @@ class Azure_TEC_Integration {
                 $this->init_admin();
             }
             
-            Azure_Logger::info('TEC Integration: Initialization completed successfully', 'TEC');
+            Azure_Logger::debug('TEC Integration: Initialization completed successfully', 'TEC');
             
         } catch (Exception $e) {
             if (class_exists('Azure_Logger')) {

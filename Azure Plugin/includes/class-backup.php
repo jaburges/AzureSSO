@@ -29,6 +29,7 @@ class Azure_Backup {
             add_action('wp_ajax_azure_get_backup_progress', array($this, 'ajax_get_backup_progress'));
             add_action('wp_ajax_azure_trigger_backup_process', array($this, 'ajax_trigger_backup_process'));
             add_action('wp_ajax_azure_cancel_all_backups', array($this, 'ajax_cancel_all_backups'));
+            add_action('wp_ajax_azure_cleanup_backup_files', array($this, 'ajax_cleanup_backup_files'));
             
         } catch (Exception $e) {
             if (class_exists('Azure_Logger')) {
@@ -344,7 +345,19 @@ class Azure_Backup {
         wp_mkdir_p($content_dir);
         
         $wp_content = WP_CONTENT_DIR;
-        $exclude_dirs = array('uploads', 'plugins', 'themes', 'cache', 'backup');
+        // Exclude directories that are backed up separately or should not be included
+        $exclude_dirs = array(
+            'uploads',       // Backed up separately as 'media'
+            'plugins',       // Backed up separately
+            'themes',        // Backed up separately
+            'cache',         // Cache files
+            'backup',        // Other backup folders
+            'backups',       // Our backup folder
+            'temp_backup_',  // Temp backup directories
+            'upgrade',       // WordPress upgrade temp files
+            'wflogs',        // Wordfence logs
+            'debug.log',     // Debug log
+        );
         
         return $this->copy_directory($wp_content, $content_dir, $exclude_dirs);
     }
@@ -380,7 +393,19 @@ class Azure_Backup {
         
         $wp_plugins = WP_PLUGIN_DIR;
         
-        return $this->copy_directory($wp_plugins, $plugins_dir);
+        // Exclude backup folders and temp directories from plugin backups
+        // This prevents backing up our own backup files (recursive/large files)
+        $exclude_dirs = array(
+            'backups',           // Our plugin's backup folder
+            'temp_backup_',      // Temp backup directories
+            'node_modules',      // Node modules (if any plugin has them)
+            '.git',              // Git directories
+            'cache',             // Cache directories
+        );
+        
+        Azure_Logger::info('Backup: Starting plugins backup with exclusions: ' . implode(', ', $exclude_dirs), 'Backup');
+        
+        return $this->copy_directory($wp_plugins, $plugins_dir, $exclude_dirs, $backup_id, 50);
     }
     
     /**
@@ -458,14 +483,34 @@ class Azure_Backup {
                     // Check if we should exclude this path
                     $should_exclude = false;
                     foreach ($exclude_dirs as $exclude) {
-                        if (strpos($relative_path, DIRECTORY_SEPARATOR . $exclude . DIRECTORY_SEPARATOR) !== false ||
-                            strpos($relative_path, DIRECTORY_SEPARATOR . $exclude) === 0) {
+                        // Handle both exact matches and prefix matches (for temp_backup_ style exclusions)
+                        $sep = DIRECTORY_SEPARATOR;
+                        
+                        // Exact directory match
+                        if (strpos($relative_path, $sep . $exclude . $sep) !== false ||
+                            substr($relative_path, -strlen($sep . $exclude)) === $sep . $exclude) {
+                            $should_exclude = true;
+                            break;
+                        }
+                        
+                        // Prefix match (for patterns like temp_backup_*)
+                        if (substr($exclude, -1) === '_' || strpos($exclude, '*') !== false) {
+                            $pattern = str_replace('*', '', $exclude);
+                            if (strpos($relative_path, $sep . $pattern) !== false) {
+                                $should_exclude = true;
+                                break;
+                            }
+                        }
+                        
+                        // Also check for .zip files in plugin backup directories
+                        if (preg_match('/\.zip$/i', $source_path) && strpos($relative_path, $sep . 'backups' . $sep) !== false) {
                             $should_exclude = true;
                             break;
                         }
                     }
                     
                     if ($should_exclude) {
+                        $skipped_count++;
                         continue;
                     }
                     
@@ -928,12 +973,19 @@ class Azure_Backup {
     private function cleanup_backup_files($backup_dir, $archive_path = null) {
         // Remove temporary directory
         if (is_dir($backup_dir)) {
+            Azure_Logger::debug('Backup: Removing temp directory: ' . $backup_dir, 'Backup');
             $this->remove_directory($backup_dir);
         }
         
         // Remove archive if specified (after upload)
         if ($archive_path && file_exists($archive_path)) {
-            unlink($archive_path);
+            Azure_Logger::debug('Backup: Removing local archive: ' . $archive_path, 'Backup');
+            $deleted = @unlink($archive_path);
+            if ($deleted) {
+                Azure_Logger::info('Backup: Local archive deleted successfully: ' . $archive_path, 'Backup');
+            } else {
+                Azure_Logger::warning('Backup: Failed to delete local archive: ' . $archive_path, 'Backup');
+            }
         }
     }
     
@@ -1459,9 +1511,11 @@ class Azure_Backup {
     }
     
     /**
-     * Clean up stale temporary backup directories
+     * Clean up stale temporary backup directories and orphaned zip files
+     * 
+     * @param bool $force_all If true, removes all temp files regardless of age (used when cancelling backups)
      */
-    private function cleanup_stale_temp_directories() {
+    private function cleanup_stale_temp_directories($force_all = false) {
         $backups_dir = AZURE_PLUGIN_PATH . 'backups/';
         
         if (!is_dir($backups_dir)) {
@@ -1474,8 +1528,10 @@ class Azure_Backup {
                 return;
             }
             
+            $cleaned_count = 0;
+            
             foreach ($items as $item) {
-                if ($item === '.' || $item === '..') {
+                if ($item === '.' || $item === '..' || $item === '.htaccess') {
                     continue;
                 }
                 
@@ -1485,20 +1541,41 @@ class Azure_Backup {
                 if (is_dir($path) && strpos($item, 'temp_') === 0) {
                     Azure_Logger::info("Backup: Cleaning up stale temp directory: {$item}", 'Backup');
                     $this->remove_directory($path);
+                    $cleaned_count++;
                 }
                 
-                // Also remove orphaned zip files older than 24 hours
+                // Remove orphaned zip files
                 if (is_file($path) && pathinfo($path, PATHINFO_EXTENSION) === 'zip') {
                     $file_age = time() - filemtime($path);
-                    if ($file_age > 86400) { // 24 hours
-                        Azure_Logger::info("Backup: Removing orphaned zip file: {$item}", 'Backup');
-                        @unlink($path);
+                    // Remove if older than 1 hour (reduced from 24 hours) or if force_all is true
+                    if ($force_all || $file_age > 3600) { // 1 hour
+                        $file_size = @filesize($path);
+                        Azure_Logger::info("Backup: Removing orphaned zip file: {$item} (age: " . round($file_age / 60) . " minutes, size: " . $this->format_bytes($file_size ?: 0) . ")", 'Backup');
+                        $deleted = @unlink($path);
+                        if ($deleted) {
+                            $cleaned_count++;
+                        } else {
+                            Azure_Logger::warning("Backup: Failed to delete orphaned zip: {$item}", 'Backup');
+                        }
                     }
                 }
+            }
+            
+            if ($cleaned_count > 0) {
+                Azure_Logger::info("Backup: Cleaned up {$cleaned_count} stale files/directories", 'Backup');
             }
         } catch (Exception $e) {
             Azure_Logger::warning("Backup: Error cleaning up temp directories: " . $e->getMessage(), 'Backup');
         }
+    }
+    
+    /**
+     * Public method to clean up orphaned backup files (can be called from admin)
+     */
+    public function cleanup_orphaned_backups() {
+        Azure_Logger::info('Backup: Manual cleanup of orphaned backup files requested', 'Backup');
+        $this->cleanup_stale_temp_directories(true);
+        return true;
     }
     
     /**
@@ -1535,6 +1612,65 @@ class Azure_Backup {
         } else {
             wp_send_json_success('Backup already ' . $job->status);
         }
+    }
+    
+    /**
+     * AJAX handler to clean up orphaned backup files
+     */
+    public function ajax_cleanup_backup_files() {
+        if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+        
+        Azure_Logger::info('Backup: Admin requested cleanup of orphaned backup files', 'Backup');
+        
+        $backups_dir = AZURE_PLUGIN_PATH . 'backups/';
+        $before_files = array();
+        
+        // Count files before cleanup
+        if (is_dir($backups_dir)) {
+            $items = @scandir($backups_dir);
+            if ($items) {
+                foreach ($items as $item) {
+                    if ($item !== '.' && $item !== '..' && $item !== '.htaccess') {
+                        $path = $backups_dir . $item;
+                        $before_files[] = array(
+                            'name' => $item,
+                            'type' => is_dir($path) ? 'directory' : 'file',
+                            'size' => is_file($path) ? filesize($path) : 0
+                        );
+                    }
+                }
+            }
+        }
+        
+        // Run cleanup with force_all = true
+        $this->cleanup_stale_temp_directories(true);
+        
+        // Count files after cleanup
+        $after_count = 0;
+        if (is_dir($backups_dir)) {
+            $items = @scandir($backups_dir);
+            if ($items) {
+                foreach ($items as $item) {
+                    if ($item !== '.' && $item !== '..' && $item !== '.htaccess') {
+                        $after_count++;
+                    }
+                }
+            }
+        }
+        
+        $cleaned = count($before_files) - $after_count;
+        
+        wp_send_json_success(array(
+            'before_count' => count($before_files),
+            'after_count' => $after_count,
+            'cleaned' => $cleaned,
+            'files_found' => $before_files,
+            'message' => $cleaned > 0 
+                ? "Cleaned up {$cleaned} orphaned file(s)/directory(ies)" 
+                : 'No orphaned files found to clean up'
+        ));
     }
     
     /**

@@ -259,6 +259,7 @@ class Azure_Settings {
             'enable_calendar' => false,
             'enable_email' => false,
             'enable_pta' => false,
+            'enable_classes' => false,
             
             // Debug settings
             'debug_mode' => false,

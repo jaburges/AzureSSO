@@ -170,6 +170,11 @@ $settings = Azure_Settings::get_all_settings();
                     <span class="running-count">(<?php echo $stalled_backups_count; ?>)</span>
                 <?php endif; ?>
             </button>
+            
+            <button type="button" class="button button-secondary cleanup-backup-files">
+                <span class="dashicons dashicons-trash"></span>
+                Clean Up Local Files
+            </button>
         </div>
     </div>
 
@@ -639,6 +644,57 @@ jQuery(document).ready(function($) {
         var error = $(this).data('error');
         alert('Error Details:\n\n' + error);
     });
+    
+    // Clean up orphaned backup files
+    $('.cleanup-backup-files').click(function() {
+        if (!confirm('This will remove any orphaned backup files from the local server (temp directories and zip files not uploaded to Azure). Continue?')) {
+            return;
+        }
+        
+        var button = $(this);
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Cleaning...');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_cleanup_backup_files',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-trash"></span> Clean Up Local Files');
+            
+            if (typeof response === 'string') {
+                try {
+                    response = JSON.parse(response);
+                } catch (e) {
+                    alert('❌ Invalid response from server');
+                    return;
+                }
+            }
+            
+            if (response && response.success) {
+                var msg = response.data.message;
+                if (response.data.files_found && response.data.files_found.length > 0) {
+                    msg += '\n\nFiles found before cleanup:';
+                    response.data.files_found.forEach(function(f) {
+                        var size = f.size ? ' (' + formatBytes(f.size) + ')' : '';
+                        msg += '\n• ' + f.name + size;
+                    });
+                }
+                alert('✅ ' + msg);
+            } else {
+                alert('❌ Cleanup failed: ' + (response && response.data ? response.data : 'Unknown error'));
+            }
+        }).fail(function() {
+            button.prop('disabled', false).html('<span class="dashicons dashicons-trash"></span> Clean Up Local Files');
+            alert('❌ Network error occurred');
+        });
+    });
+    
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        var k = 1024;
+        var sizes = ['B', 'KB', 'MB', 'GB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
     
     // Cancel all running backups
     $('.cancel-all-backups').click(function() {

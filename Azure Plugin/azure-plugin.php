@@ -3,7 +3,7 @@
  * Plugin Name: Microsoft WP
  * Plugin URI: https://github.com/jamieburgess/microsoft-wp
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, email via Microsoft Graph API, PTA role management with O365 Groups sync, and The Events Calendar integration with multi-calendar support.
- * Version: 1.4
+ * Version: 1.5
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '1.4');
+define('AZURE_PLUGIN_VERSION', '1.5');
 
 // Main plugin class for Microsoft WP
 class AzurePlugin {
@@ -118,7 +118,10 @@ class AzurePlugin {
                 // OneDrive Media functionality
                 'class-onedrive-media-auth.php' => 'OneDrive Media Auth class',
                 'class-onedrive-media-graph-api.php' => 'OneDrive Media Graph API class',
-                'class-onedrive-media-manager.php' => 'OneDrive Media Manager class'
+                'class-onedrive-media-manager.php' => 'OneDrive Media Manager class',
+                
+                // Classes functionality
+                'class-classes-module.php' => 'Classes Module class'
             );
             
             // Load critical files first - these must succeed
@@ -238,6 +241,13 @@ class AzurePlugin {
             
             if (!empty($settings['enable_onedrive_media'])) {
                 $this->init_onedrive_media_components();
+            }
+            
+            // Always register Classes taxonomy (needed for admin URLs even when module is disabled)
+            $this->register_classes_taxonomy();
+            
+            if (!empty($settings['enable_classes'])) {
+                $this->init_classes_components();
             }
             
         } catch (Exception $e) {
@@ -485,6 +495,69 @@ class AzurePlugin {
                 'line' => $e->getLine()
             ));
             error_log('Azure Plugin: OneDrive Media init error - ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Register Classes taxonomy (always, even when module is disabled)
+     * This ensures admin URLs work and the taxonomy is available
+     */
+    private function register_classes_taxonomy() {
+        // Only register if WooCommerce is active
+        if (!class_exists('WooCommerce')) {
+            return;
+        }
+        
+        // Check if already registered
+        if (taxonomy_exists('class_provider')) {
+            return;
+        }
+        
+        $labels = array(
+            'name'              => _x('Class Providers', 'taxonomy general name', 'azure-plugin'),
+            'singular_name'     => _x('Class Provider', 'taxonomy singular name', 'azure-plugin'),
+            'search_items'      => __('Search Providers', 'azure-plugin'),
+            'all_items'         => __('All Providers', 'azure-plugin'),
+            'edit_item'         => __('Edit Provider', 'azure-plugin'),
+            'update_item'       => __('Update Provider', 'azure-plugin'),
+            'add_new_item'      => __('Add New Provider', 'azure-plugin'),
+            'new_item_name'     => __('New Provider Name', 'azure-plugin'),
+            'menu_name'         => __('Class Providers', 'azure-plugin'),
+        );
+        
+        $args = array(
+            'labels'            => $labels,
+            'hierarchical'      => false,
+            'public'            => true,
+            'show_ui'           => true,
+            'show_admin_column' => true,
+            'show_in_nav_menus' => false,
+            'show_tagcloud'     => false,
+            'show_in_rest'      => true,
+            'rewrite'           => array('slug' => 'class-provider'),
+        );
+        
+        register_taxonomy('class_provider', array('product'), $args);
+    }
+    
+    private function init_classes_components() {
+        try {
+            Azure_Logger::debug_module('Classes', 'Starting Classes module initialization');
+            
+            if (class_exists('Azure_Classes_Module')) {
+                Azure_Classes_Module::get_instance();
+                Azure_Logger::debug_module('Classes', 'Azure_Classes_Module initialized successfully');
+            }
+            
+            Azure_Logger::debug_module('Classes', 'All Classes components initialized successfully');
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('Classes init failed: ' . $e->getMessage(), array(
+                'module' => 'Classes',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Classes init error - ' . $e->getMessage());
         }
     }
     

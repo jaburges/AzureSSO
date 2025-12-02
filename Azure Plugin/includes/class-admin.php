@@ -78,13 +78,9 @@ class Azure_Admin {
     }
     
     public function admin_menu() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        file_put_contents($log_file, "**{$timestamp}** ⏳ **[ADMIN HOOK]** admin_menu() callback started  \n", FILE_APPEND | LOCK_EX);
-        
         try {
             // Main menu
-        add_menu_page(
+            add_menu_page(
             'Azure Plugin',
             'Azure Plugin',
             'manage_options',
@@ -179,6 +175,15 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
+            'Azure Plugin - Classes',
+            'Classes',
+            'manage_options',
+            'azure-plugin-classes',
+            array($this, 'admin_page_classes')
+        );
+        
+        add_submenu_page(
+            'azure-plugin',
             'Azure Plugin - Logs',
             'System Logs',
             'manage_options',
@@ -186,40 +191,41 @@ class Azure_Admin {
             array($this, 'admin_page_logs')
         );
         
-        file_put_contents($log_file, "**{$timestamp}** ✅ **[ADMIN HOOK]** admin_menu() callback completed successfully  \n", FILE_APPEND | LOCK_EX);
         } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[ADMIN HOOK FATAL]** admin_menu() fatal error: " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[ADMIN HOOK LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            Azure_Logger::error('Admin menu fatal error: ' . $e->getMessage(), array(
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
             throw $e;
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[ADMIN HOOK ERROR]** admin_menu() error: " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[ADMIN HOOK LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            Azure_Logger::error('Admin menu error: ' . $e->getMessage(), array(
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
             throw $e;
         }
     }
     
     public function admin_init() {
-        $log_file = AZURE_PLUGIN_PATH . 'logs.md';
-        $timestamp = date('Y-m-d H:i:s');
-        file_put_contents($log_file, "**{$timestamp}** ⏳ **[ADMIN HOOK]** admin_init() callback started  \n", FILE_APPEND | LOCK_EX);
-        
         try {
-        // Register settings through our Settings class to avoid conflicts
-        Azure_Settings::get_instance()->register_settings();
-        
-        // Handle form submissions
-        if (isset($_POST['azure_plugin_submit'])) {
-            $this->handle_settings_save();
-        }
-        
-        file_put_contents($log_file, "**{$timestamp}** ✅ **[ADMIN HOOK]** admin_init() callback completed successfully  \n", FILE_APPEND | LOCK_EX);
+            // Register settings through our Settings class to avoid conflicts
+            Azure_Settings::get_instance()->register_settings();
+            
+            // Handle form submissions
+            if (isset($_POST['azure_plugin_submit'])) {
+                $this->handle_settings_save();
+            }
         } catch (Error $e) {
-            file_put_contents($log_file, "**{$timestamp}** 💀 **[ADMIN HOOK FATAL]** admin_init() fatal error: " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[ADMIN HOOK LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            Azure_Logger::error('Admin init fatal error: ' . $e->getMessage(), array(
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
             throw $e;
         } catch (Exception $e) {
-            file_put_contents($log_file, "**{$timestamp}** ❌ **[ADMIN HOOK ERROR]** admin_init() error: " . $e->getMessage() . "  \n", FILE_APPEND | LOCK_EX);
-            file_put_contents($log_file, "**{$timestamp}** 📍 **[ADMIN HOOK LOCATION]** " . $e->getFile() . " line " . $e->getLine() . "  \n", FILE_APPEND | LOCK_EX);
+            Azure_Logger::error('Admin init error: ' . $e->getMessage(), array(
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
             throw $e;
         }
     }
@@ -613,6 +619,15 @@ class Azure_Admin {
         }
     }
     
+    public function admin_page_classes() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/classes-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Classes', $e);
+        }
+    }
+    
     public function admin_page_logs() {
         try {
             $logs = Azure_Logger::get_logs(200);
@@ -737,7 +752,7 @@ class Azure_Admin {
         $enabled = $_POST['enabled'] === 'true';
         
         // Validate module name
-        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media');
+        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes');
         if (!in_array($module, $valid_modules)) {
             wp_send_json_error('Invalid module name: ' . $module);
         }
