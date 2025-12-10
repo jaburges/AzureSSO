@@ -24,6 +24,20 @@ class Azure_Classes_Shortcodes {
         
         // Remove product type from single product page for class products
         add_action('woocommerce_single_product_summary', array($this, 'remove_class_type_label'), 1);
+        
+        // Hide Description tab for Class products (we show it in our schedule section)
+        add_filter('woocommerce_product_tabs', array($this, 'hide_description_tab_for_classes'), 98);
+    }
+    
+    /**
+     * Hide the Description tab for Class products since we show it in the schedule section
+     */
+    public function hide_description_tab_for_classes($tabs) {
+        global $product;
+        if ($product && $product->get_type() === 'class') {
+            unset($tabs['description']);
+        }
+        return $tabs;
     }
     
     /**
@@ -136,8 +150,9 @@ class Azure_Classes_Shortcodes {
         global $product;
         $product_id = $product ? $product->get_id() : 0;
         
-        // Get short description for right column
+        // Get descriptions for right column
         $short_description = $product ? $product->get_short_description() : '';
+        $full_description = $product ? $product->get_description() : '';
         
         // Get TEC category for calendar subscription
         $category_id = $product_id ? get_post_meta($product_id, '_class_category_id', true) : 0;
@@ -161,74 +176,81 @@ class Azure_Classes_Shortcodes {
         <div class="class-schedule class-schedule-list">
             <h3><?php _e('Schedule', 'azure-plugin'); ?></h3>
             
-            <?php if ($venue_name) : ?>
-            <div class="class-venue">
-                <span class="dashicons dashicons-location"></span>
-                <strong><?php echo esc_html($venue_name); ?></strong>
-                <?php if ($clean_address) : ?>
-                <div class="venue-address"><?php echo wp_kses_post($clean_address); ?></div>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
-            
-            <div class="class-schedule-columns">
-                <div class="schedule-column schedule-column-left">
-                    <ul class="schedule-list">
-                        <?php foreach ($events as $event) : 
-                            $start = strtotime($event['start_date']);
-                            $end = strtotime($event['end_date']);
-                            $is_cancelled = $event['status'] === 'trash' || $event['status'] === 'cancelled';
-                            $is_modified = $event['modified'];
-                        ?>
-                        <li class="schedule-item <?php echo $is_cancelled ? 'cancelled' : ''; ?> <?php echo $is_modified ? 'modified' : ''; ?>">
-                            <span class="session-number"><?php printf(__('Session %d', 'azure-plugin'), $event['session_number']); ?></span>
-                            <span class="session-date"><?php echo date_i18n('l, F j, Y', $start); ?></span>
-                            <span class="session-time">
-                                <?php echo date_i18n('g:i A', $start); ?> - <?php echo date_i18n('g:i A', $end); ?>
-                            </span>
-                            <?php if ($is_cancelled) : ?>
-                            <span class="session-status cancelled"><?php _e('Cancelled', 'azure-plugin'); ?></span>
-                            <?php elseif ($is_modified) : ?>
-                            <span class="session-status modified"><?php _e('Modified', 'azure-plugin'); ?></span>
-                            <?php endif; ?>
-                        </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-                
-                <div class="schedule-column schedule-column-right">
-                    <?php if ($short_description) : ?>
-                    <div class="class-short-description">
-                        <h4><?php _e('About This Class', 'azure-plugin'); ?></h4>
-                        <?php echo wp_kses_post($short_description); ?>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="class-calendar-subscribe">
-                        <h4><?php _e('Add to Calendar', 'azure-plugin'); ?></h4>
-                        <p class="calendar-subscribe-note"><?php _e('Subscribe to receive automatic updates when class dates change.', 'azure-plugin'); ?></p>
-                        <?php if ($calendar_url) : ?>
-                        <a href="<?php echo esc_url($calendar_url); ?>" class="button calendar-subscribe-button" target="_blank">
-                            <span class="dashicons dashicons-calendar-alt"></span>
-                            <?php _e('Subscribe to Calendar', 'azure-plugin'); ?>
-                        </a>
-                        <div class="calendar-subscribe-links">
-                            <a href="https://calendar.google.com/calendar/r?cid=<?php echo urlencode($calendar_url); ?>" target="_blank" title="Add to Google Calendar">
-                                <span class="dashicons dashicons-google"></span> Google
-                            </a>
-                            <a href="<?php echo esc_url($calendar_url); ?>" target="_blank" title="Add to Apple Calendar">
-                                <span class="dashicons dashicons-smartphone"></span> Apple
-                            </a>
-                            <a href="https://outlook.live.com/calendar/0/addfromweb?url=<?php echo urlencode($calendar_url); ?>" target="_blank" title="Add to Outlook">
-                                <span class="dashicons dashicons-email-alt"></span> Outlook
-                            </a>
-                        </div>
-                        <?php else : ?>
-                        <p class="calendar-not-available"><?php _e('Calendar subscription will be available once the class schedule is finalized.', 'azure-plugin'); ?></p>
+            <!-- Venue + Calendar Subscribe Row -->
+            <div class="class-venue-calendar-row">
+                <?php if ($venue_name) : ?>
+                <div class="class-venue">
+                    <span class="dashicons dashicons-location"></span>
+                    <div class="venue-details">
+                        <strong><?php echo esc_html($venue_name); ?></strong>
+                        <?php if ($clean_address) : ?>
+                        <div class="venue-address"><?php echo wp_kses_post($clean_address); ?></div>
                         <?php endif; ?>
                     </div>
                 </div>
+                <?php endif; ?>
+                
+                <div class="class-calendar-subscribe">
+                    <h4><?php _e('Add to Calendar', 'azure-plugin'); ?></h4>
+                    <p class="calendar-subscribe-note"><?php _e('Subscribe to receive automatic updates when class dates change.', 'azure-plugin'); ?></p>
+                    <?php if ($calendar_url) : ?>
+                    <a href="<?php echo esc_url($calendar_url); ?>" class="button calendar-subscribe-button" target="_blank">
+                        <span class="dashicons dashicons-calendar-alt"></span>
+                        <?php _e('Subscribe to Calendar', 'azure-plugin'); ?>
+                    </a>
+                    <div class="calendar-subscribe-links">
+                        <a href="https://calendar.google.com/calendar/r?cid=<?php echo urlencode($calendar_url); ?>" target="_blank" title="Add to Google Calendar">
+                            <span class="dashicons dashicons-google"></span> Google
+                        </a>
+                        <a href="<?php echo esc_url($calendar_url); ?>" target="_blank" title="Add to Apple Calendar">
+                            <span class="dashicons dashicons-smartphone"></span> Apple
+                        </a>
+                        <a href="https://outlook.live.com/calendar/0/addfromweb?url=<?php echo urlencode($calendar_url); ?>" target="_blank" title="Add to Outlook">
+                            <span class="dashicons dashicons-email-alt"></span> Outlook
+                        </a>
+                    </div>
+                    <?php else : ?>
+                    <p class="calendar-not-available"><?php _e('Calendar subscription will be available once the class schedule is finalized.', 'azure-plugin'); ?></p>
+                    <?php endif; ?>
+                </div>
             </div>
+            
+            <!-- Session List - Full Width -->
+            <ul class="schedule-list">
+                <?php foreach ($events as $event) : 
+                    $start = strtotime($event['start_date']);
+                    $end = strtotime($event['end_date']);
+                    $is_cancelled = $event['status'] === 'trash' || $event['status'] === 'cancelled';
+                    $is_modified = $event['modified'];
+                    $event_url = !empty($event['url']) ? $event['url'] : '';
+                ?>
+                <li class="schedule-item <?php echo $is_cancelled ? 'cancelled' : ''; ?> <?php echo $is_modified ? 'modified' : ''; ?>">
+                    <?php if ($event_url && !$is_cancelled) : ?>
+                    <a href="<?php echo esc_url($event_url); ?>" class="session-number-link" title="<?php esc_attr_e('View event details', 'azure-plugin'); ?>">
+                        <?php printf(__('Session %d', 'azure-plugin'), $event['session_number']); ?>
+                    </a>
+                    <?php else : ?>
+                    <span class="session-number"><?php printf(__('Session %d', 'azure-plugin'), $event['session_number']); ?></span>
+                    <?php endif; ?>
+                    <span class="session-date"><?php echo date_i18n('l, F j, Y', $start); ?></span>
+                    <span class="session-time">
+                        <?php echo date_i18n('g:i A', $start); ?> - <?php echo date_i18n('g:i A', $end); ?>
+                    </span>
+                    <?php if ($is_cancelled) : ?>
+                    <span class="session-status cancelled"><?php _e('Cancelled', 'azure-plugin'); ?></span>
+                    <?php elseif ($is_modified) : ?>
+                    <span class="session-status modified"><?php _e('Modified', 'azure-plugin'); ?></span>
+                    <?php endif; ?>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+            
+            <?php if ($full_description) : ?>
+            <div class="class-description-full">
+                <h4><?php _e('Description', 'azure-plugin'); ?></h4>
+                <?php echo wp_kses_post($full_description); ?>
+            </div>
+            <?php endif; ?>
         </div>
         <?php
         return ob_get_clean();
@@ -236,6 +258,7 @@ class Azure_Classes_Shortcodes {
     
     /**
      * Parse venue address from TEC HTML to clean format
+     * Returns HTML with street on one line and city/state/zip on another
      */
     private function parse_venue_address($venue_html) {
         if (empty($venue_html)) {
@@ -248,29 +271,33 @@ class Azure_Classes_Shortcodes {
         }
         
         // Extract address components from TEC HTML structure
-        $address_parts = array();
+        $street = '';
+        $city_line = '';
         
         // Try to extract street address
         if (preg_match('/<span class="tribe-street-address">([^<]+)<\/span>/i', $venue_html, $matches)) {
-            $address_parts[] = trim($matches[1]);
+            $street = trim($matches[1]);
         }
         
-        // Try to extract city
+        // Try to extract city, state, zip
+        $city = '';
+        $state = '';
+        $zip = '';
+        
         if (preg_match('/<span class="tribe-locality">([^<]+)<\/span>/i', $venue_html, $matches)) {
             $city = trim($matches[1]);
-            
-            // Try to get state
-            $state = '';
-            if (preg_match('/<abbr[^>]*class="[^"]*tribe-region[^"]*"[^>]*>([^<]+)<\/abbr>/i', $venue_html, $state_matches)) {
-                $state = trim($state_matches[1]);
-            }
-            
-            // Try to get zip
-            $zip = '';
-            if (preg_match('/<span class="tribe-postal-code">([^<]+)<\/span>/i', $venue_html, $zip_matches)) {
-                $zip = trim($zip_matches[1]);
-            }
-            
+        }
+        
+        if (preg_match('/<abbr[^>]*class="[^"]*tribe-region[^"]*"[^>]*>([^<]+)<\/abbr>/i', $venue_html, $state_matches)) {
+            $state = trim($state_matches[1]);
+        }
+        
+        if (preg_match('/<span class="tribe-postal-code">([^<]+)<\/span>/i', $venue_html, $zip_matches)) {
+            $zip = trim($zip_matches[1]);
+        }
+        
+        // Build city line
+        if ($city) {
             $city_line = $city;
             if ($state) {
                 $city_line .= ', ' . $state;
@@ -278,11 +305,23 @@ class Azure_Classes_Shortcodes {
             if ($zip) {
                 $city_line .= ' ' . $zip;
             }
-            $address_parts[] = $city_line;
+        }
+        
+        // Build output with proper line breaks
+        $output_parts = array();
+        if ($street) {
+            $output_parts[] = '<span class="venue-street">' . esc_html($street) . '</span>';
+        }
+        if ($city_line) {
+            $output_parts[] = '<span class="venue-city-state">' . esc_html($city_line) . '</span>';
+        }
+        
+        if (!empty($output_parts)) {
+            return implode('<br>', $output_parts);
         }
         
         // If we couldn't parse, just strip tags and return
-        if (empty($address_parts)) {
+        if (empty($output_parts)) {
             // Clean up the HTML by removing span tags but keeping content
             $clean = preg_replace('/<span[^>]*>/', '', $venue_html);
             $clean = preg_replace('/<\/span>/', '', $clean);

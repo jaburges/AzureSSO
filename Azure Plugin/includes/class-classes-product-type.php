@@ -29,6 +29,89 @@ class Azure_Classes_Product_Type {
         
         // Enqueue admin scripts
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+        
+        // Frontend: Use simple product add to cart template for class products
+        add_action('woocommerce_class_add_to_cart', array($this, 'add_to_cart_template'));
+        
+        // Hide sale badge for variable pricing classes
+        add_filter('woocommerce_sale_flash', array($this, 'hide_sale_badge_for_variable_pricing'), 10, 3);
+        
+        // Custom price display for variable pricing classes
+        add_filter('woocommerce_get_price_html', array($this, 'custom_price_html_for_variable_pricing'), 10, 2);
+        
+        // Hide "on sale" in cart for variable pricing classes
+        add_filter('woocommerce_cart_item_price', array($this, 'custom_cart_price_for_variable_pricing'), 10, 3);
+    }
+    
+    /**
+     * Use simple product add to cart template for class products
+     */
+    public function add_to_cart_template() {
+        wc_get_template('single-product/add-to-cart/simple.php');
+    }
+    
+    /**
+     * Hide sale badge for variable pricing class products
+     */
+    public function hide_sale_badge_for_variable_pricing($html, $post, $product) {
+        if ($product && $product->get_type() === 'class') {
+            $variable_pricing = get_post_meta($product->get_id(), '_class_variable_pricing', true);
+            if ($variable_pricing === 'yes') {
+                return ''; // Hide the sale badge
+            }
+        }
+        return $html;
+    }
+    
+    /**
+     * Custom price HTML for variable pricing class products
+     */
+    public function custom_price_html_for_variable_pricing($price_html, $product) {
+        if ($product && $product->get_type() === 'class') {
+            $variable_pricing = get_post_meta($product->get_id(), '_class_variable_pricing', true);
+            if ($variable_pricing === 'yes') {
+                $finalized = get_post_meta($product->get_id(), '_class_finalized', true);
+                
+                if ($finalized === 'yes') {
+                    $final_price = get_post_meta($product->get_id(), '_class_final_price', true);
+                    return wc_price($final_price);
+                } else {
+                    // Show "Price TBD" or likely price
+                    $min_price = get_post_meta($product->get_id(), '_class_price_at_min', true);
+                    $max_price = get_post_meta($product->get_id(), '_class_price_at_max', true);
+                    
+                    if ($min_price && $max_price) {
+                        return '<span class="price-tbd">' . sprintf(__('Price: %s - %s', 'azure-plugin'), wc_price($max_price), wc_price($min_price)) . '</span>';
+                    }
+                    return '<span class="price-tbd">' . __('Price TBD', 'azure-plugin') . '</span>';
+                }
+            }
+        }
+        return $price_html;
+    }
+    
+    /**
+     * Custom cart price for variable pricing class products
+     */
+    public function custom_cart_price_for_variable_pricing($price_html, $cart_item, $cart_item_key) {
+        $product = $cart_item['data'];
+        if ($product && $product->get_type() === 'class') {
+            $product_id = $product->get_id();
+            $variable_pricing = get_post_meta($product_id, '_class_variable_pricing', true);
+            
+            if ($variable_pricing === 'yes') {
+                $finalized = get_post_meta($product_id, '_class_finalized', true);
+                
+                if ($finalized === 'yes') {
+                    $final_price = get_post_meta($product_id, '_class_final_price', true);
+                    return wc_price($final_price);
+                } else {
+                    // Show "Price TBD" in cart
+                    return '<span class="price-tbd">' . __('Price TBD', 'azure-plugin') . '</span>';
+                }
+            }
+        }
+        return $price_html;
     }
     
     /**
@@ -356,6 +439,39 @@ class Azure_Classes_Product_Type {
                     'desc_tip'    => true,
                     'description' => __('If enabled, customers can still enroll when the class is full (waitlist).', 'azure-plugin')
                 ));
+                
+                // Tax options
+                $tax_status = get_post_meta($product_id, '_tax_status', true);
+                $tax_class = get_post_meta($product_id, '_tax_class', true);
+                
+                woocommerce_wp_select(array(
+                    'id'          => '_tax_status',
+                    'label'       => __('Tax status', 'azure-plugin'),
+                    'value'       => $tax_status ?: 'taxable',
+                    'options'     => array(
+                        'taxable'  => __('Taxable', 'azure-plugin'),
+                        'shipping' => __('Shipping only', 'azure-plugin'),
+                        'none'     => __('None', 'azure-plugin')
+                    ),
+                    'desc_tip'    => true,
+                    'description' => __('Define whether or not the entire product is taxable.', 'azure-plugin')
+                ));
+                
+                // Get tax classes
+                $tax_classes = WC_Tax::get_tax_classes();
+                $tax_class_options = array('' => __('Standard', 'azure-plugin'));
+                foreach ($tax_classes as $class) {
+                    $tax_class_options[sanitize_title($class)] = $class;
+                }
+                
+                woocommerce_wp_select(array(
+                    'id'          => '_tax_class',
+                    'label'       => __('Tax class', 'azure-plugin'),
+                    'value'       => $tax_class,
+                    'options'     => $tax_class_options,
+                    'desc_tip'    => true,
+                    'description' => __('Choose a tax class for this product. Tax classes are used to apply different tax rates.', 'azure-plugin')
+                ));
                 ?>
             </div>
             
@@ -593,6 +709,12 @@ class Azure_Classes_Product_Type {
             // Handle backorders (waitlist)
             $backorders = isset($_POST['_backorders']) ? sanitize_text_field($_POST['_backorders']) : 'no';
             update_post_meta($product_id, '_backorders', $backorders);
+            
+            // Handle tax settings
+            $tax_status = isset($_POST['_tax_status']) ? sanitize_text_field($_POST['_tax_status']) : 'taxable';
+            $tax_class = isset($_POST['_tax_class']) ? sanitize_text_field($_POST['_tax_class']) : '';
+            update_post_meta($product_id, '_tax_status', $tax_status);
+            update_post_meta($product_id, '_tax_class', $tax_class);
             
             // Clear variable pricing fields
             update_post_meta($product_id, '_class_min_attendees', '');

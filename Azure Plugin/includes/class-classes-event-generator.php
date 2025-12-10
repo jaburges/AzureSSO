@@ -403,7 +403,8 @@ class Azure_Classes_Event_Generator {
                     'venue_id'       => get_post_meta($event_id, '_EventVenueID', true),
                     'session_number' => get_post_meta($event_id, '_class_session_number', true),
                     'modified'       => get_post_meta($event_id, '_class_manually_modified', true) === 'yes',
-                    'status'         => $event->post_status
+                    'status'         => $event->post_status,
+                    'url'            => get_permalink($event_id)
                 );
             }
         }

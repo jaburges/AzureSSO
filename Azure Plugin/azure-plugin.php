@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Microsoft WP
  * Plugin URI: https://github.com/jamieburgess/microsoft-wp
- * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, email via Microsoft Graph API, PTA role management with O365 Groups sync, and The Events Calendar integration with multi-calendar support.
- * Version: 1.5
+ * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, and OneDrive media integration.
+ * Version: 2.0
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '1.5');
+define('AZURE_PLUGIN_VERSION', '2.0');
 
 // Main plugin class for Microsoft WP
 class AzurePlugin {
@@ -121,7 +121,10 @@ class AzurePlugin {
                 'class-onedrive-media-manager.php' => 'OneDrive Media Manager class',
                 
                 // Classes functionality
-                'class-classes-module.php' => 'Classes Module class'
+                'class-classes-module.php' => 'Classes Module class',
+                
+                // Upcoming Events shortcode functionality
+                'class-upcoming-module.php' => 'Upcoming Events Module class'
             );
             
             // Load critical files first - these must succeed
@@ -249,6 +252,9 @@ class AzurePlugin {
             if (!empty($settings['enable_classes'])) {
                 $this->init_classes_components();
             }
+            
+            // Upcoming Events module - always available (no credentials needed)
+            $this->init_upcoming_components();
             
         } catch (Exception $e) {
             if (class_exists('Azure_Logger')) {
@@ -558,6 +564,20 @@ class AzurePlugin {
                 'line' => $e->getLine()
             ));
             error_log('Azure Plugin: Classes init error - ' . $e->getMessage());
+        }
+    }
+    
+    private function init_upcoming_components() {
+        try {
+            if (class_exists('Azure_Upcoming_Module')) {
+                Azure_Upcoming_Module::get_instance();
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Upcoming Events init failed: ' . $e->getMessage(), array(
+                'module' => 'Upcoming',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
         }
     }
     

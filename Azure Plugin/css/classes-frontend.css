@@ -81,27 +81,128 @@
     border-bottom: 2px solid #0073aa;
 }
 
-/* Two-column layout */
-.class-schedule-columns {
-    display: grid;
-    grid-template-columns: 60% 40%;
-    gap: 30px;
-    margin-top: 15px;
+/* Schedule section - add right margin for product form spacing */
+.class-schedule.class-schedule-list {
+    margin-right: 20px;
 }
 
-.schedule-column-left {
-    border-right: 1px solid #eee;
+/* Venue + Calendar Subscribe Row */
+.class-venue-calendar-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch; /* Match heights */
+    gap: 20px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+/* Venue styling */
+.class-venue {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1;
     padding-right: 20px;
+    border-right: 1px solid #e0e0e0;
 }
 
-.schedule-column-right {
+.class-venue .dashicons-location {
+    color: #0073aa;
+    margin-top: 2px;
+}
+
+.class-venue .venue-details {
+    flex: 1;
+}
+
+.class-venue .venue-details strong {
+    display: block;
+    font-size: 1.1em;
+    margin-bottom: 5px;
+}
+
+.class-venue .venue-address {
+    color: #666;
+    line-height: 1.5;
+}
+
+.class-venue .venue-street,
+.class-venue .venue-city-state {
+    display: block;
+}
+
+/* Calendar subscribe widget - expanded width */
+.class-calendar-subscribe {
+    flex-shrink: 0;
+    min-width: 280px;
+    max-width: 320px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     padding-left: 10px;
 }
 
-/* Ensure schedule list takes full width of its column */
-.schedule-column-left .schedule-list {
+.class-calendar-subscribe h4 {
+    margin: 0 0 8px 0;
+    font-size: 1em;
+}
+
+.class-calendar-subscribe .calendar-subscribe-note {
+    margin: 0 0 12px 0;
+    font-size: 0.85em;
+    color: #666;
+    line-height: 1.4;
+}
+
+.class-calendar-subscribe .calendar-subscribe-button {
+    display: inline-block;
+    font-size: 0.9em;
+    padding: 10px 20px;
+}
+
+.class-calendar-subscribe .calendar-subscribe-links {
+    margin-top: 10px;
+    font-size: 0.8em;
+}
+
+.class-calendar-subscribe .calendar-subscribe-links a {
+    margin: 0 8px;
+    white-space: nowrap;
+}
+
+/* Schedule list - full width */
+.class-schedule-list .schedule-list {
     margin: 0;
     padding: 0;
+}
+
+/* Full-width description below */
+.class-description-full {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.class-description-full h4 {
+    margin-bottom: 10px;
+}
+
+/* Responsive: Stack on mobile */
+@media (max-width: 600px) {
+    .class-venue-calendar-row {
+        flex-direction: column;
+    }
+    
+    .class-calendar-subscribe {
+        max-width: 100%;
+        width: 100%;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #ddd;
+    }
 }
 
 .class-schedule .class-venue {
@@ -239,6 +340,28 @@
     border-radius: 3px;
     font-size: 0.85em;
     font-weight: 500;
+}
+
+.class-schedule-list .session-number-link {
+    display: inline-block;
+    background: #0073aa;
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 0.2s ease;
+}
+
+.class-schedule-list .session-number-link:hover {
+    background: #005a87;
+    color: #fff;
+    text-decoration: none;
+}
+
+.class-schedule-list .session-number-link:visited {
+    color: #fff;
 }
 
 .class-schedule-list .session-date {

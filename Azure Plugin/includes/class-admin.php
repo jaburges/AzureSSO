@@ -184,6 +184,15 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
+            'Azure Plugin - Upcoming Events',
+            'Upcoming Events',
+            'manage_options',
+            'azure-plugin-upcoming',
+            array($this, 'admin_page_upcoming')
+        );
+        
+        add_submenu_page(
+            'azure-plugin',
             'Azure Plugin - Logs',
             'System Logs',
             'manage_options',
@@ -625,6 +634,14 @@ class Azure_Admin {
             include AZURE_PLUGIN_PATH . 'admin/classes-page.php';
         } catch (Exception $e) {
             $this->render_error_page('Classes', $e);
+        }
+    }
+    
+    public function admin_page_upcoming() {
+        try {
+            include AZURE_PLUGIN_PATH . 'admin/upcoming-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Upcoming Events', $e);
         }
     }
     
