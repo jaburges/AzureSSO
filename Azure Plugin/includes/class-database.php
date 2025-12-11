@@ -398,7 +398,15 @@ class Azure_Database {
             'tec_calendar_mappings' => $wpdb->prefix . 'azure_tec_calendar_mappings',
             'onedrive_files' => $wpdb->prefix . 'azure_onedrive_files',
             'onedrive_sync_queue' => $wpdb->prefix . 'azure_onedrive_sync_queue',
-            'onedrive_tokens' => $wpdb->prefix . 'azure_onedrive_tokens'
+            'onedrive_tokens' => $wpdb->prefix . 'azure_onedrive_tokens',
+            'newsletters' => $wpdb->prefix . 'azure_newsletters',
+            'newsletter_queue' => $wpdb->prefix . 'azure_newsletter_queue',
+            'newsletter_stats' => $wpdb->prefix . 'azure_newsletter_stats',
+            'newsletter_lists' => $wpdb->prefix . 'azure_newsletter_lists',
+            'newsletter_list_members' => $wpdb->prefix . 'azure_newsletter_list_members',
+            'newsletter_bounces' => $wpdb->prefix . 'azure_newsletter_bounces',
+            'newsletter_templates' => $wpdb->prefix . 'azure_newsletter_templates',
+            'newsletter_sending_config' => $wpdb->prefix . 'azure_newsletter_sending_config'
         );
         
         return isset($tables[$table]) ? $tables[$table] : false;

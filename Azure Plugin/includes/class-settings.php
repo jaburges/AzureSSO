@@ -260,6 +260,7 @@ class Azure_Settings {
             'enable_email' => false,
             'enable_pta' => false,
             'enable_classes' => false,
+            'enable_newsletter' => false,
             
             // Debug settings
             'debug_mode' => false,
@@ -380,7 +381,16 @@ class Azure_Settings {
             'onedrive_media_show_badge' => true,
             'onedrive_media_keep_local_copies' => false,
             'onedrive_media_max_file_size' => 4294967296,
-            'onedrive_media_chunk_size' => 10485760
+            'onedrive_media_chunk_size' => 10485760,
+            
+            // Newsletter specific settings
+            'newsletter_sending_service' => 'mailgun',
+            'newsletter_batch_size' => 100,
+            'newsletter_rate_limit_per_hour' => 1000,
+            'newsletter_from_addresses' => array(),
+            'newsletter_bounce_mailbox' => '',
+            'newsletter_bounce_enabled' => false,
+            'newsletter_default_category' => 'newsletter'
         );
     }
     

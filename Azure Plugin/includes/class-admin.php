@@ -193,6 +193,15 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
+            'Azure Plugin - Newsletter',
+            'Newsletter',
+            'manage_options',
+            'azure-plugin-newsletter',
+            array($this, 'admin_page_newsletter')
+        );
+        
+        add_submenu_page(
+            'azure-plugin',
             'Azure Plugin - Logs',
             'System Logs',
             'manage_options',
@@ -278,6 +287,22 @@ class Azure_Admin {
                 wp_localize_script('azure-tec-admin', 'azureTecAdmin', array(
                     'ajaxUrl' => admin_url('admin-ajax.php'),
                     'nonce' => wp_create_nonce('azure_plugin_nonce')
+                ));
+                break;
+            case 'azure-plugin-newsletter':
+                // Newsletter admin styles and scripts
+                wp_enqueue_style('azure-newsletter-admin', AZURE_PLUGIN_URL . 'css/newsletter-admin.css', array(), $cache_version);
+                wp_enqueue_script('azure-newsletter-admin', AZURE_PLUGIN_URL . 'js/newsletter-admin.js', array('jquery'), $cache_version, true);
+                wp_localize_script('azure-newsletter-admin', 'azureNewsletter', array(
+                    'ajaxUrl' => admin_url('admin-ajax.php'),
+                    'nonce' => wp_create_nonce('azure_newsletter_nonce'),
+                    'strings' => array(
+                        'confirmDelete' => __('Are you sure you want to delete this?', 'azure-plugin'),
+                        'saving' => __('Saving...', 'azure-plugin'),
+                        'saved' => __('Saved!', 'azure-plugin'),
+                        'error' => __('Error occurred', 'azure-plugin'),
+                        'recipients' => __('recipients', 'azure-plugin'),
+                    )
                 ));
                 break;
         }
@@ -645,6 +670,15 @@ class Azure_Admin {
         }
     }
     
+    public function admin_page_newsletter() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/newsletter-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Newsletter', $e);
+        }
+    }
+    
     public function admin_page_logs() {
         try {
             $logs = Azure_Logger::get_logs(200);
@@ -769,7 +803,7 @@ class Azure_Admin {
         $enabled = $_POST['enabled'] === 'true';
         
         // Validate module name
-        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes');
+        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter');
         if (!in_array($module, $valid_modules)) {
             wp_send_json_error('Invalid module name: ' . $module);
         }

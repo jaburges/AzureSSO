@@ -124,7 +124,10 @@ class AzurePlugin {
                 'class-classes-module.php' => 'Classes Module class',
                 
                 // Upcoming Events shortcode functionality
-                'class-upcoming-module.php' => 'Upcoming Events Module class'
+                'class-upcoming-module.php' => 'Upcoming Events Module class',
+                
+                // Newsletter functionality
+                'class-newsletter-module.php' => 'Newsletter Module class'
             );
             
             // Load critical files first - these must succeed
@@ -255,6 +258,13 @@ class AzurePlugin {
             
             // Upcoming Events module - always available (no credentials needed)
             $this->init_upcoming_components();
+            
+            // Always load newsletter AJAX handlers (needed for table creation even when module is disabled)
+            $this->load_newsletter_ajax();
+            
+            if (!empty($settings['enable_newsletter'])) {
+                $this->init_newsletter_components();
+            }
             
         } catch (Exception $e) {
             if (class_exists('Azure_Logger')) {
@@ -582,6 +592,42 @@ class AzurePlugin {
     }
     
     /**
+     * Load Newsletter AJAX handlers (always needed for table management)
+     */
+    private function load_newsletter_ajax() {
+        // Only load in admin AJAX context
+        if (!is_admin()) {
+            return;
+        }
+        
+        $ajax_file = AZURE_PLUGIN_PATH . 'includes/class-newsletter-ajax.php';
+        if (file_exists($ajax_file) && !class_exists('Azure_Newsletter_Ajax')) {
+            require_once $ajax_file;
+        }
+    }
+    
+    private function init_newsletter_components() {
+        try {
+            Azure_Logger::debug_module('Newsletter', 'Starting Newsletter module initialization');
+            
+            if (class_exists('Azure_Newsletter_Module')) {
+                Azure_Newsletter_Module::get_instance();
+                Azure_Logger::debug_module('Newsletter', 'Azure_Newsletter_Module initialized successfully');
+            }
+            
+            Azure_Logger::debug_module('Newsletter', 'All Newsletter components initialized successfully');
+            
+        } catch (Exception $e) {
+            Azure_Logger::error('Newsletter init failed: ' . $e->getMessage(), array(
+                'module' => 'Newsletter',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Newsletter init error - ' . $e->getMessage());
+        }
+    }
+    
+    /**
      * Plugin activation with comprehensive debugging
      */
     public function activate() {
@@ -681,6 +727,21 @@ class AzurePlugin {
                 } catch (Exception $e) {
                     $write_log("❌ **[STEP 6 ERROR]** Failed to create/seed PTA tables: " . $e->getMessage());
                     Azure_Logger::error('Failed to create/seed PTA database tables: ' . $e->getMessage());
+                    // Continue with activation but log the error
+                }
+            }
+            
+            // Create Newsletter database tables
+            if (class_exists('Azure_Newsletter_Module')) {
+                try {
+                    $write_log("⏳ **[STEP 6c]** Creating Newsletter database tables");
+                    Azure_Logger::info('Creating Newsletter database tables');
+                    Azure_Newsletter_Module::create_tables();
+                    Azure_Logger::info('Newsletter database tables created successfully');
+                    $write_log("✅ **[STEP 6c]** Newsletter tables created");
+                } catch (Exception $e) {
+                    $write_log("❌ **[STEP 6c ERROR]** Failed to create Newsletter tables: " . $e->getMessage());
+                    Azure_Logger::error('Failed to create Newsletter database tables: ' . $e->getMessage());
                     // Continue with activation but log the error
                 }
             }

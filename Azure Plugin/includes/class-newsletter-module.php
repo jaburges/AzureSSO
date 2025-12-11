@@ -1,0 +1,794 @@
+<?php
+/**
+ * Newsletter Module - Main initialization class
+ * 
+ * Provides newsletter creation, sending via SMTP services (Mailgun, SendGrid, etc.),
+ * webhook-based tracking, queue-based batch sending, and WordPress subscriber integration.
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class Azure_Newsletter_Module {
+    
+    private static $instance = null;
+    
+    public static function get_instance() {
+        if (self::$instance == null) {
+            self::$instance = new Azure_Newsletter_Module();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        // Initialize hooks
+        add_action('init', array($this, 'init'));
+        
+        // Register custom post status for published newsletters (WordPress pages)
+        add_action('init', array($this, 'register_post_status'));
+        
+        // Enqueue admin styles and scripts
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+        
+        // Schedule cron events
+        add_action('wp_loaded', array($this, 'schedule_cron_events'));
+        
+        // WP-Cron hooks for queue processing
+        add_action('azure_newsletter_process_queue', array($this, 'process_queue'));
+        add_action('azure_newsletter_check_bounces', array($this, 'check_bounces'));
+        add_action('azure_newsletter_weekly_validation', array($this, 'weekly_email_validation'));
+        
+        // Dashboard widget
+        add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
+        
+        // REST API endpoints for webhooks
+        add_action('rest_api_init', array($this, 'register_rest_routes'));
+        
+        Azure_Logger::debug_module('Newsletter', 'Newsletter module initialized');
+    }
+    
+    /**
+     * Enqueue admin styles and scripts for newsletter pages
+     */
+    public function enqueue_admin_assets($hook) {
+        // Only load on newsletter admin pages
+        if (strpos($hook, 'azure-plugin-newsletter') === false) {
+            return;
+        }
+        
+        // Newsletter admin CSS
+        wp_enqueue_style(
+            'azure-newsletter-admin',
+            AZURE_PLUGIN_URL . 'css/newsletter-admin.css',
+            array(),
+            AZURE_PLUGIN_VERSION
+        );
+        
+        // Newsletter admin JS
+        wp_enqueue_script(
+            'azure-newsletter-admin',
+            AZURE_PLUGIN_URL . 'js/newsletter-admin.js',
+            array('jquery'),
+            AZURE_PLUGIN_VERSION,
+            true
+        );
+        
+        // Localize script with AJAX URL and nonces
+        wp_localize_script('azure-newsletter-admin', 'azureNewsletter', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('azure_newsletter_nonce'),
+            'strings' => array(
+                'confirmDelete' => __('Are you sure you want to delete this?', 'azure-plugin'),
+                'saving' => __('Saving...', 'azure-plugin'),
+                'saved' => __('Saved!', 'azure-plugin'),
+                'error' => __('Error occurred', 'azure-plugin'),
+                'recipients' => __('recipients', 'azure-plugin'),
+            )
+        ));
+    }
+    
+    /**
+     * Initialize module components
+     */
+    public function init() {
+        // Load additional module classes if they exist
+        $this->load_module_classes();
+    }
+    
+    /**
+     * Load additional module classes
+     */
+    private function load_module_classes() {
+        $classes = array(
+            'class-newsletter-queue.php',
+            'class-newsletter-sender.php',
+            'class-newsletter-tracking.php',
+            'class-newsletter-lists.php',
+            'class-newsletter-bounce.php',
+            'class-newsletter-ajax.php'
+        );
+        
+        foreach ($classes as $class_file) {
+            $file_path = AZURE_PLUGIN_PATH . 'includes/' . $class_file;
+            if (file_exists($file_path)) {
+                require_once $file_path;
+            }
+        }
+    }
+    
+    /**
+     * Register custom post status
+     */
+    public function register_post_status() {
+        register_post_status('newsletter-archive', array(
+            'label'                     => _x('Newsletter Archive', 'post status', 'azure-plugin'),
+            'public'                    => true,
+            'exclude_from_search'       => false,
+            'show_in_admin_all_list'    => true,
+            'show_in_admin_status_list' => true,
+            'label_count'               => _n_noop('Newsletter Archive (%s)', 'Newsletter Archive (%s)', 'azure-plugin')
+        ));
+    }
+    
+    /**
+     * Schedule WP-Cron events
+     */
+    public function schedule_cron_events() {
+        // Process queue every minute
+        if (!wp_next_scheduled('azure_newsletter_process_queue')) {
+            wp_schedule_event(time(), 'every_minute', 'azure_newsletter_process_queue');
+        }
+        
+        // Check bounces every 15 minutes (for Office 365 IMAP)
+        if (!wp_next_scheduled('azure_newsletter_check_bounces')) {
+            wp_schedule_event(time(), 'every_fifteen_minutes', 'azure_newsletter_check_bounces');
+        }
+        
+        // Weekly email list validation
+        if (!wp_next_scheduled('azure_newsletter_weekly_validation')) {
+            wp_schedule_event(time(), 'weekly', 'azure_newsletter_weekly_validation');
+        }
+    }
+    
+    /**
+     * Register custom cron schedules
+     */
+    public static function register_cron_schedules($schedules) {
+        $schedules['every_minute'] = array(
+            'interval' => 60,
+            'display' => __('Every Minute', 'azure-plugin')
+        );
+        
+        $schedules['every_fifteen_minutes'] = array(
+            'interval' => 900,
+            'display' => __('Every 15 Minutes', 'azure-plugin')
+        );
+        
+        return $schedules;
+    }
+    
+    /**
+     * Process the email queue
+     */
+    public function process_queue() {
+        if (class_exists('Azure_Newsletter_Queue')) {
+            $queue = new Azure_Newsletter_Queue();
+            $result = $queue->process_batch();
+            
+            if (!empty($result['sent'])) {
+                Azure_Logger::info('Newsletter queue: ' . $result['sent'] . '/' . $result['total'] . ' emails sent successfully');
+            }
+            
+            if (!empty($result['failed'])) {
+                Azure_Logger::warning('Newsletter queue: ' . $result['failed'] . ' emails failed');
+            }
+        }
+    }
+    
+    /**
+     * Check bounces via Office 365 IMAP
+     */
+    public function check_bounces() {
+        if (class_exists('Azure_Newsletter_Bounce')) {
+            $bounce_handler = new Azure_Newsletter_Bounce();
+            $bounce_handler->process_imap_bounces();
+        }
+    }
+    
+    /**
+     * Weekly email list validation
+     */
+    public function weekly_email_validation() {
+        if (class_exists('Azure_Newsletter_Bounce')) {
+            $bounce_handler = new Azure_Newsletter_Bounce();
+            $bounce_handler->validate_email_list();
+        }
+    }
+    
+    /**
+     * Add dashboard widget
+     */
+    public function add_dashboard_widget() {
+        wp_add_dashboard_widget(
+            'azure_newsletter_stats',
+            __('Newsletter Statistics', 'azure-plugin'),
+            array($this, 'render_dashboard_widget')
+        );
+    }
+    
+    /**
+     * Render dashboard widget
+     */
+    public function render_dashboard_widget() {
+        global $wpdb;
+        
+        $newsletters_table = $wpdb->prefix . 'azure_newsletters';
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        $lists_table = $wpdb->prefix . 'azure_newsletter_list_members';
+        
+        // Check if tables exist
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$newsletters_table}'") === $newsletters_table;
+        
+        if (!$table_exists) {
+            echo '<p>' . __('Newsletter module tables not yet created.', 'azure-plugin') . '</p>';
+            return;
+        }
+        
+        // Get total subscribers
+        $total_subscribers = $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM {$lists_table} WHERE unsubscribed_at IS NULL");
+        
+        // Get emails sent this month
+        $first_of_month = date('Y-m-01 00:00:00');
+        $emails_this_month = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'sent' AND created_at >= %s",
+            $first_of_month
+        ));
+        
+        // Get average open rate
+        $open_stats = $wpdb->get_row("
+            SELECT 
+                COUNT(CASE WHEN event_type = 'sent' THEN 1 END) as sent,
+                COUNT(DISTINCT CASE WHEN event_type = 'opened' THEN email END) as opened
+            FROM {$stats_table}
+        ");
+        $avg_open_rate = ($open_stats && $open_stats->sent > 0) 
+            ? round(($open_stats->opened / $open_stats->sent) * 100, 1) 
+            : 0;
+        
+        // Get average click rate
+        $click_stats = $wpdb->get_row("
+            SELECT 
+                COUNT(CASE WHEN event_type = 'sent' THEN 1 END) as sent,
+                COUNT(DISTINCT CASE WHEN event_type = 'clicked' THEN email END) as clicked
+            FROM {$stats_table}
+        ");
+        $avg_click_rate = ($click_stats && $click_stats->sent > 0) 
+            ? round(($click_stats->clicked / $click_stats->sent) * 100, 1) 
+            : 0;
+        
+        // Get recent campaigns
+        $recent_campaigns = $wpdb->get_results("
+            SELECT id, name, status, sent_at,
+                (SELECT COUNT(*) FROM {$stats_table} WHERE newsletter_id = n.id AND event_type = 'sent') as sent_count,
+                (SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = n.id AND event_type = 'opened') as open_count
+            FROM {$newsletters_table} n
+            WHERE status IN ('sent', 'sending')
+            ORDER BY sent_at DESC
+            LIMIT 5
+        ");
+        
+        ?>
+        <div class="azure-newsletter-widget">
+            <div class="newsletter-stats-grid">
+                <div class="stat-box">
+                    <span class="stat-number"><?php echo number_format($total_subscribers ?: 0); ?></span>
+                    <span class="stat-label"><?php _e('Subscribers', 'azure-plugin'); ?></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number"><?php echo number_format($emails_this_month ?: 0); ?></span>
+                    <span class="stat-label"><?php _e('Sent This Month', 'azure-plugin'); ?></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number"><?php echo $avg_open_rate; ?>%</span>
+                    <span class="stat-label"><?php _e('Avg Open Rate', 'azure-plugin'); ?></span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-number"><?php echo $avg_click_rate; ?>%</span>
+                    <span class="stat-label"><?php _e('Avg Click Rate', 'azure-plugin'); ?></span>
+                </div>
+            </div>
+            
+            <?php if (!empty($recent_campaigns)): ?>
+            <h4><?php _e('Recent Campaigns', 'azure-plugin'); ?></h4>
+            <ul class="recent-campaigns">
+                <?php foreach ($recent_campaigns as $campaign): 
+                    $campaign_open_rate = ($campaign->sent_count > 0) 
+                        ? round(($campaign->open_count / $campaign->sent_count) * 100, 1) 
+                        : 0;
+                ?>
+                <li>
+                    <span class="campaign-name"><?php echo esc_html($campaign->name); ?></span>
+                    <span class="campaign-stats">
+                        <?php echo number_format($campaign->sent_count); ?> <?php _e('sent', 'azure-plugin'); ?> · 
+                        <?php echo $campaign_open_rate; ?>% <?php _e('opens', 'azure-plugin'); ?>
+                    </span>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+            <?php endif; ?>
+            
+            <p class="newsletter-actions">
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new'); ?>" class="button button-primary">
+                    <?php _e('Create Newsletter', 'azure-plugin'); ?>
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter'); ?>" class="button">
+                    <?php _e('View All', 'azure-plugin'); ?>
+                </a>
+            </p>
+        </div>
+        
+        <style>
+            .azure-newsletter-widget .newsletter-stats-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin-bottom: 15px;
+            }
+            .azure-newsletter-widget .stat-box {
+                background: #f8f9fa;
+                padding: 10px;
+                text-align: center;
+                border-radius: 4px;
+            }
+            .azure-newsletter-widget .stat-number {
+                display: block;
+                font-size: 20px;
+                font-weight: 600;
+                color: #1d2327;
+            }
+            .azure-newsletter-widget .stat-label {
+                display: block;
+                font-size: 11px;
+                color: #646970;
+                text-transform: uppercase;
+            }
+            .azure-newsletter-widget .recent-campaigns {
+                margin: 0 0 15px;
+                padding: 0;
+                list-style: none;
+            }
+            .azure-newsletter-widget .recent-campaigns li {
+                display: flex;
+                justify-content: space-between;
+                padding: 5px 0;
+                border-bottom: 1px solid #eee;
+            }
+            .azure-newsletter-widget .campaign-name {
+                font-weight: 500;
+            }
+            .azure-newsletter-widget .campaign-stats {
+                color: #646970;
+                font-size: 12px;
+            }
+            .azure-newsletter-widget .newsletter-actions {
+                margin: 0;
+            }
+        </style>
+        <?php
+    }
+    
+    /**
+     * Register REST API routes for webhooks
+     */
+    public function register_rest_routes() {
+        // Mailgun webhook
+        register_rest_route('azure-plugin/v1', '/newsletter/webhook/mailgun', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_mailgun_webhook'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // SendGrid webhook
+        register_rest_route('azure-plugin/v1', '/newsletter/webhook/sendgrid', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_sendgrid_webhook'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // Amazon SES webhook
+        register_rest_route('azure-plugin/v1', '/newsletter/webhook/ses', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_ses_webhook'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // View in browser
+        register_rest_route('azure-plugin/v1', '/newsletter/view/(?P<token>[a-zA-Z0-9]+)', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'handle_view_in_browser'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // Tracking pixel
+        register_rest_route('azure-plugin/v1', '/newsletter/track/open/(?P<token>[a-zA-Z0-9]+)', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'handle_track_open'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // Click tracking redirect
+        register_rest_route('azure-plugin/v1', '/newsletter/track/click/(?P<token>[a-zA-Z0-9]+)', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'handle_track_click'),
+            'permission_callback' => '__return_true'
+        ));
+        
+        // Unsubscribe
+        register_rest_route('azure-plugin/v1', '/newsletter/unsubscribe/(?P<token>[a-zA-Z0-9]+)', array(
+            'methods' => array('GET', 'POST'),
+            'callback' => array($this, 'handle_unsubscribe'),
+            'permission_callback' => '__return_true'
+        ));
+    }
+    
+    /**
+     * Handle Mailgun webhook
+     */
+    public function handle_mailgun_webhook($request) {
+        if (class_exists('Azure_Newsletter_Tracking')) {
+            $tracking = new Azure_Newsletter_Tracking();
+            return $tracking->process_mailgun_webhook($request);
+        }
+        return new WP_REST_Response(array('status' => 'ok'), 200);
+    }
+    
+    /**
+     * Handle SendGrid webhook
+     */
+    public function handle_sendgrid_webhook($request) {
+        if (class_exists('Azure_Newsletter_Tracking')) {
+            $tracking = new Azure_Newsletter_Tracking();
+            return $tracking->process_sendgrid_webhook($request);
+        }
+        return new WP_REST_Response(array('status' => 'ok'), 200);
+    }
+    
+    /**
+     * Handle Amazon SES webhook
+     */
+    public function handle_ses_webhook($request) {
+        if (class_exists('Azure_Newsletter_Tracking')) {
+            $tracking = new Azure_Newsletter_Tracking();
+            return $tracking->process_ses_webhook($request);
+        }
+        return new WP_REST_Response(array('status' => 'ok'), 200);
+    }
+    
+    /**
+     * Handle view in browser
+     */
+    public function handle_view_in_browser($request) {
+        $token = $request->get_param('token');
+        
+        global $wpdb;
+        $table = $wpdb->prefix . 'azure_newsletters';
+        
+        $newsletter = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE archive_token = %s",
+            $token
+        ));
+        
+        if (!$newsletter) {
+            return new WP_REST_Response('Newsletter not found', 404);
+        }
+        
+        // Return HTML content
+        header('Content-Type: text/html; charset=utf-8');
+        echo $newsletter->content_html;
+        exit;
+    }
+    
+    /**
+     * Handle open tracking
+     */
+    public function handle_track_open($request) {
+        if (class_exists('Azure_Newsletter_Tracking')) {
+            $tracking = new Azure_Newsletter_Tracking();
+            $tracking->record_open($request->get_param('token'));
+        }
+        
+        // Return 1x1 transparent GIF
+        header('Content-Type: image/gif');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+        exit;
+    }
+    
+    /**
+     * Handle click tracking
+     */
+    public function handle_track_click($request) {
+        $token = $request->get_param('token');
+        $url = $request->get_param('url');
+        
+        if (class_exists('Azure_Newsletter_Tracking')) {
+            $tracking = new Azure_Newsletter_Tracking();
+            $tracking->record_click($token, $url);
+        }
+        
+        // Redirect to actual URL
+        if (!empty($url)) {
+            wp_redirect(esc_url($url));
+            exit;
+        }
+        
+        return new WP_REST_Response('Invalid URL', 400);
+    }
+    
+    /**
+     * Handle unsubscribe
+     */
+    public function handle_unsubscribe($request) {
+        $token = $request->get_param('token');
+        
+        if (class_exists('Azure_Newsletter_Lists')) {
+            $lists = new Azure_Newsletter_Lists();
+            $result = $lists->process_unsubscribe($token);
+            
+            if ($result['success']) {
+                // Show unsubscribe confirmation page
+                $html = '<!DOCTYPE html>
+                <html>
+                <head>
+                    <title>' . esc_html__('Unsubscribed', 'azure-plugin') . '</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                               max-width: 600px; margin: 100px auto; text-align: center; padding: 20px; }
+                        h1 { color: #1d2327; }
+                        p { color: #646970; }
+                    </style>
+                </head>
+                <body>
+                    <h1>' . esc_html__('You have been unsubscribed', 'azure-plugin') . '</h1>
+                    <p>' . esc_html__('You will no longer receive newsletters from us.', 'azure-plugin') . '</p>
+                </body>
+                </html>';
+                
+                return new WP_REST_Response($html, 200, array('Content-Type' => 'text/html'));
+            }
+        }
+        
+        return new WP_REST_Response('Invalid unsubscribe link', 400);
+    }
+    
+    /**
+     * Create database tables for newsletters
+     */
+    public static function create_tables() {
+        global $wpdb;
+        
+        $charset_collate = $wpdb->get_charset_collate();
+        
+        // Newsletters/Campaigns table
+        $table_newsletters = $wpdb->prefix . 'azure_newsletters';
+        $sql_newsletters = "CREATE TABLE $table_newsletters (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            subject varchar(255) NOT NULL,
+            from_name varchar(100) NOT NULL,
+            from_email varchar(100) NOT NULL,
+            content_html longtext,
+            content_json longtext,
+            status enum('draft','scheduled','sending','sent','paused') DEFAULT 'draft',
+            scheduled_at datetime NULL,
+            sent_at datetime NULL,
+            archive_token varchar(64) NULL,
+            wp_page_id bigint(20) UNSIGNED NULL,
+            page_category varchar(100) DEFAULT 'newsletter',
+            created_by bigint(20) UNSIGNED,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY archive_token (archive_token),
+            KEY status (status),
+            KEY scheduled_at (scheduled_at),
+            KEY created_by (created_by)
+        ) $charset_collate;";
+        
+        // Newsletter Queue table
+        $table_queue = $wpdb->prefix . 'azure_newsletter_queue';
+        $sql_queue = "CREATE TABLE $table_queue (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            newsletter_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NULL,
+            email varchar(255) NOT NULL,
+            status enum('pending','sent','failed','bounced') DEFAULT 'pending',
+            attempts tinyint UNSIGNED DEFAULT 0,
+            scheduled_at datetime NOT NULL,
+            sent_at datetime NULL,
+            error_message text NULL,
+            PRIMARY KEY (id),
+            KEY idx_status_scheduled (status, scheduled_at),
+            KEY idx_newsletter (newsletter_id),
+            UNIQUE KEY unique_send (newsletter_id, email)
+        ) $charset_collate;";
+        
+        // Newsletter Stats table
+        $table_stats = $wpdb->prefix . 'azure_newsletter_stats';
+        $sql_stats = "CREATE TABLE $table_stats (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            newsletter_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NULL,
+            email varchar(255) NOT NULL,
+            event_type enum('sent','delivered','opened','clicked','bounced','unsubscribed','complained') NOT NULL,
+            event_data text NULL,
+            link_url varchar(2048) NULL,
+            link_text varchar(255) NULL,
+            link_position int NULL,
+            ip_address varchar(45) NULL,
+            user_agent varchar(512) NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_newsletter_event (newsletter_id, event_type),
+            KEY idx_email (email),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+        
+        // Newsletter Lists table
+        $table_lists = $wpdb->prefix . 'azure_newsletter_lists';
+        $sql_lists = "CREATE TABLE $table_lists (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            description text,
+            type enum('all_users','role','tag','custom') NOT NULL,
+            criteria json NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+        
+        // Newsletter List Members table
+        $table_list_members = $wpdb->prefix . 'azure_newsletter_list_members';
+        $sql_list_members = "CREATE TABLE $table_list_members (
+            list_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NULL,
+            email varchar(255) NOT NULL,
+            first_name varchar(100) NULL,
+            last_name varchar(100) NULL,
+            subscribed_at datetime DEFAULT CURRENT_TIMESTAMP,
+            unsubscribed_at datetime NULL,
+            PRIMARY KEY (list_id, email),
+            KEY idx_email (email),
+            KEY idx_user_id (user_id)
+        ) $charset_collate;";
+        
+        // Newsletter Bounces table
+        $table_bounces = $wpdb->prefix . 'azure_newsletter_bounces';
+        $sql_bounces = "CREATE TABLE $table_bounces (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            email varchar(255) NOT NULL,
+            bounce_type enum('hard','soft','complaint') NOT NULL,
+            bounce_count tinyint UNSIGNED DEFAULT 1,
+            last_bounce_at datetime DEFAULT CURRENT_TIMESTAMP,
+            is_blocked tinyint(1) DEFAULT 0,
+            bounce_reason text NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY idx_email (email),
+            KEY idx_blocked (is_blocked)
+        ) $charset_collate;";
+        
+        // Newsletter Templates table
+        $table_templates = $wpdb->prefix . 'azure_newsletter_templates';
+        $sql_templates = "CREATE TABLE $table_templates (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            description text,
+            thumbnail_url varchar(500),
+            content_html longtext,
+            content_json longtext,
+            category varchar(50) DEFAULT 'general',
+            is_system tinyint(1) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_category (category),
+            KEY idx_is_system (is_system)
+        ) $charset_collate;";
+        
+        // Newsletter Sending Config table
+        $table_sending_config = $wpdb->prefix . 'azure_newsletter_sending_config';
+        $sql_sending_config = "CREATE TABLE $table_sending_config (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            service_type enum('mailgun','sendgrid','ses','smtp','office365') NOT NULL,
+            is_active tinyint(1) DEFAULT 0,
+            config json NOT NULL,
+            from_addresses json NULL,
+            webhook_secret varchar(255) NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_service_type (service_type),
+            KEY idx_is_active (is_active)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        
+        dbDelta($sql_newsletters);
+        dbDelta($sql_queue);
+        dbDelta($sql_stats);
+        dbDelta($sql_lists);
+        dbDelta($sql_list_members);
+        dbDelta($sql_bounces);
+        dbDelta($sql_templates);
+        dbDelta($sql_sending_config);
+        
+        // Insert default templates
+        self::insert_default_templates();
+        
+        Azure_Logger::info('Newsletter module database tables created successfully');
+    }
+    
+    /**
+     * Insert default email templates
+     */
+    private static function insert_default_templates() {
+        global $wpdb;
+        
+        $table = $wpdb->prefix . 'azure_newsletter_templates';
+        
+        // Check if templates already exist
+        $count = $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
+        if ($count > 0) {
+            return;
+        }
+        
+        $templates = array(
+            array(
+                'name' => 'Simple',
+                'description' => 'Clean single-column layout with minimal design',
+                'category' => 'general',
+                'is_system' => 1
+            ),
+            array(
+                'name' => 'Newsletter',
+                'description' => 'Multi-column layout with header, sections, and footer',
+                'category' => 'general',
+                'is_system' => 1
+            ),
+            array(
+                'name' => 'Announcement',
+                'description' => 'Bold header, centered content, and CTA button',
+                'category' => 'general',
+                'is_system' => 1
+            ),
+            array(
+                'name' => 'Event',
+                'description' => 'Date/time block, location info, and RSVP button',
+                'category' => 'events',
+                'is_system' => 1
+            ),
+            array(
+                'name' => 'Welcome',
+                'description' => 'Friendly intro with getting started steps',
+                'category' => 'onboarding',
+                'is_system' => 1
+            )
+        );
+        
+        foreach ($templates as $template) {
+            $wpdb->insert($table, $template);
+        }
+    }
+    
+    /**
+     * Cleanup on deactivation
+     */
+    public static function deactivate() {
+        wp_clear_scheduled_hook('azure_newsletter_process_queue');
+        wp_clear_scheduled_hook('azure_newsletter_check_bounces');
+        wp_clear_scheduled_hook('azure_newsletter_weekly_validation');
+    }
+}
+
+// Register cron schedules filter
+add_filter('cron_schedules', array('Azure_Newsletter_Module', 'register_cron_schedules'));
+
