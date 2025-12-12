@@ -7,6 +7,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Enqueue GrapesJS and dependencies
+wp_enqueue_media(); // For WordPress Media Library integration
+wp_enqueue_style('grapesjs', 'https://unpkg.com/grapesjs@0.21.10/dist/css/grapes.min.css', array(), '0.21.10');
+wp_enqueue_style('grapesjs-newsletter', 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.css', array('grapesjs'), '1.0.2');
+wp_enqueue_script('grapesjs', 'https://unpkg.com/grapesjs@0.21.10/dist/grapes.min.js', array(), '0.21.10', true);
+wp_enqueue_script('grapesjs-newsletter', 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.min.js', array('grapesjs'), '1.0.2', true);
+wp_enqueue_script('newsletter-editor', AZURE_PLUGIN_URL . 'js/newsletter-editor.js', array('jquery', 'grapesjs', 'grapesjs-newsletter'), AZURE_PLUGIN_VERSION, true);
+
 $settings = Azure_Settings::get_all_settings();
 $from_addresses = $settings['newsletter_from_addresses'] ?? array();
 
