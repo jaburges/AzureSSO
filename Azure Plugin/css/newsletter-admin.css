@@ -565,14 +565,18 @@
     border: 1px solid #c3c4c7 !important;
 }
 
-/* Block manager container - Elementor style */
+/* ==========================================
+   BLOCK MANAGER - ELEMENTOR STYLE
+   ========================================== */
+
+/* Block manager container */
 .gjs-blocks-c {
     padding: 0 !important;
     background: #fff !important;
     width: 100% !important;
 }
 
-/* Block categories - Clean minimal style */
+/* Category sections - collapsible headers */
 .gjs-block-category {
     border-bottom: none !important;
     background: #fff !important;
@@ -580,34 +584,28 @@
 }
 
 .gjs-block-category .gjs-title {
-    background: #f7f7f7 !important;
-    padding: 12px 15px !important;
+    background: #f1f2f3 !important;
+    padding: 13px 16px !important;
     font-weight: 600 !important;
     font-size: 11px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.5px !important;
     color: #6d7882 !important;
     cursor: pointer !important;
-    border-top: 1px solid #e6e9ec !important;
     border-bottom: 1px solid #e6e9ec !important;
     display: flex !important;
     align-items: center !important;
-    transition: all 0.15s ease !important;
-}
-
-.gjs-block-category:first-child .gjs-title {
-    border-top: none !important;
+    transition: background 0.15s ease !important;
 }
 
 .gjs-block-category .gjs-title:hover {
-    background: #eff1f3 !important;
-    color: #495157 !important;
+    background: #e8eaed !important;
 }
 
 .gjs-block-category .gjs-caret-icon {
-    margin-right: 8px !important;
+    margin-right: 10px !important;
     color: #9da5ae !important;
-    font-size: 10px !important;
+    font-size: 8px !important;
     transition: transform 0.2s ease !important;
 }
 
@@ -615,124 +613,169 @@
     transform: rotate(90deg) !important;
 }
 
-/* Blocks container - 2 column grid like Elementor */
-.gjs-blocks,
-#blocks-panel .gjs-blocks,
-.gjs-blocks-c .gjs-blocks {
+/* ===========================================
+   BLOCKS GRID - STRICT 2 COLUMNS
+   =========================================== */
+
+/* Force 2-column grid on ALL block containers */
+.gjs-blocks {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
-    padding: 12px !important;
-    gap: 10px !important;
+    grid-auto-rows: auto !important;
+    padding: 16px !important;
+    gap: 12px !important;
     background: #fff !important;
     width: 100% !important;
     box-sizing: border-box !important;
+    /* Override any flex styles */
+    flex-wrap: unset !important;
+    flex-direction: unset !important;
 }
 
-/* Individual blocks - Elementor widget style */
-.gjs-block,
-#blocks-panel .gjs-block,
-.gjs-blocks-c .gjs-block {
+/* Higher specificity overrides */
+#blocks-panel .gjs-blocks,
+.gjs-blocks-c .gjs-blocks,
+.editor-sidebar .gjs-blocks,
+.gjs-block-category .gjs-blocks {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+}
+
+/* ===========================================
+   INDIVIDUAL BLOCKS - ELEMENTOR WIDGET STYLE
+   =========================================== */
+
+.gjs-block {
+    /* Reset any inherited sizing */
     width: auto !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    min-height: 85px !important;
-    background: #fff !important;
-    border: 1px solid #e6e9ec !important;
-    border-radius: 3px !important;
+    flex: unset !important;
+    float: none !important;
+    
+    /* Block dimensions */
+    min-height: 100px !important;
+    height: auto !important;
+    
+    /* Flexbox for content layout */
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: 15px 8px 12px !important;
-    cursor: grab !important;
-    transition: all 0.15s ease !important;
+    
+    /* Spacing */
+    padding: 18px 10px 14px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    
+    /* Appearance */
+    background: #fff !important;
+    border: 1px solid #e6e9ec !important;
+    border-radius: 4px !important;
     box-shadow: none !important;
+    
+    /* Interaction */
+    cursor: grab !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
     position: relative !important;
     overflow: visible !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    float: none !important;
+}
+
+/* Ensure blocks fill grid cells properly */
+#blocks-panel .gjs-block,
+.gjs-blocks-c .gjs-block,
+.gjs-block-category .gjs-block {
+    width: auto !important;
     flex: unset !important;
 }
 
+/* Hover state - magenta accent like Elementor */
 .gjs-block:hover {
     border-color: #93003c !important;
-    background: #fff !important;
     box-shadow: 0 0 0 1px #93003c !important;
-    transform: none !important;
+    background: #fff !important;
 }
 
-/* Active/dragging state */
-.gjs-block:active,
-.gjs-block.gjs-block--active {
+/* Active/dragging states */
+.gjs-block:active {
     transform: scale(0.97) !important;
     cursor: grabbing !important;
 }
 
-/* Block being dragged */
 .gjs-block.gjs-bdrag {
-    opacity: 0.8 !important;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.15) !important;
+    opacity: 0.85 !important;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.2) !important;
 }
 
-/* Block icon/media container - Elementor style */
+/* ===========================================
+   BLOCK ICONS - ELEMENTOR STYLE
+   =========================================== */
+
+/* Icon container */
 .gjs-block__media {
-    margin-bottom: 10px !important;
+    margin-bottom: 12px !important;
     color: #6d7882 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    flex-shrink: 0 !important;
+}
+
+/* SVG icons */
+.gjs-block svg {
     width: 36px !important;
     height: 36px !important;
+    display: block !important;
 }
 
-/* SVG icons - Clean line style like Elementor */
-.gjs-block svg {
-    width: 32px !important;
-    height: 32px !important;
-    transition: none !important;
-}
-
-/* Hover color change - Elementor pink/magenta */
+/* Icon color change on hover - Elementor magenta */
 .gjs-block:hover svg {
     filter: brightness(0) saturate(100%) invert(12%) sepia(96%) saturate(5765%) hue-rotate(327deg) brightness(76%) contrast(115%) !important;
 }
 
-/* Block label - Clean typography */
+/* ===========================================
+   BLOCK LABELS
+   =========================================== */
+
 .gjs-block-label {
     font-size: 12px !important;
     font-weight: 400 !important;
     color: #6d7882 !important;
     text-align: center !important;
-    line-height: 1.3 !important;
+    line-height: 1.4 !important;
     letter-spacing: 0 !important;
     transition: color 0.15s ease !important;
     text-transform: none !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    word-wrap: break-word !important;
     max-width: 100% !important;
+    padding: 0 2px !important;
 }
 
 .gjs-block:hover .gjs-block-label {
     color: #93003c !important;
 }
 
-/* Font Awesome icons (fallback) */
+/* ===========================================
+   FALLBACK ICONS (Font Awesome / GrapesJS)
+   =========================================== */
+
 .gjs-block .fa {
-    font-size: 26px !important;
+    font-size: 30px !important;
     color: #6d7882 !important;
     transition: color 0.15s ease !important;
+    display: block !important;
+    margin-bottom: 8px !important;
 }
 
 .gjs-block:hover .fa {
     color: #93003c !important;
 }
 
-/* GrapesJS default block icons (fallback) */
 .gjs-fonts {
     color: #6d7882 !important;
-    font-size: 26px !important;
+    font-size: 30px !important;
     transition: color 0.15s ease !important;
 }
 
