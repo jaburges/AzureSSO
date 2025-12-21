@@ -431,13 +431,32 @@
     min-height: 500px;
 }
 
+/* Common sidebar styles */
 .editor-sidebar {
-    width: 320px;
-    min-width: 320px;
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
     background: #fff !important;
-    border-right: 1px solid #e6e9ec;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+}
+
+/* Left sidebar - blocks & layers */
+.editor-sidebar-left {
+    border-right: 1px solid #e6e9ec;
+}
+
+/* Right sidebar - settings & styles */
+.editor-sidebar-right {
+    border-left: 1px solid #e6e9ec;
+}
+
+/* Main editor canvas */
+.editor-main {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 /* Override GrapesJS dark theme - Elementor light style */
@@ -499,6 +518,155 @@
 /* Blocks panel needs no padding - GrapesJS adds its own */
 #blocks-panel {
     padding: 0;
+}
+
+/* ===========================================
+   SETTINGS PANEL (Right Sidebar)
+   =========================================== */
+
+#settings-panel {
+    padding: 0;
+}
+
+.settings-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: #646970;
+}
+
+.settings-placeholder .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #c3c4c7;
+    margin-bottom: 15px;
+}
+
+.settings-placeholder p {
+    margin: 0;
+    font-size: 13px;
+}
+
+#traits-container {
+    padding: 15px;
+}
+
+/* Element indicator in Styles panel */
+.selected-element-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 15px;
+    background: #f0f6fc;
+    border-bottom: 1px solid #e6e9ec;
+    font-size: 12px;
+    color: #1d2327;
+}
+
+.selected-element-indicator .dashicons {
+    color: #2271b1;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.selected-element-indicator .element-name {
+    font-weight: 500;
+    word-break: break-word;
+}
+
+#styles-container {
+    padding: 0;
+}
+
+/* ===========================================
+   TRAIT MANAGER STYLING (Settings Fields)
+   =========================================== */
+
+.gjs-trt-traits {
+    padding: 0 !important;
+}
+
+.gjs-trt-trait {
+    padding: 12px 0 !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    background: transparent !important;
+}
+
+.gjs-trt-trait:last-child {
+    border-bottom: none !important;
+}
+
+.gjs-trt-trait__wrp-label {
+    width: 100% !important;
+    margin-bottom: 6px !important;
+}
+
+.gjs-trt-trait__label {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #1d2327 !important;
+    text-transform: none !important;
+}
+
+.gjs-trt-trait__wrp-input {
+    width: 100% !important;
+}
+
+/* Trait input fields */
+.gjs-trt-trait input[type="text"],
+.gjs-trt-trait input[type="number"],
+.gjs-trt-trait textarea {
+    width: 100% !important;
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    color: #1d2327 !important;
+    box-sizing: border-box !important;
+}
+
+.gjs-trt-trait input[type="text"]:focus,
+.gjs-trt-trait input[type="number"]:focus,
+.gjs-trt-trait textarea:focus {
+    border-color: #2271b1 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 1px #2271b1 !important;
+}
+
+/* Trait select dropdowns */
+.gjs-trt-trait select {
+    width: 100% !important;
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+    background: #fff !important;
+    color: #1d2327 !important;
+    cursor: pointer !important;
+}
+
+/* Trait checkboxes */
+.gjs-trt-trait input[type="checkbox"] {
+    width: 18px !important;
+    height: 18px !important;
+    margin-right: 8px !important;
+    cursor: pointer !important;
+}
+
+/* Trait color picker */
+.gjs-trt-trait input[type="color"] {
+    width: 40px !important;
+    height: 32px !important;
+    padding: 2px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
 }
 
 /* Styles panel */
@@ -1140,6 +1308,42 @@ div.gjs-block[style] {
     background: #e5e5e5;
 }
 
+/* GrapesJS Frame - email canvas */
+.gjs-frame {
+    background: #fff !important;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.1) !important;
+    border-radius: 4px !important;
+    overflow: hidden !important;
+}
+
+/* Mobile preview device frame styling */
+.gjs-frame-wrapper--mobile .gjs-frame,
+.gjs-frame[style*="width: 320px"],
+.gjs-frame[style*="width: 375px"] {
+    border: 10px solid #333 !important;
+    border-radius: 30px !important;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.2) !important;
+    margin: 0 auto !important;
+}
+
+/* Ensure email content doesn't overflow in mobile view */
+.gjs-frame-wrapper--mobile .gjs-frame table,
+.gjs-frame[style*="width: 320px"] table,
+.gjs-frame[style*="width: 375px"] table {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Force responsive tables in canvas */
+#gjs-editor table {
+    max-width: 100%;
+}
+
+#gjs-editor img {
+    max-width: 100%;
+    height: auto;
+}
+
 /* Step 3: Review */
 .review-grid {
     display: grid;
@@ -1515,6 +1719,29 @@ div.gjs-block[style] {
     }
 }
 
+/* Responsive: Narrower sidebars on medium-large screens */
+@media (max-width: 1400px) {
+    .editor-sidebar {
+        width: 260px;
+        min-width: 260px;
+        max-width: 260px;
+    }
+}
+
+/* Responsive: Even narrower on medium screens */
+@media (max-width: 1200px) {
+    .editor-sidebar {
+        width: 220px;
+        min-width: 220px;
+        max-width: 220px;
+    }
+    
+    /* Stack blocks in single column on narrow sidebar */
+    .gjs-blocks {
+        grid-template-columns: 1fr !important;
+    }
+}
+
 @media (max-width: 782px) {
     .workflow-steps {
         flex-wrap: wrap;
@@ -1539,11 +1766,37 @@ div.gjs-block[style] {
     
     .editor-container {
         flex-direction: column;
+        height: auto;
+        min-height: 800px;
     }
     
     .editor-sidebar {
-        width: 100%;
-        max-height: 200px;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        max-height: 250px;
+        border-right: none !important;
+        border-left: none !important;
+    }
+    
+    .editor-sidebar-left {
+        border-bottom: 1px solid #e6e9ec;
+        order: 1;
+    }
+    
+    .editor-main {
+        order: 2;
+        min-height: 400px;
+    }
+    
+    .editor-sidebar-right {
+        border-top: 1px solid #e6e9ec;
+        order: 3;
+    }
+    
+    /* Restore 2-column blocks on mobile full-width sidebar */
+    .gjs-blocks {
+        grid-template-columns: repeat(2, 1fr) !important;
     }
     
     .recipient-checkboxes {

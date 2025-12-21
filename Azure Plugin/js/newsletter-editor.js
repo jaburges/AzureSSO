@@ -45,28 +45,28 @@
                 // Panels configuration
                 panels: { defaults: [] },
                 
-                // Canvas configuration
+                // Canvas configuration - Fixed for proper responsive preview
                 canvas: {
                     styles: [
                         'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap'
                     ]
                 },
                 
-                // Device manager for responsive preview
+                // Device manager for responsive preview - Fixed widths
                 deviceManager: {
                     devices: [
                         { 
                             name: 'Desktop', 
-                            width: '' 
+                            width: ''
                         },
                         { 
                             name: 'Tablet', 
                             width: '768px',
-                            widthMedia: '992px'
+                            widthMedia: '768px'
                         },
                         { 
                             name: 'Mobile', 
-                            width: '375px',
+                            width: '320px',
                             widthMedia: '480px'
                         },
                     ]
@@ -87,9 +87,9 @@
                     }
                 },
                 
-                // Style manager sectors
+                // Style manager sectors - Updated to use styles-container
                 styleManager: {
-                    appendTo: '#styles-panel',
+                    appendTo: '#styles-container',
                     sectors: [
                         {
                             name: 'Typography',
@@ -155,6 +155,11 @@
                     ]
                 },
                 
+                // Trait manager - Right sidebar settings panel
+                traitManager: {
+                    appendTo: '#traits-container'
+                },
+                
                 // Layer manager
                 layerManager: {
                     appendTo: '#layers-panel'
@@ -184,6 +189,9 @@
             // Add custom email blocks
             addEmailBlocks();
             
+            // Register custom component types with traits
+            registerComponentTypes();
+            
             // Load initial content if available
             loadInitialContent();
             
@@ -191,6 +199,7 @@
             setupDeviceButtons();
             setupToolbarButtons();
             setupSidebarTabs();
+            setupComponentSelection();
             
             console.log('GrapesJS Newsletter Editor initialized successfully');
             
@@ -508,18 +517,22 @@
             label: 'HTML',
             category: 'Advanced',
             media: icons.html,
-            content: `
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                        <td style="padding: 10px;">
-                            <!-- Custom HTML goes here -->
-                            <div style="padding: 20px; background: #f5f5f5; border: 1px dashed #ccc; text-align: center; color: #666;">
-                                Double-click to edit HTML
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-            `
+            content: {
+                type: 'html-block',
+                content: `
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" data-type="html-block">
+                        <tr>
+                            <td style="padding: 10px;">
+                                <div style="padding: 20px; background: #f5f5f5; border: 1px dashed #ccc; text-align: center; color: #666;">
+                                    <span class="dashicons dashicons-editor-code" style="font-size: 24px; color: #999;"></span>
+                                    <p style="margin: 10px 0 0; font-size: 13px;">Custom HTML Block</p>
+                                    <p style="margin: 5px 0 0; font-size: 11px; color: #999;">Edit in Settings panel →</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                `
+            }
         });
 
         bm.add('video-block', {
@@ -666,39 +679,23 @@
             label: 'Latest Posts',
             category: 'WordPress',
             media: icons.posts,
-            content: `
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                        <td style="padding: 20px;">
-                            <h3 style="margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 20px; color: #1d2327;">Latest News</h3>
-                            
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
-                                <tr>
-                                    <td width="120" valign="top" style="padding-right: 15px;">
-                                        <img src="https://via.placeholder.com/120x80/e0e0e0/666666?text=Post" alt="Post thumbnail" width="120" style="display: block; border-radius: 4px;">
-                                    </td>
-                                    <td valign="top">
-                                        <a href="#" style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: #2271b1; text-decoration: none;">Post Title Here</a>
-                                        <p style="margin: 5px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #666; line-height: 1.5;">Brief excerpt of the post content goes here...</p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                <tr>
-                                    <td width="120" valign="top" style="padding-right: 15px;">
-                                        <img src="https://via.placeholder.com/120x80/e0e0e0/666666?text=Post" alt="Post thumbnail" width="120" style="display: block; border-radius: 4px;">
-                                    </td>
-                                    <td valign="top">
-                                        <a href="#" style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: #2271b1; text-decoration: none;">Another Post Title</a>
-                                        <p style="margin: 5px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #666; line-height: 1.5;">Brief excerpt of the post content goes here...</p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-            `
+            content: {
+                type: 'latest-posts',
+                content: `
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" data-type="latest-posts">
+                        <tr>
+                            <td style="padding: 20px; background: #f0f6fc; border: 2px dashed #2271b1; text-align: center;">
+                                <p style="margin: 0; font-family: monospace; font-size: 14px; color: #2271b1;">
+                                    [newsletter_posts count="3" show_image="true"]
+                                </p>
+                                <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                    Displays latest WordPress posts. Configure in Settings panel →
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                `
+            }
         });
 
         bm.add('shortcode-block', {
@@ -820,6 +817,432 @@
                 </table>
             `
         });
+    }
+
+    /**
+     * Register custom component types with traits (settings)
+     */
+    function registerComponentTypes() {
+        if (!editor) return;
+        
+        var dc = editor.DomComponents;
+        
+        // === PTA DIRECTORY COMPONENT ===
+        dc.addType('pta-directory', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.innerHTML.indexOf('[pta-roles-directory') > -1;
+            },
+            model: {
+                defaults: {
+                    tagName: 'table',
+                    draggable: true,
+                    droppable: false,
+                    attributes: { class: 'pta-shortcode-block' },
+                    traits: [
+                        {
+                            type: 'select',
+                            label: 'Department',
+                            name: 'department',
+                            options: [
+                                { id: 'all', name: 'All Departments' },
+                                { id: 'executive', name: 'Executive Board' },
+                                { id: 'communications', name: 'Communications' },
+                                { id: 'fundraising', name: 'Fundraising' },
+                                { id: 'programs', name: 'Programs' },
+                                { id: 'volunteers', name: 'Volunteers' }
+                            ],
+                            changeProp: 1
+                        },
+                        {
+                            type: 'select',
+                            label: 'Columns',
+                            name: 'columns',
+                            options: [
+                                { id: '1', name: '1 Column' },
+                                { id: '2', name: '2 Columns' },
+                                { id: '3', name: '3 Columns' }
+                            ],
+                            changeProp: 1
+                        },
+                        {
+                            type: 'checkbox',
+                            label: 'Show Empty Roles',
+                            name: 'show_empty',
+                            changeProp: 1
+                        }
+                    ],
+                    department: 'all',
+                    columns: '2',
+                    show_empty: true
+                },
+                init: function() {
+                    this.on('change:department change:columns change:show_empty', this.updateShortcode);
+                },
+                updateShortcode: function() {
+                    var dept = this.get('department');
+                    var cols = this.get('columns');
+                    var showEmpty = this.get('show_empty');
+                    var shortcode = '[pta-roles-directory';
+                    if (dept !== 'all') shortcode += ' department="' + dept + '"';
+                    shortcode += ' columns="' + cols + '"';
+                    if (!showEmpty) shortcode += ' show_empty="false"';
+                    shortcode += ']';
+                    
+                    var inner = this.components().at(0);
+                    if (inner) {
+                        var td = inner.find('td')[0];
+                        if (td) {
+                            td.find('p')[0].components(shortcode);
+                        }
+                    }
+                }
+            }
+        });
+        
+        // === PTA OPEN POSITIONS COMPONENT ===
+        dc.addType('pta-open-positions', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.innerHTML.indexOf('[pta-open-positions') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'number',
+                            label: 'Max Positions',
+                            name: 'limit',
+                            min: 1,
+                            max: 20,
+                            changeProp: 1
+                        },
+                        {
+                            type: 'select',
+                            label: 'Department',
+                            name: 'department',
+                            options: [
+                                { id: 'all', name: 'All Departments' },
+                                { id: 'executive', name: 'Executive Board' },
+                                { id: 'communications', name: 'Communications' },
+                                { id: 'fundraising', name: 'Fundraising' },
+                                { id: 'programs', name: 'Programs' },
+                                { id: 'volunteers', name: 'Volunteers' }
+                            ],
+                            changeProp: 1
+                        }
+                    ],
+                    limit: 5,
+                    department: 'all'
+                }
+            }
+        });
+        
+        // === LATEST POSTS COMPONENT ===
+        dc.addType('latest-posts', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.innerHTML.indexOf('Latest News') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'number',
+                            label: 'Number of Posts',
+                            name: 'post_count',
+                            min: 1,
+                            max: 10,
+                            changeProp: 1
+                        },
+                        {
+                            type: 'text',
+                            label: 'Category (slug)',
+                            name: 'category',
+                            placeholder: 'e.g., news, events',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'checkbox',
+                            label: 'Show Featured Image',
+                            name: 'show_image',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'checkbox',
+                            label: 'Show Excerpt',
+                            name: 'show_excerpt',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'number',
+                            label: 'Excerpt Length',
+                            name: 'excerpt_length',
+                            min: 10,
+                            max: 100,
+                            changeProp: 1
+                        }
+                    ],
+                    post_count: 3,
+                    category: '',
+                    show_image: true,
+                    show_excerpt: true,
+                    excerpt_length: 20
+                }
+            }
+        });
+        
+        // === HTML BLOCK COMPONENT ===
+        dc.addType('html-block', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.innerHTML.indexOf('Double-click to edit HTML') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'text',
+                            label: 'Custom HTML',
+                            name: 'custom_html',
+                            changeProp: 1
+                        }
+                    ],
+                    custom_html: '<!-- Your custom HTML here -->'
+                }
+            },
+            view: {
+                events: {
+                    dblclick: 'openCodeEditor'
+                },
+                openCodeEditor: function() {
+                    var model = this.model;
+                    var content = model.get('custom_html') || '';
+                    
+                    editor.Modal.setTitle('Edit Custom HTML');
+                    editor.Modal.setContent(`
+                        <div style="padding: 15px;">
+                            <textarea id="html-code-editor" style="width: 100%; height: 300px; font-family: monospace; font-size: 13px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${escapeHtml(content)}</textarea>
+                            <div style="margin-top: 15px; text-align: right;">
+                                <button id="save-html-code" class="button button-primary">Save HTML</button>
+                            </div>
+                        </div>
+                    `);
+                    editor.Modal.open();
+                    
+                    $('#save-html-code').on('click', function() {
+                        var newHtml = $('#html-code-editor').val();
+                        model.set('custom_html', newHtml);
+                        
+                        // Update the visual representation
+                        var inner = model.components().at(0);
+                        if (inner) {
+                            var td = inner.find('td')[0];
+                            if (td) {
+                                td.find('div')[0].components(newHtml || '<div style="padding: 20px; background: #f5f5f5; border: 1px dashed #ccc; text-align: center; color: #666;">Custom HTML Block</div>');
+                            }
+                        }
+                        
+                        editor.Modal.close();
+                    });
+                }
+            }
+        });
+        
+        // === BUTTON COMPONENT ===
+        dc.addType('email-button', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.querySelector('a[href]') && el.innerHTML.indexOf('Click Here') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'text',
+                            label: 'Button Text',
+                            name: 'button_text',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'text',
+                            label: 'Link URL',
+                            name: 'button_url',
+                            placeholder: 'https://',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'color',
+                            label: 'Button Color',
+                            name: 'button_color',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'color',
+                            label: 'Text Color',
+                            name: 'text_color',
+                            changeProp: 1
+                        }
+                    ],
+                    button_text: 'Click Here',
+                    button_url: '#',
+                    button_color: '#2271b1',
+                    text_color: '#ffffff'
+                }
+            }
+        });
+        
+        // === IMAGE COMPONENT ===
+        dc.addType('email-image', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.querySelector('img') && !el.innerHTML.includes('Post');
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'text',
+                            label: 'Image URL',
+                            name: 'src',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'text',
+                            label: 'Alt Text',
+                            name: 'alt',
+                            placeholder: 'Describe the image',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'text',
+                            label: 'Link URL',
+                            name: 'href',
+                            placeholder: 'https://',
+                            changeProp: 1
+                        },
+                        {
+                            type: 'number',
+                            label: 'Width',
+                            name: 'img_width',
+                            changeProp: 1
+                        }
+                    ]
+                }
+            }
+        });
+        
+        // === SHORTCODE COMPONENT ===
+        dc.addType('wp-shortcode', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.innerHTML.indexOf('[your_shortcode]') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'text',
+                            label: 'Shortcode',
+                            name: 'shortcode',
+                            placeholder: '[your_shortcode attr="value"]',
+                            changeProp: 1
+                        }
+                    ],
+                    shortcode: '[your_shortcode]'
+                },
+                init: function() {
+                    this.on('change:shortcode', this.updateDisplay);
+                },
+                updateDisplay: function() {
+                    var shortcode = this.get('shortcode') || '[your_shortcode]';
+                    var inner = this.components().at(0);
+                    if (inner) {
+                        var td = inner.find('td')[0];
+                        if (td) {
+                            var p = td.find('p')[0];
+                            if (p) p.components(shortcode);
+                        }
+                    }
+                }
+            }
+        });
+        
+        // === SPACER COMPONENT ===
+        dc.addType('email-spacer', {
+            isComponent: function(el) {
+                return el.tagName === 'TABLE' && el.querySelector('td[style*="height"]') && el.innerHTML.indexOf('&nbsp;') > -1;
+            },
+            model: {
+                defaults: {
+                    traits: [
+                        {
+                            type: 'number',
+                            label: 'Height (px)',
+                            name: 'spacer_height',
+                            min: 5,
+                            max: 200,
+                            changeProp: 1
+                        }
+                    ],
+                    spacer_height: 30
+                }
+            }
+        });
+    }
+    
+    /**
+     * Setup component selection handling for Settings panel
+     */
+    function setupComponentSelection() {
+        if (!editor) return;
+        
+        // Listen for component selection
+        editor.on('component:selected', function(component) {
+            // Show settings placeholder or traits
+            var traitsContainer = $('#traits-container');
+            var placeholder = $('.settings-placeholder');
+            
+            if (component) {
+                var traits = component.get('traits');
+                if (traits && traits.length > 0) {
+                    placeholder.hide();
+                    traitsContainer.show();
+                } else {
+                    placeholder.show();
+                    traitsContainer.hide();
+                }
+                
+                // Update element indicator in Styles panel
+                updateElementIndicator(component);
+            } else {
+                placeholder.show();
+                traitsContainer.hide();
+                $('#selected-element-name .element-name').text('No element selected');
+            }
+        });
+        
+        // Listen for component deselection
+        editor.on('component:deselected', function() {
+            $('.settings-placeholder').show();
+            $('#traits-container').hide();
+            $('#selected-element-name .element-name').text('No element selected');
+        });
+    }
+    
+    /**
+     * Update the element indicator in Styles panel
+     */
+    function updateElementIndicator(component) {
+        if (!component) return;
+        
+        var tagName = component.get('tagName') || 'element';
+        var type = component.get('type') || '';
+        var classes = component.getClasses().join(' ');
+        
+        // Build a readable name
+        var name = tagName.toUpperCase();
+        if (type && type !== 'default') {
+            name = type.replace(/-/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+        }
+        if (classes) {
+            name += ' (' + classes.substring(0, 30) + (classes.length > 30 ? '...' : '') + ')';
+        }
+        
+        $('#selected-element-name .element-name').text(name);
     }
 
     /**
@@ -945,18 +1368,19 @@
     }
 
     /**
-     * Setup sidebar tabs (Blocks, Styles, Layers)
+     * Setup sidebar tabs (Blocks, Layers on left; Settings, Styles on right)
      */
     function setupSidebarTabs() {
         $('.sidebar-tab').on('click', function() {
             var panel = $(this).data('panel');
+            var $sidebar = $(this).closest('.editor-sidebar');
             
-            // Update tab active state
-            $('.sidebar-tab').removeClass('active');
+            // Update tab active state within this sidebar only
+            $sidebar.find('.sidebar-tab').removeClass('active');
             $(this).addClass('active');
             
-            // Show/hide panels
-            $('.sidebar-panel').hide();
+            // Show/hide panels within this sidebar only
+            $sidebar.find('.sidebar-panel').hide();
             $('#' + panel + '-panel').show();
         });
     }

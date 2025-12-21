@@ -229,18 +229,41 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
             </div>
             
             <div class="editor-container">
-                <div class="editor-sidebar">
+                <!-- LEFT SIDEBAR: Blocks & Layers -->
+                <div class="editor-sidebar editor-sidebar-left">
                     <div class="sidebar-tabs">
                         <button type="button" class="sidebar-tab active" data-panel="blocks"><?php _e('Blocks', 'azure-plugin'); ?></button>
-                        <button type="button" class="sidebar-tab" data-panel="styles"><?php _e('Styles', 'azure-plugin'); ?></button>
                         <button type="button" class="sidebar-tab" data-panel="layers"><?php _e('Layers', 'azure-plugin'); ?></button>
                     </div>
                     <div id="blocks-panel" class="sidebar-panel"></div>
-                    <div id="styles-panel" class="sidebar-panel" style="display:none;"></div>
                     <div id="layers-panel" class="sidebar-panel" style="display:none;"></div>
                 </div>
+                
+                <!-- MAIN CANVAS -->
                 <div class="editor-main">
                     <div id="gjs-editor"></div>
+                </div>
+                
+                <!-- RIGHT SIDEBAR: Settings & Styles -->
+                <div class="editor-sidebar editor-sidebar-right">
+                    <div class="sidebar-tabs">
+                        <button type="button" class="sidebar-tab active" data-panel="settings"><?php _e('Settings', 'azure-plugin'); ?></button>
+                        <button type="button" class="sidebar-tab" data-panel="styles"><?php _e('Styles', 'azure-plugin'); ?></button>
+                    </div>
+                    <div id="settings-panel" class="sidebar-panel">
+                        <div class="settings-placeholder">
+                            <span class="dashicons dashicons-admin-generic"></span>
+                            <p><?php _e('Select an element to see its settings', 'azure-plugin'); ?></p>
+                        </div>
+                        <div id="traits-container"></div>
+                    </div>
+                    <div id="styles-panel" class="sidebar-panel" style="display:none;">
+                        <div class="selected-element-indicator" id="selected-element-name">
+                            <span class="dashicons dashicons-info-outline"></span>
+                            <span class="element-name"><?php _e('No element selected', 'azure-plugin'); ?></span>
+                        </div>
+                        <div id="styles-container"></div>
+                    </div>
                 </div>
             </div>
             
