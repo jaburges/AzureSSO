@@ -407,8 +407,23 @@ class Azure_Newsletter_Ajax {
             $settings = Azure_Settings::get_all_settings();
             $service = $settings['newsletter_sending_service'] ?? 'mailgun';
             $from_addresses = $settings['newsletter_from_addresses'] ?? array();
-            $from_email = !empty($from_addresses) ? $from_addresses[0] : get_option('admin_email');
             $from_name = get_bloginfo('name');
+            
+            // Get the first from address - handle both string and array formats
+            $from_email = '';
+            if (!empty($from_addresses)) {
+                if (is_array($from_addresses)) {
+                    $first_address = reset($from_addresses);
+                    $from_email = is_array($first_address) ? ($first_address['email'] ?? '') : $first_address;
+                } else {
+                    $from_email = $from_addresses;
+                }
+            }
+            
+            // Fallback to admin email
+            if (empty($from_email)) {
+                $from_email = get_option('admin_email');
+            }
             
             // Check if service is configured
             if (empty($service)) {
@@ -416,8 +431,8 @@ class Azure_Newsletter_Ajax {
                 return;
             }
             
-            // Parse from address if it contains name
-            if (strpos($from_email, '|') !== false) {
+            // Parse from address if it contains name (format: "email|name")
+            if (is_string($from_email) && strpos($from_email, '|') !== false) {
                 $parts = explode('|', $from_email);
                 $from_email = $parts[0];
                 $from_name = $parts[1] ?? $from_name;
