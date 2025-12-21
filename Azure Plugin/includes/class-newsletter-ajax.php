@@ -497,11 +497,15 @@ class Azure_Newsletter_Ajax {
 </body>
 </html>';
             
+            // Get reply-to address if configured
+            $reply_to = $settings['newsletter_reply_to'] ?? '';
+            
             $sender = new Azure_Newsletter_Sender($service);
             $result = $sender->send(array(
                 'to' => $email,
                 'from' => $from_email,
                 'from_name' => $from_name,
+                'reply_to' => $reply_to,
                 'subject' => sprintf('[%s] Test Email - Configuration Verified', $site_name),
                 'html' => $html,
                 'text' => "Test Email from {$site_name}\n\nYour email configuration is working correctly!\n\nService: {$service}\nFrom: {$from_name} <{$from_email}>\nTo: {$email}\nSent at: {$current_time}"

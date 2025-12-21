@@ -14,6 +14,7 @@ if (isset($_POST['save_newsletter_settings']) && wp_verify_nonce($_POST['_wpnonc
         'newsletter_batch_size' => intval($_POST['newsletter_batch_size'] ?? 100),
         'newsletter_rate_limit_per_hour' => intval($_POST['newsletter_rate_limit_per_hour'] ?? 1000),
         'newsletter_default_category' => sanitize_text_field($_POST['newsletter_default_category'] ?? 'newsletter'),
+        'newsletter_reply_to' => sanitize_email($_POST['newsletter_reply_to'] ?? ''),
         'newsletter_bounce_enabled' => isset($_POST['newsletter_bounce_enabled']),
         'newsletter_bounce_mailbox' => sanitize_email($_POST['newsletter_bounce_mailbox'] ?? ''),
         
@@ -265,6 +266,18 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
                 <?php endif; ?>
             </div>
             <button type="button" class="button" id="add-from-address">+ <?php _e('Add Another', 'azure-plugin'); ?></button>
+            
+            <table class="form-table" style="margin-top: 20px;">
+                <tr>
+                    <th><label for="newsletter_reply_to"><?php _e('Reply-To Address', 'azure-plugin'); ?></label></th>
+                    <td>
+                        <input type="email" name="newsletter_reply_to" id="newsletter_reply_to"
+                               value="<?php echo esc_attr($settings['newsletter_reply_to'] ?? ''); ?>" 
+                               class="regular-text" placeholder="noreply@yourdomain.com">
+                        <p class="description"><?php _e('Where replies should go. Leave blank to use the From address.', 'azure-plugin'); ?></p>
+                    </td>
+                </tr>
+            </table>
         </div>
         
         <!-- Queue Settings -->
