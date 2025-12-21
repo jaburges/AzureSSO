@@ -233,7 +233,22 @@
             user: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="16" r="8" fill="none" stroke="'+c+'" stroke-width="2"/><path d="M8,42 C8,32 16,26 24,26 C32,26 40,32 40,42" fill="none" stroke="'+c+'" stroke-width="2"/></svg>',
             email: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="10" width="40" height="28" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><polyline points="4,12 24,26 44,12" fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round"/></svg>',
             link: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M20,28 C18,26 18,22 20,20 L26,14 C28,12 32,12 34,14 C36,16 36,20 34,22 L32,24" fill="none" stroke="'+c+'" stroke-width="2" stroke-linecap="round"/><path d="M28,20 C30,22 30,26 28,28 L22,34 C20,36 16,36 14,34 C12,32 12,28 14,26 L16,24" fill="none" stroke="'+c+'" stroke-width="2" stroke-linecap="round"/></svg>',
-            browser: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="8" width="40" height="32" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="4" y1="16" x2="44" y2="16" stroke="'+c+'" stroke-width="2"/><circle cx="10" cy="12" r="2" fill="'+c+'"/><circle cx="16" cy="12" r="2" fill="'+c+'"/><circle cx="22" cy="12" r="2" fill="'+c+'"/></svg>'
+            browser: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="8" width="40" height="32" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="4" y1="16" x2="44" y2="16" stroke="'+c+'" stroke-width="2"/><circle cx="10" cy="12" r="2" fill="'+c+'"/><circle cx="16" cy="12" r="2" fill="'+c+'"/><circle cx="22" cy="12" r="2" fill="'+c+'"/></svg>',
+            
+            // Advanced
+            html: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><text x="6" y="32" font-family="monospace" font-size="14" fill="'+c+'">&lt;/&gt;</text></svg>',
+            video: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="10" width="40" height="28" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><polygon points="20,16 20,32 32,24" fill="'+c+'"/></svg>',
+            gallery: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="4" width="18" height="18" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><rect x="26" y="4" width="18" height="18" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><rect x="4" y="26" width="18" height="18" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><rect x="26" y="26" width="18" height="18" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/></svg>',
+            quote: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><text x="4" y="30" font-family="Georgia, serif" font-size="36" fill="'+c+'">"</text><line x1="22" y1="20" x2="44" y2="20" stroke="'+c+'" stroke-width="2"/><line x1="22" y1="28" x2="38" y2="28" stroke="'+c+'" stroke-width="2"/></svg>',
+            list: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="8" cy="12" r="3" fill="'+c+'"/><line x1="16" y1="12" x2="42" y2="12" stroke="'+c+'" stroke-width="2"/><circle cx="8" cy="24" r="3" fill="'+c+'"/><line x1="16" y1="24" x2="42" y2="24" stroke="'+c+'" stroke-width="2"/><circle cx="8" cy="36" r="3" fill="'+c+'"/><line x1="16" y1="36" x2="42" y2="36" stroke="'+c+'" stroke-width="2"/></svg>',
+            table: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="8" width="40" height="32" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="4" y1="18" x2="44" y2="18" stroke="'+c+'" stroke-width="2"/><line x1="4" y1="28" x2="44" y2="28" stroke="'+c+'" stroke-width="2"/><line x1="18" y1="8" x2="18" y2="40" stroke="'+c+'" stroke-width="2"/><line x1="32" y1="8" x2="32" y2="40" stroke="'+c+'" stroke-width="2"/></svg>',
+            countdown: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="12" x2="24" y2="24" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="24" x2="32" y2="28" stroke="'+c+'" stroke-width="2"/></svg>',
+            map: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24,6 C16,6 10,12 10,20 C10,32 24,42 24,42 C24,42 38,32 38,20 C38,12 32,6 24,6" fill="none" stroke="'+c+'" stroke-width="2"/><circle cx="24" cy="20" r="5" fill="none" stroke="'+c+'" stroke-width="2"/></svg>',
+            
+            // WordPress/PTA
+            posts: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="4" y="6" width="16" height="16" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="10" x2="44" y2="10" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="18" x2="38" y2="18" stroke="'+c+'" stroke-width="2"/><rect x="4" y="26" width="16" height="16" rx="2" fill="none" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="30" x2="44" y2="30" stroke="'+c+'" stroke-width="2"/><line x1="24" y1="38" x2="38" y2="38" stroke="'+c+'" stroke-width="2"/></svg>',
+            pta: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="16" cy="14" r="6" fill="none" stroke="'+c+'" stroke-width="2"/><circle cx="32" cy="14" r="6" fill="none" stroke="'+c+'" stroke-width="2"/><circle cx="24" cy="30" r="6" fill="none" stroke="'+c+'" stroke-width="2"/><path d="M10,26 C10,22 12,20 16,20 C18,20 20,21 21,22" fill="none" stroke="'+c+'" stroke-width="2"/><path d="M38,26 C38,22 36,20 32,20 C30,20 28,21 27,22" fill="none" stroke="'+c+'" stroke-width="2"/><path d="M18,40 C18,38 20,36 24,36 C28,36 30,38 30,40" fill="none" stroke="'+c+'" stroke-width="2"/></svg>',
+            shortcode: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><text x="4" y="32" font-family="monospace" font-size="14" fill="'+c+'">[...]</text></svg>'
         };
 
         // === LAYOUT BLOCKS ===
@@ -486,6 +501,273 @@
             category: 'Personalization',
             media: icons.browser,
             content: '<a href="{{view_in_browser_url}}" style="color: #666666;">View in Browser</a>'
+        });
+
+        // === ADVANCED BLOCKS ===
+        bm.add('html-block', {
+            label: 'HTML',
+            category: 'Advanced',
+            media: icons.html,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 10px;">
+                            <!-- Custom HTML goes here -->
+                            <div style="padding: 20px; background: #f5f5f5; border: 1px dashed #ccc; text-align: center; color: #666;">
+                                Double-click to edit HTML
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('video-block', {
+            label: 'Video',
+            category: 'Advanced',
+            media: icons.video,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td align="center" style="padding: 10px;">
+                            <a href="#video-url" target="_blank" style="display: block; position: relative;">
+                                <img src="https://via.placeholder.com/600x338/1a1a1a/ffffff?text=▶+Click+to+Watch+Video" alt="Video thumbnail" width="600" style="display: block; max-width: 100%; height: auto; border-radius: 4px;">
+                            </a>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">Click image to watch video</p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('gallery-block', {
+            label: 'Gallery',
+            category: 'Advanced',
+            media: icons.gallery,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td width="50%" style="padding: 5px;">
+                            <img src="https://via.placeholder.com/300x200/e0e0e0/666666?text=Image+1" alt="Gallery image 1" width="100%" style="display: block;">
+                        </td>
+                        <td width="50%" style="padding: 5px;">
+                            <img src="https://via.placeholder.com/300x200/e0e0e0/666666?text=Image+2" alt="Gallery image 2" width="100%" style="display: block;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td width="50%" style="padding: 5px;">
+                            <img src="https://via.placeholder.com/300x200/e0e0e0/666666?text=Image+3" alt="Gallery image 3" width="100%" style="display: block;">
+                        </td>
+                        <td width="50%" style="padding: 5px;">
+                            <img src="https://via.placeholder.com/300x200/e0e0e0/666666?text=Image+4" alt="Gallery image 4" width="100%" style="display: block;">
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('quote-block', {
+            label: 'Quote',
+            category: 'Advanced',
+            media: icons.quote,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; border-left: 4px solid #2271b1; background: #f8f9fa;">
+                            <p style="margin: 0 0 10px; font-family: Georgia, serif; font-size: 18px; font-style: italic; color: #333; line-height: 1.6;">
+                                "This is an inspirational quote or testimonial that you can customize."
+                            </p>
+                            <p style="margin: 0; font-family: Arial, sans-serif; font-size: 14px; color: #666;">
+                                — Author Name
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('list-block', {
+            label: 'List',
+            category: 'Advanced',
+            media: icons.list,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 10px 20px; font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.8;">
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li>First list item</li>
+                                <li>Second list item</li>
+                                <li>Third list item</li>
+                            </ul>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('table-block', {
+            label: 'Table',
+            category: 'Advanced',
+            media: icons.table,
+            content: `
+                <table width="100%" cellpadding="10" cellspacing="0" border="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">
+                    <tr style="background: #2271b1; color: #fff;">
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Header 1</th>
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Header 2</th>
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Header 3</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 1, Cell 1</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 1, Cell 2</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 1, Cell 3</td>
+                    </tr>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 2, Cell 1</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 2, Cell 2</td>
+                        <td style="padding: 12px; border: 1px solid #ddd;">Row 2, Cell 3</td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('countdown-block', {
+            label: 'Countdown',
+            category: 'Advanced',
+            media: icons.countdown,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td align="center" style="padding: 20px;">
+                            <p style="margin: 0 0 15px; font-family: Arial, sans-serif; font-size: 16px; color: #333;">Event starts in:</p>
+                            <table cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td align="center" style="padding: 0 10px;">
+                                        <div style="background: #2271b1; color: #fff; padding: 15px 20px; border-radius: 4px; font-family: Arial, sans-serif; font-size: 24px; font-weight: bold;">00</div>
+                                        <p style="margin: 5px 0 0; font-size: 12px; color: #666;">DAYS</p>
+                                    </td>
+                                    <td align="center" style="padding: 0 10px;">
+                                        <div style="background: #2271b1; color: #fff; padding: 15px 20px; border-radius: 4px; font-family: Arial, sans-serif; font-size: 24px; font-weight: bold;">00</div>
+                                        <p style="margin: 5px 0 0; font-size: 12px; color: #666;">HOURS</p>
+                                    </td>
+                                    <td align="center" style="padding: 0 10px;">
+                                        <div style="background: #2271b1; color: #fff; padding: 15px 20px; border-radius: 4px; font-family: Arial, sans-serif; font-size: 24px; font-weight: bold;">00</div>
+                                        <p style="margin: 5px 0 0; font-size: 12px; color: #666;">MINS</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        // === WORDPRESS BLOCKS ===
+        bm.add('posts-block', {
+            label: 'Latest Posts',
+            category: 'WordPress',
+            media: icons.posts,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px;">
+                            <h3 style="margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 20px; color: #1d2327;">Latest News</h3>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
+                                <tr>
+                                    <td width="120" valign="top" style="padding-right: 15px;">
+                                        <img src="https://via.placeholder.com/120x80/e0e0e0/666666?text=Post" alt="Post thumbnail" width="120" style="display: block; border-radius: 4px;">
+                                    </td>
+                                    <td valign="top">
+                                        <a href="#" style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: #2271b1; text-decoration: none;">Post Title Here</a>
+                                        <p style="margin: 5px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #666; line-height: 1.5;">Brief excerpt of the post content goes here...</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td width="120" valign="top" style="padding-right: 15px;">
+                                        <img src="https://via.placeholder.com/120x80/e0e0e0/666666?text=Post" alt="Post thumbnail" width="120" style="display: block; border-radius: 4px;">
+                                    </td>
+                                    <td valign="top">
+                                        <a href="#" style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: #2271b1; text-decoration: none;">Another Post Title</a>
+                                        <p style="margin: 5px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #666; line-height: 1.5;">Brief excerpt of the post content goes here...</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('shortcode-block', {
+            label: 'Shortcode',
+            category: 'WordPress',
+            media: icons.shortcode,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; background: #f0f6fc; border: 2px dashed #2271b1; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #2271b1;">
+                                [your_shortcode]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Shortcode will be rendered when email is sent
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('pta-roles-block', {
+            label: 'PTA Directory',
+            category: 'WordPress',
+            media: icons.pta,
+            attributes: { class: 'pta-roles-block' },
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" data-pta-roles="true" data-show-open="true" data-departments="">
+                    <tr>
+                        <td style="padding: 20px;">
+                            <h3 style="margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 20px; color: #1d2327;">
+                                PTA Board & Volunteers
+                            </h3>
+                            
+                            <!-- Example role cards - rendered dynamically -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 15px; background: #f8f9fa; border-radius: 4px;">
+                                <tr>
+                                    <td width="60" style="padding: 15px;">
+                                        <div style="width: 50px; height: 50px; background: #2271b1; border-radius: 50%; color: #fff; text-align: center; line-height: 50px; font-family: Arial, sans-serif; font-weight: bold;">JD</div>
+                                    </td>
+                                    <td style="padding: 15px 15px 15px 0;">
+                                        <strong style="font-family: Arial, sans-serif; font-size: 15px; color: #1d2327;">John Doe</strong>
+                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #2271b1;">President</p>
+                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 12px; color: #666;">Executive Board</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 15px; background: #fff8e5; border-radius: 4px; border: 1px dashed #f0c14b;">
+                                <tr>
+                                    <td width="60" style="padding: 15px;">
+                                        <div style="width: 50px; height: 50px; background: #f0c14b; border-radius: 50%; color: #333; text-align: center; line-height: 50px; font-family: Arial, sans-serif; font-weight: bold;">?</div>
+                                    </td>
+                                    <td style="padding: 15px 15px 15px 0;">
+                                        <strong style="font-family: Arial, sans-serif; font-size: 15px; color: #1d2327;">Open Position</strong>
+                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #b7791f;">Volunteer Coordinator</p>
+                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 12px; color: #666;">We need YOU! Click to learn more.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="margin: 15px 0 0; text-align: center;">
+                                <a href="#" style="font-family: Arial, sans-serif; font-size: 14px; color: #2271b1; text-decoration: underline;">View Full Directory →</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
         });
     }
 

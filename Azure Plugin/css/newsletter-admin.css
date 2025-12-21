@@ -614,47 +614,56 @@
 }
 
 /* ===========================================
-   BLOCKS GRID - STRICT 2 COLUMNS
+   BLOCKS GRID - STRICT 2 COLUMNS ONLY
    =========================================== */
 
-/* Force 2-column grid on ALL block containers */
-.gjs-blocks {
+/* Force 2-column grid - maximum specificity */
+.gjs-blocks,
+.gjs-blocks-c .gjs-blocks,
+#blocks-panel .gjs-blocks,
+.editor-sidebar .gjs-blocks,
+.gjs-block-category .gjs-blocks,
+.sidebar-panel .gjs-blocks {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
-    grid-auto-rows: auto !important;
-    padding: 16px !important;
-    gap: 12px !important;
+    grid-auto-rows: minmax(100px, auto) !important;
+    padding: 12px !important;
+    gap: 10px !important;
     background: #fff !important;
     width: 100% !important;
+    max-width: 100% !important;
     box-sizing: border-box !important;
-    /* Override any flex styles */
+    /* Kill any flexbox */
     flex-wrap: unset !important;
     flex-direction: unset !important;
+    flex: unset !important;
 }
 
-/* Higher specificity overrides */
-#blocks-panel .gjs-blocks,
-.gjs-blocks-c .gjs-blocks,
-.editor-sidebar .gjs-blocks,
-.gjs-block-category .gjs-blocks {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
+/* Responsive - single column on very narrow */
+@media (max-width: 350px) {
+    .gjs-blocks {
+        grid-template-columns: 1fr !important;
+    }
 }
 
 /* ===========================================
    INDIVIDUAL BLOCKS - ELEMENTOR WIDGET STYLE
    =========================================== */
 
-.gjs-block {
-    /* Reset any inherited sizing */
-    width: auto !important;
+.gjs-block,
+.gjs-blocks .gjs-block,
+.gjs-blocks-c .gjs-block,
+#blocks-panel .gjs-block,
+.gjs-block-category .gjs-block {
+    /* Force block to fill grid cell */
+    width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
     flex: unset !important;
     float: none !important;
     
     /* Block dimensions */
-    min-height: 100px !important;
+    min-height: 95px !important;
     height: auto !important;
     
     /* Flexbox for content layout */
@@ -664,7 +673,7 @@
     justify-content: center !important;
     
     /* Spacing */
-    padding: 18px 10px 14px !important;
+    padding: 16px 8px 12px !important;
     margin: 0 !important;
     box-sizing: border-box !important;
     
@@ -679,14 +688,6 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
     position: relative !important;
     overflow: visible !important;
-}
-
-/* Ensure blocks fill grid cells properly */
-#blocks-panel .gjs-block,
-.gjs-blocks-c .gjs-block,
-.gjs-block-category .gjs-block {
-    width: auto !important;
-    flex: unset !important;
 }
 
 /* Hover state - magenta accent like Elementor */
