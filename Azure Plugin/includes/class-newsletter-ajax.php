@@ -373,19 +373,29 @@ class Azure_Newsletter_Ajax {
      * Send a test email from the settings page
      */
     public function send_test_email_from_settings() {
-        check_ajax_referer('newsletter_send_test_email', 'nonce');
+        // Enable error reporting for debugging
+        error_reporting(E_ALL);
+        ini_set('display_errors', 0);
         
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Permission denied', 'azure-plugin'));
-        }
-        
-        $email = sanitize_email($_POST['email'] ?? '');
-        
-        if (!is_email($email)) {
-            wp_send_json_error(__('Invalid email address', 'azure-plugin'));
-        }
+        // Set custom error handler to catch all errors
+        set_error_handler(function($errno, $errstr, $errfile, $errline) {
+            throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+        });
         
         try {
+            check_ajax_referer('newsletter_send_test_email', 'nonce');
+            
+            if (!current_user_can('manage_options')) {
+                wp_send_json_error(__('Permission denied', 'azure-plugin'));
+                return;
+            }
+            
+            $email = sanitize_email($_POST['email'] ?? '');
+            
+            if (!is_email($email)) {
+                wp_send_json_error(__('Invalid email address', 'azure-plugin'));
+                return;
+            }
             // Ensure required classes are loaded
             if (!class_exists('Azure_Settings')) {
                 require_once AZURE_PLUGIN_PATH . 'includes/class-settings.php';
@@ -494,12 +504,17 @@ class Azure_Newsletter_Ajax {
                 ));
             }
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            restore_error_handler();
             wp_send_json_error(sprintf(
-                __('Error: %s', 'azure-plugin'),
-                $e->getMessage()
+                __('Error: %s (Line %d in %s)', 'azure-plugin'),
+                $e->getMessage(),
+                $e->getLine(),
+                basename($e->getFile())
             ));
         }
+        
+        restore_error_handler();
     }
     
     /**
