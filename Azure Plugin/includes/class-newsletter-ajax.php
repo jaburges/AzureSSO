@@ -385,22 +385,36 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error(__('Invalid email address', 'azure-plugin'));
         }
         
-        // Ensure sender class is loaded
-        if (!class_exists('Azure_Newsletter_Sender')) {
-            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
-        }
-        
-        $settings = Azure_Settings::get_all_settings();
-        $service = $settings['newsletter_sending_service'] ?? 'mailgun';
-        $from_email = $settings['newsletter_from_addresses'][0] ?? get_option('admin_email');
-        $from_name = get_bloginfo('name');
-        
-        // Parse from address if it contains name
-        if (strpos($from_email, '|') !== false) {
-            $parts = explode('|', $from_email);
-            $from_email = $parts[0];
-            $from_name = $parts[1] ?? $from_name;
-        }
+        try {
+            // Ensure required classes are loaded
+            if (!class_exists('Azure_Settings')) {
+                require_once AZURE_PLUGIN_PATH . 'includes/class-settings.php';
+            }
+            if (!class_exists('Azure_Newsletter_Sender')) {
+                require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
+            }
+            
+            $settings = Azure_Settings::get_all_settings();
+            $service = $settings['newsletter_sending_service'] ?? 'mailgun';
+            $from_addresses = $settings['newsletter_from_addresses'] ?? array();
+            $from_email = !empty($from_addresses) ? $from_addresses[0] : get_option('admin_email');
+            $from_name = get_bloginfo('name');
+            
+            // Check if service is configured
+            if (empty($service)) {
+                wp_send_json_error(__('No sending service configured. Please select a sending service and save settings.', 'azure-plugin'));
+            }
+            
+            // Parse from address if it contains name
+            if (strpos($from_email, '|') !== false) {
+                $parts = explode('|', $from_email);
+                $from_email = $parts[0];
+                $from_name = $parts[1] ?? $from_name;
+            }
+            
+            if (empty($from_email) || !is_email($from_email)) {
+                wp_send_json_error(__('No valid "From" email address configured. Please add a From Address in settings.', 'azure-plugin'));
+            }
         
         // Create test email HTML
         $site_name = get_bloginfo('name');
@@ -520,6 +534,13 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error(sprintf(
                 __('Failed to send test email: %s', 'azure-plugin'),
                 $result['error']
+            ));
+        }
+        
+        } catch (Exception $e) {
+            wp_send_json_error(sprintf(
+                __('Error: %s', 'azure-plugin'),
+                $e->getMessage()
             ));
         }
     }
