@@ -432,51 +432,61 @@
 }
 
 .editor-sidebar {
-    width: 320px;
-    min-width: 320px;
-    background: #f8f9fa !important;
-    border-right: 1px solid #c3c4c7;
+    width: 300px;
+    min-width: 300px;
+    background: #fff !important;
+    border-right: 1px solid #e6e9ec;
     display: flex;
     flex-direction: column;
 }
 
-/* Override GrapesJS dark theme */
+/* Override GrapesJS dark theme - Elementor light style */
 .editor-sidebar .gjs-one-bg {
-    background-color: #f8f9fa !important;
+    background-color: #fff !important;
 }
 
 .editor-sidebar .gjs-two-color {
-    color: #1d2327 !important;
+    color: #6d7882 !important;
 }
 
 .editor-sidebar .gjs-three-bg {
-    background-color: #2271b1 !important;
+    background-color: #93003c !important;
 }
 
 .editor-sidebar .gjs-four-color,
 .editor-sidebar .gjs-four-color-h:hover {
-    color: #2271b1 !important;
+    color: #93003c !important;
 }
 
 .sidebar-tabs {
     display: flex;
     background: #fff;
-    border-bottom: 1px solid #ccd0d4;
+    border-bottom: 1px solid #e6e9ec;
+    padding: 0;
 }
 
 .sidebar-tab {
     flex: 1;
-    padding: 12px;
+    padding: 14px 10px;
     border: none;
     background: transparent;
     cursor: pointer;
     font-size: 13px;
+    font-weight: 500;
+    color: #6d7882;
     border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s ease;
+}
+
+.sidebar-tab:hover {
+    color: #495157;
 }
 
 .sidebar-tab.active {
-    background: #f8f9fa;
-    border-bottom-color: #2271b1;
+    background: transparent;
+    color: #93003c;
+    border-bottom-color: #93003c;
     font-weight: 600;
 }
 
@@ -555,70 +565,49 @@
     border: 1px solid #c3c4c7 !important;
 }
 
-/* Block manager container */
+/* Block manager container - Elementor style */
 .gjs-blocks-c {
     padding: 0 !important;
-    background: #f8f9fa !important;
+    background: #fff !important;
     width: 100% !important;
 }
 
-/* Force blocks to use CSS Grid, not flexbox */
-#blocks-panel .gjs-blocks,
-.gjs-blocks-c .gjs-blocks {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    flex-wrap: unset !important;
-    flex-direction: unset !important;
-}
-
-/* Override any inline width on blocks */
-#blocks-panel .gjs-block,
-.gjs-blocks-c .gjs-block {
-    width: auto !important;
-    flex: unset !important;
-}
-
-/* Block categories */
+/* Block categories - Clean minimal style */
 .gjs-block-category {
-    border-bottom: 1px solid #dcdcde !important;
-    background: #f8f9fa !important;
+    border-bottom: none !important;
+    background: #fff !important;
+    margin-bottom: 0 !important;
 }
 
 .gjs-block-category .gjs-title {
-    background: linear-gradient(90deg, #e9ecef 0%, #f0f1f2 100%) !important;
-    padding: 14px 16px !important;
-    font-weight: 700 !important;
-    font-size: 10px !important;
+    background: #f7f7f7 !important;
+    padding: 12px 15px !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
     text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    color: #1d2327 !important;
+    letter-spacing: 0.5px !important;
+    color: #6d7882 !important;
     cursor: pointer !important;
-    border-bottom: 1px solid #dcdcde !important;
+    border-top: 1px solid #e6e9ec !important;
+    border-bottom: 1px solid #e6e9ec !important;
     display: flex !important;
     align-items: center !important;
-    transition: all 0.2s ease !important;
-    position: relative !important;
+    transition: all 0.15s ease !important;
 }
 
-/* Category icon accent */
-.gjs-block-category .gjs-title::before {
-    content: '' !important;
-    width: 4px !important;
-    height: 4px !important;
-    background: #2271b1 !important;
-    border-radius: 50% !important;
-    margin-right: 10px !important;
-    flex-shrink: 0 !important;
+.gjs-block-category:first-child .gjs-title {
+    border-top: none !important;
 }
 
 .gjs-block-category .gjs-title:hover {
-    background: linear-gradient(90deg, #dcdcde 0%, #e5e6e8 100%) !important;
-    padding-left: 20px !important;
+    background: #eff1f3 !important;
+    color: #495157 !important;
 }
 
 .gjs-block-category .gjs-caret-icon {
     margin-right: 8px !important;
-    color: #50575e !important;
+    color: #9da5ae !important;
+    font-size: 10px !important;
     transition: transform 0.2s ease !important;
 }
 
@@ -626,255 +615,251 @@
     transform: rotate(90deg) !important;
 }
 
-/* Blocks container within category - Force 2 column grid */
-.gjs-blocks {
+/* Blocks container - 2 column grid like Elementor */
+.gjs-blocks,
+#blocks-panel .gjs-blocks,
+.gjs-blocks-c .gjs-blocks {
     display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    padding: 10px !important;
-    gap: 8px !important;
-    background: #f8f9fa !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    padding: 12px !important;
+    gap: 10px !important;
+    background: #fff !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
 
-/* Individual blocks - Modern card style */
-.gjs-block {
+/* Individual blocks - Elementor widget style */
+.gjs-block,
+#blocks-panel .gjs-block,
+.gjs-blocks-c .gjs-block {
     width: auto !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    min-height: 75px !important;
-    background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%) !important;
-    border: 1px solid #e0e0e0 !important;
-    border-radius: 8px !important;
+    min-height: 85px !important;
+    background: #fff !important;
+    border: 1px solid #e6e9ec !important;
+    border-radius: 3px !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: 10px 6px !important;
+    padding: 15px 8px 12px !important;
     cursor: grab !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+    transition: all 0.15s ease !important;
+    box-shadow: none !important;
     position: relative !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     box-sizing: border-box !important;
     margin: 0 !important;
     float: none !important;
-}
-
-/* Subtle gradient accent on left edge */
-.gjs-block::before {
-    content: '' !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    bottom: 0 !important;
-    width: 3px !important;
-    background: linear-gradient(180deg, #2271b1 0%, #135e96 100%) !important;
-    opacity: 0 !important;
-    transition: opacity 0.25s ease !important;
+    flex: unset !important;
 }
 
 .gjs-block:hover {
-    border-color: #2271b1 !important;
-    background: linear-gradient(145deg, #f0f6fc 0%, #e8f0fe 100%) !important;
-    box-shadow: 0 4px 12px rgba(34, 113, 177, 0.15) !important;
-    transform: translateY(-2px) !important;
-}
-
-.gjs-block:hover::before {
-    opacity: 1 !important;
+    border-color: #93003c !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 1px #93003c !important;
+    transform: none !important;
 }
 
 /* Active/dragging state */
 .gjs-block:active,
 .gjs-block.gjs-block--active {
-    transform: scale(0.98) !important;
-    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.25) !important;
+    transform: scale(0.97) !important;
     cursor: grabbing !important;
 }
 
 /* Block being dragged */
 .gjs-block.gjs-bdrag {
-    opacity: 0.7 !important;
-    transform: rotate(2deg) scale(1.05) !important;
+    opacity: 0.8 !important;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15) !important;
 }
 
-/* Block icon/media container */
+/* Block icon/media container - Elementor style */
 .gjs-block__media {
-    margin-bottom: 8px !important;
-    color: #50575e !important;
-    transition: all 0.25s ease !important;
+    margin-bottom: 10px !important;
+    color: #6d7882 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-}
-
-/* SVG icons */
-.gjs-block svg {
     width: 36px !important;
     height: 36px !important;
-    transition: transform 0.25s ease !important;
 }
 
-/* Apply color change on hover via CSS filter */
+/* SVG icons - Clean line style like Elementor */
+.gjs-block svg {
+    width: 32px !important;
+    height: 32px !important;
+    transition: none !important;
+}
+
+/* Hover color change - Elementor pink/magenta */
 .gjs-block:hover svg {
-    transform: scale(1.1) !important;
-    filter: brightness(0) saturate(100%) invert(31%) sepia(98%) saturate(1234%) hue-rotate(190deg) brightness(92%) contrast(91%) !important;
+    filter: brightness(0) saturate(100%) invert(12%) sepia(96%) saturate(5765%) hue-rotate(327deg) brightness(76%) contrast(115%) !important;
 }
 
-/* Block label */
+/* Block label - Clean typography */
 .gjs-block-label {
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    color: #3c434a !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    color: #6d7882 !important;
     text-align: center !important;
     line-height: 1.3 !important;
-    letter-spacing: 0.2px !important;
-    transition: color 0.25s ease !important;
-    text-transform: capitalize !important;
+    letter-spacing: 0 !important;
+    transition: color 0.15s ease !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
 }
 
 .gjs-block:hover .gjs-block-label {
-    color: #2271b1 !important;
+    color: #93003c !important;
 }
 
-/* Font Awesome icons in blocks (fallback) */
+/* Font Awesome icons (fallback) */
 .gjs-block .fa {
-    font-size: 28px !important;
-    color: #50575e !important;
-    transition: all 0.25s ease !important;
+    font-size: 26px !important;
+    color: #6d7882 !important;
+    transition: color 0.15s ease !important;
 }
 
 .gjs-block:hover .fa {
-    color: #2271b1 !important;
-    transform: scale(1.1) !important;
+    color: #93003c !important;
 }
 
 /* GrapesJS default block icons (fallback) */
 .gjs-fonts {
-    color: #50575e !important;
-    font-size: 28px !important;
-    transition: all 0.25s ease !important;
+    color: #6d7882 !important;
+    font-size: 26px !important;
+    transition: color 0.15s ease !important;
 }
 
 .gjs-block:hover .gjs-fonts {
-    color: #2271b1 !important;
-    transform: scale(1.1) !important;
+    color: #93003c !important;
 }
 
-/* Style manager */
+/* Style manager - Elementor clean style */
 .gjs-sm-sectors {
-    background: #f8f9fa !important;
+    background: #fff !important;
 }
 
 .gjs-sm-sector {
-    border-bottom: 1px solid #dcdcde !important;
-    background: #f8f9fa !important;
+    border-bottom: none !important;
+    background: #fff !important;
 }
 
 .gjs-sm-sector-title {
-    background: #e9ecef !important;
+    background: #f7f7f7 !important;
     padding: 12px 15px !important;
     font-weight: 600 !important;
     font-size: 11px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.5px !important;
-    color: #1d2327 !important;
-    border-bottom: 1px solid #dcdcde !important;
+    color: #6d7882 !important;
+    border-top: 1px solid #e6e9ec !important;
+    border-bottom: 1px solid #e6e9ec !important;
 }
 
 .gjs-sm-sector-title:hover {
-    background: #dcdcde !important;
+    background: #eff1f3 !important;
+    color: #495157 !important;
 }
 
 .gjs-sm-properties {
-    padding: 12px !important;
+    padding: 15px !important;
     background: #fff !important;
 }
 
 .gjs-sm-property {
-    margin-bottom: 12px !important;
+    margin-bottom: 15px !important;
 }
 
 .gjs-sm-label {
-    font-size: 11px !important;
+    font-size: 12px !important;
     font-weight: 500 !important;
-    color: #1d2327 !important;
-    margin-bottom: 5px !important;
+    color: #495157 !important;
+    margin-bottom: 6px !important;
 }
 
 .gjs-field {
     background: #fff !important;
-    border: 1px solid #c3c4c7 !important;
+    border: 1px solid #d5d8dc !important;
     border-radius: 3px !important;
 }
 
 .gjs-field:focus-within {
-    border-color: #2271b1 !important;
-    box-shadow: 0 0 0 1px #2271b1 !important;
+    border-color: #93003c !important;
+    box-shadow: 0 0 0 1px rgba(147, 0, 60, 0.2) !important;
 }
 
 .gjs-field input,
 .gjs-field select {
-    color: #1d2327 !important;
+    color: #495157 !important;
     background: #fff !important;
+    font-size: 13px !important;
 }
 
 .gjs-field-arrows {
-    color: #50575e !important;
+    color: #6d7882 !important;
 }
 
 /* Color picker */
 .gjs-field-color-picker {
-    border: 1px solid #c3c4c7 !important;
+    border: 1px solid #d5d8dc !important;
     border-radius: 3px !important;
 }
 
-/* Layer manager */
+/* Layer manager - Clean style */
 .gjs-layers {
-    background: #f8f9fa !important;
+    background: #fff !important;
 }
 
 .gjs-layer {
-    padding: 10px 12px !important;
-    border-bottom: 1px solid #e0e0e0 !important;
+    padding: 10px 15px !important;
+    border-bottom: 1px solid #e6e9ec !important;
     background: #fff !important;
-    margin: 4px 8px !important;
-    border-radius: 3px !important;
-    border: 1px solid #dcdcde !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
 }
 
 .gjs-layer:hover {
-    background: #f0f6fc !important;
-    border-color: #2271b1 !important;
+    background: #f7f7f7 !important;
 }
 
 .gjs-layer.gjs-selected {
-    background: #f0f6fc !important;
-    border-color: #2271b1 !important;
+    background: #fef4f8 !important;
+    border-left: 3px solid #93003c !important;
 }
 
 .gjs-layer-title {
-    font-size: 12px !important;
-    color: #1d2327 !important;
+    font-size: 13px !important;
+    color: #495157 !important;
 }
 
 .gjs-layer-title-inn {
-    color: #1d2327 !important;
+    color: #495157 !important;
 }
 
 .gjs-layer-caret {
-    color: #50575e !important;
+    color: #9da5ae !important;
 }
 
 .gjs-layer-vis {
-    color: #50575e !important;
+    color: #9da5ae !important;
 }
 
 /* Layer count badge */
 .gjs-layer-count {
-    background: #2271b1 !important;
+    background: #93003c !important;
     color: #fff !important;
+    font-size: 10px !important;
+    padding: 2px 6px !important;
+    border-radius: 10px !important;
 }
 
 /* Canvas frame */
