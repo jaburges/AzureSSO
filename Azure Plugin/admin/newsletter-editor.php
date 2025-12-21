@@ -446,8 +446,10 @@ var newsletterEditorConfig = {
     ajaxUrl: '<?php echo admin_url('admin-ajax.php'); ?>',
     nonce: '<?php echo wp_create_nonce('azure_newsletter_nonce'); ?>',
     pluginUrl: '<?php echo AZURE_PLUGIN_URL; ?>',
-    initialContent: <?php echo json_encode($newsletter->content_json ?? $template->content_json ?? ''); ?>,
-    initialHtml: <?php echo json_encode($newsletter->content_html ?? $template->content_html ?? ''); ?>
+    initialContent: <?php echo json_encode($newsletter->content_json ?? ($template ? $template->content_json : '') ?? ''); ?>,
+    initialHtml: <?php echo json_encode($newsletter->content_html ?? ($template ? $template->content_html : '') ?? ''); ?>,
+    templateId: <?php echo $template_id; ?>,
+    templateName: <?php echo json_encode($template ? $template->name : ''); ?>
 };
 </script>
 

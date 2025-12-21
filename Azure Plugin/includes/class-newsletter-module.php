@@ -741,42 +741,518 @@ class Azure_Newsletter_Module {
             return;
         }
         
-        $templates = array(
-            array(
-                'name' => 'Simple',
-                'description' => 'Clean single-column layout with minimal design',
-                'category' => 'general',
-                'is_system' => 1
-            ),
-            array(
-                'name' => 'Newsletter',
-                'description' => 'Multi-column layout with header, sections, and footer',
-                'category' => 'general',
-                'is_system' => 1
-            ),
-            array(
-                'name' => 'Announcement',
-                'description' => 'Bold header, centered content, and CTA button',
-                'category' => 'general',
-                'is_system' => 1
-            ),
-            array(
-                'name' => 'Event',
-                'description' => 'Date/time block, location info, and RSVP button',
-                'category' => 'events',
-                'is_system' => 1
-            ),
-            array(
-                'name' => 'Welcome',
-                'description' => 'Friendly intro with getting started steps',
-                'category' => 'onboarding',
-                'is_system' => 1
-            )
-        );
+        $templates = self::get_default_templates();
         
         foreach ($templates as $template) {
             $wpdb->insert($table, $template);
         }
+    }
+    
+    /**
+     * Get default template definitions with HTML content
+     */
+    public static function get_default_templates() {
+        $site_name = get_bloginfo('name');
+        $site_url = home_url();
+        
+        return array(
+            // Template 1: Two-Column Feature
+            array(
+                'name' => 'Two-Column Feature',
+                'description' => 'Alternating image and text columns with header and footer',
+                'category' => 'general',
+                'is_system' => 1,
+                'content_html' => self::get_template_two_column_feature($site_name, $site_url)
+            ),
+            // Template 2: Simple Newsletter
+            array(
+                'name' => 'Simple Newsletter',
+                'description' => 'Clean single-column layout perfect for updates',
+                'category' => 'general',
+                'is_system' => 1,
+                'content_html' => self::get_template_simple_newsletter($site_name, $site_url)
+            ),
+            // Template 3: Announcement
+            array(
+                'name' => 'Announcement',
+                'description' => 'Bold centered announcement with call-to-action',
+                'category' => 'general',
+                'is_system' => 1,
+                'content_html' => self::get_template_announcement($site_name, $site_url)
+            ),
+            // Template 4: Event Invite
+            array(
+                'name' => 'Event Invite',
+                'description' => 'Event details with date, time, location, and RSVP',
+                'category' => 'events',
+                'is_system' => 1,
+                'content_html' => self::get_template_event_invite($site_name, $site_url)
+            ),
+            // Template 5: Welcome Email
+            array(
+                'name' => 'Welcome',
+                'description' => 'Friendly welcome with getting started steps',
+                'category' => 'onboarding',
+                'is_system' => 1,
+                'content_html' => self::get_template_welcome($site_name, $site_url)
+            )
+        );
+    }
+    
+    /**
+     * Template: Two-Column Feature
+     */
+    private static function get_template_two_column_feature($site_name, $site_url) {
+        return '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html($site_name) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <!-- Header Image -->
+                    <tr>
+                        <td style="padding: 0;">
+                            <img src="https://placehold.co/600x200/0073aa/ffffff?text=Your+Header+Image" alt="Header" width="600" style="display: block; width: 100%; max-width: 600px; height: auto;">
+                        </td>
+                    </tr>
+                    
+                    <!-- Section 1: Heading Left, Image Right -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td width="50%" valign="top" style="padding-right: 15px;">
+                                        <h2 style="margin: 0 0 15px 0; color: #333333; font-size: 24px; line-height: 1.3;">Featured Story Headline</h2>
+                                        <p style="margin: 0; color: #666666; font-size: 15px; line-height: 1.6;">Add your main story content here. This template is perfect for featuring important news or updates with eye-catching visuals.</p>
+                                    </td>
+                                    <td width="50%" valign="top" style="padding-left: 15px;">
+                                        <img src="https://placehold.co/270x180/e8e8e8/999999?text=Feature+Image" alt="Feature" width="270" style="display: block; width: 100%; max-width: 270px; height: auto; border-radius: 6px;">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Divider -->
+                    <tr>
+                        <td style="padding: 0 30px;">
+                            <hr style="border: none; border-top: 1px solid #eeeeee; margin: 0;">
+                        </td>
+                    </tr>
+                    
+                    <!-- Section 2: Image Left, Heading Right -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td width="50%" valign="top" style="padding-right: 15px;">
+                                        <img src="https://placehold.co/270x180/e8e8e8/999999?text=Second+Image" alt="Second Feature" width="270" style="display: block; width: 100%; max-width: 270px; height: auto; border-radius: 6px;">
+                                    </td>
+                                    <td width="50%" valign="top" style="padding-left: 15px;">
+                                        <h2 style="margin: 0 0 15px 0; color: #333333; font-size: 24px; line-height: 1.3;">Second Story Headline</h2>
+                                        <p style="margin: 0; color: #666666; font-size: 15px; line-height: 1.6;">Continue with another piece of content. The alternating layout keeps readers engaged and makes it easy to scan.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #333333;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center">
+                                        <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 16px; font-weight: bold;">' . esc_html($site_name) . '</p>
+                                        <p style="margin: 0 0 15px 0; color: #cccccc; font-size: 13px;">
+                                            <a href="{{view_in_browser_url}}" style="color: #cccccc; text-decoration: underline;">View in browser</a> &bull;
+                                            <a href="{{unsubscribe_url}}" style="color: #cccccc; text-decoration: underline;">Unsubscribe</a>
+                                        </p>
+                                        <p style="margin: 0; color: #999999; font-size: 12px;">&copy; ' . date('Y') . ' ' . esc_html($site_name) . '. All rights reserved.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+    }
+    
+    /**
+     * Template: Simple Newsletter
+     */
+    private static function get_template_simple_newsletter($site_name, $site_url) {
+        return '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html($site_name) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); text-align: center;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">' . esc_html($site_name) . '</h1>
+                            <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">Newsletter</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h2 style="margin: 0 0 20px 0; color: #333333; font-size: 22px;">Your Headline Here</h2>
+                            <p style="margin: 0 0 20px 0; color: #666666; font-size: 15px; line-height: 1.7;">
+                                Welcome to this edition of our newsletter! We have some exciting updates to share with you. This simple, clean layout puts your content front and center.
+                            </p>
+                            <p style="margin: 0 0 25px 0; color: #666666; font-size: 15px; line-height: 1.7;">
+                                Replace this text with your own message. Keep paragraphs short and scannable for the best reading experience on mobile devices.
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td style="border-radius: 6px; background-color: #667eea;">
+                                        <a href="' . esc_url($site_url) . '" style="display: inline-block; padding: 14px 30px; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: bold;">Read More</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px 30px; background-color: #f8f9fa; border-top: 1px solid #eeeeee;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center">
+                                        <p style="margin: 0 0 10px 0; color: #666666; font-size: 13px;">
+                                            <a href="{{view_in_browser_url}}" style="color: #667eea; text-decoration: underline;">View in browser</a> &bull;
+                                            <a href="{{unsubscribe_url}}" style="color: #667eea; text-decoration: underline;">Unsubscribe</a>
+                                        </p>
+                                        <p style="margin: 0; color: #999999; font-size: 12px;">&copy; ' . date('Y') . ' ' . esc_html($site_name) . '</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+    }
+    
+    /**
+     * Template: Announcement
+     */
+    private static function get_template_announcement($site_name, $site_url) {
+        return '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html($site_name) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #1a1a2e; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #1a1a2e;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+                    <!-- Logo/Brand -->
+                    <tr>
+                        <td align="center" style="padding-bottom: 30px;">
+                            <p style="margin: 0; color: #ffffff; font-size: 20px; font-weight: bold; letter-spacing: 2px;">' . esc_html(strtoupper($site_name)) . '</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Main Announcement Box -->
+                    <tr>
+                        <td style="padding: 50px 40px; background: linear-gradient(135deg, #16213e 0%, #0f3460 100%); border-radius: 12px; text-align: center;">
+                            <p style="margin: 0 0 15px 0; color: #e94560; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 3px;">Announcement</p>
+                            <h1 style="margin: 0 0 25px 0; color: #ffffff; font-size: 36px; line-height: 1.2;">Big News Is Here!</h1>
+                            <p style="margin: 0 0 35px 0; color: #cccccc; font-size: 16px; line-height: 1.7; max-width: 450px; margin-left: auto; margin-right: auto;">
+                                We are thrilled to share this exciting announcement with you. Replace this text with your important message.
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 50px; background-color: #e94560;">
+                                        <a href="' . esc_url($site_url) . '" style="display: inline-block; padding: 16px 40px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold;">Learn More</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td align="center" style="padding-top: 30px;">
+                            <p style="margin: 0 0 10px 0; color: #666666; font-size: 13px;">
+                                <a href="{{view_in_browser_url}}" style="color: #888888; text-decoration: underline;">View in browser</a> &bull;
+                                <a href="{{unsubscribe_url}}" style="color: #888888; text-decoration: underline;">Unsubscribe</a>
+                            </p>
+                            <p style="margin: 0; color: #555555; font-size: 12px;">&copy; ' . date('Y') . ' ' . esc_html($site_name) . '</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+    }
+    
+    /**
+     * Template: Event Invite
+     */
+    private static function get_template_event_invite($site_name, $site_url) {
+        return '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html($site_name) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f0f4f8;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                    <!-- Header with Accent -->
+                    <tr>
+                        <td style="padding: 0;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td style="height: 8px; background: linear-gradient(90deg, #00b894, #00cec9);"></td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Event Header -->
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px; text-align: center;">
+                            <p style="margin: 0 0 10px 0; color: #00b894; font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">You\'re Invited</p>
+                            <h1 style="margin: 0; color: #2d3436; font-size: 32px; line-height: 1.2;">Event Name Here</h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Event Details -->
+                    <tr>
+                        <td style="padding: 20px 30px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8f9fa; border-radius: 8px;">
+                                <tr>
+                                    <td style="padding: 25px;">
+                                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                            <tr>
+                                                <td width="40" valign="top" style="padding-right: 15px;">
+                                                    <div style="width: 40px; height: 40px; background-color: #00b894; border-radius: 8px; text-align: center; line-height: 40px; color: #ffffff; font-size: 18px;">📅</div>
+                                                </td>
+                                                <td valign="top">
+                                                    <p style="margin: 0 0 3px 0; color: #636e72; font-size: 12px; text-transform: uppercase;">Date & Time</p>
+                                                    <p style="margin: 0; color: #2d3436; font-size: 16px; font-weight: bold;">Saturday, January 15, 2025 at 6:00 PM</p>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 0 25px 25px 25px;">
+                                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                            <tr>
+                                                <td width="40" valign="top" style="padding-right: 15px;">
+                                                    <div style="width: 40px; height: 40px; background-color: #00b894; border-radius: 8px; text-align: center; line-height: 40px; color: #ffffff; font-size: 18px;">📍</div>
+                                                </td>
+                                                <td valign="top">
+                                                    <p style="margin: 0 0 3px 0; color: #636e72; font-size: 12px; text-transform: uppercase;">Location</p>
+                                                    <p style="margin: 0; color: #2d3436; font-size: 16px; font-weight: bold;">School Gymnasium</p>
+                                                    <p style="margin: 5px 0 0 0; color: #636e72; font-size: 14px;">123 Main Street, Your City</p>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Description -->
+                    <tr>
+                        <td style="padding: 10px 30px 30px 30px;">
+                            <p style="margin: 0 0 25px 0; color: #636e72; font-size: 15px; line-height: 1.7; text-align: center;">
+                                Join us for this exciting event! Add your event description here with all the important details attendees need to know.
+                            </p>
+                            
+                            <!-- RSVP Button -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 8px; background-color: #00b894;">
+                                        <a href="' . esc_url($site_url) . '" style="display: inline-block; padding: 16px 50px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold;">RSVP Now</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px 30px; background-color: #2d3436;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center">
+                                        <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 14px; font-weight: bold;">' . esc_html($site_name) . '</p>
+                                        <p style="margin: 0 0 10px 0; color: #b2bec3; font-size: 13px;">
+                                            <a href="{{view_in_browser_url}}" style="color: #b2bec3; text-decoration: underline;">View in browser</a> &bull;
+                                            <a href="{{unsubscribe_url}}" style="color: #b2bec3; text-decoration: underline;">Unsubscribe</a>
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+    }
+    
+    /**
+     * Template: Welcome Email
+     */
+    private static function get_template_welcome($site_name, $site_url) {
+        return '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . esc_html($site_name) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #faf5f0; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #faf5f0;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 50px 30px; background: linear-gradient(135deg, #ff9a56 0%, #ff6b6b 100%); text-align: center;">
+                            <h1 style="margin: 0 0 10px 0; color: #ffffff; font-size: 32px;">Welcome! 👋</h1>
+                            <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 16px;">We\'re so glad you\'re here</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Welcome Message -->
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px;">
+                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.7;">
+                                Hi there!
+                            </p>
+                            <p style="margin: 0 0 20px 0; color: #666666; font-size: 15px; line-height: 1.7;">
+                                Thank you for joining ' . esc_html($site_name) . '! We\'re excited to have you as part of our community. Here\'s what you can expect:
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Getting Started Steps -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <!-- Step 1 -->
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 15px;">
+                                <tr>
+                                    <td width="50" valign="top">
+                                        <div style="width: 36px; height: 36px; background-color: #ff9a56; border-radius: 50%; text-align: center; line-height: 36px; color: #ffffff; font-size: 16px; font-weight: bold;">1</div>
+                                    </td>
+                                    <td valign="top">
+                                        <h3 style="margin: 0 0 5px 0; color: #333333; font-size: 16px;">Complete Your Profile</h3>
+                                        <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.5;">Add your details to get the most personalized experience.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Step 2 -->
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 15px;">
+                                <tr>
+                                    <td width="50" valign="top">
+                                        <div style="width: 36px; height: 36px; background-color: #ff9a56; border-radius: 50%; text-align: center; line-height: 36px; color: #ffffff; font-size: 16px; font-weight: bold;">2</div>
+                                    </td>
+                                    <td valign="top">
+                                        <h3 style="margin: 0 0 5px 0; color: #333333; font-size: 16px;">Explore Resources</h3>
+                                        <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.5;">Check out everything we have to offer.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Step 3 -->
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td width="50" valign="top">
+                                        <div style="width: 36px; height: 36px; background-color: #ff9a56; border-radius: 50%; text-align: center; line-height: 36px; color: #ffffff; font-size: 16px; font-weight: bold;">3</div>
+                                    </td>
+                                    <td valign="top">
+                                        <h3 style="margin: 0 0 5px 0; color: #333333; font-size: 16px;">Get Involved</h3>
+                                        <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.5;">Join events and connect with others.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- CTA -->
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; text-align: center;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 8px; background-color: #ff6b6b;">
+                                        <a href="' . esc_url($site_url) . '" style="display: inline-block; padding: 16px 40px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold;">Get Started</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px 30px; background-color: #f8f8f8; border-top: 1px solid #eeeeee;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td align="center">
+                                        <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px;">
+                                            Questions? Reply to this email or visit our website.
+                                        </p>
+                                        <p style="margin: 0 0 10px 0; color: #999999; font-size: 13px;">
+                                            <a href="{{view_in_browser_url}}" style="color: #ff9a56; text-decoration: underline;">View in browser</a> &bull;
+                                            <a href="{{unsubscribe_url}}" style="color: #ff9a56; text-decoration: underline;">Unsubscribe</a>
+                                        </p>
+                                        <p style="margin: 0; color: #cccccc; font-size: 12px;">&copy; ' . date('Y') . ' ' . esc_html($site_name) . '</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
     }
     
     /**

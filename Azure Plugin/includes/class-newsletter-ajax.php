@@ -28,6 +28,46 @@ class Azure_Newsletter_Ajax {
         
         // Settings page test email
         add_action('wp_ajax_azure_newsletter_send_test_email', array($this, 'send_test_email_from_settings'));
+        
+        // Template management
+        add_action('wp_ajax_azure_newsletter_get_template', array($this, 'get_template'));
+    }
+    
+    /**
+     * Get template content for preview or editor
+     */
+    public function get_template() {
+        check_ajax_referer('newsletter_get_template', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $template_id = intval($_POST['template_id'] ?? 0);
+        
+        if (!$template_id) {
+            wp_send_json_error('Invalid template ID');
+        }
+        
+        global $wpdb;
+        $table = $wpdb->prefix . 'azure_newsletter_templates';
+        
+        $template = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE id = %d",
+            $template_id
+        ));
+        
+        if (!$template) {
+            wp_send_json_error('Template not found');
+        }
+        
+        wp_send_json_success(array(
+            'id' => $template->id,
+            'name' => $template->name,
+            'description' => $template->description,
+            'content_html' => $template->content_html,
+            'content_json' => $template->content_json
+        ));
     }
     
     /**
