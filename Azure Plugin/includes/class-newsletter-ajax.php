@@ -500,7 +500,7 @@ class Azure_Newsletter_Ajax {
             $sender = new Azure_Newsletter_Sender($service);
             $result = $sender->send(array(
                 'to' => $email,
-                'from_email' => $from_email,
+                'from' => $from_email,
                 'from_name' => $from_name,
                 'subject' => sprintf('[%s] Test Email - Configuration Verified', $site_name),
                 'html' => $html,
