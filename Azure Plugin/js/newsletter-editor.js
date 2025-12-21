@@ -721,48 +721,99 @@
             `
         });
 
-        bm.add('pta-roles-block', {
+        bm.add('pta-directory', {
             label: 'PTA Directory',
             category: 'WordPress',
             media: icons.pta,
-            attributes: { class: 'pta-roles-block' },
             content: `
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" data-pta-roles="true" data-show-open="true" data-departments="">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                        <td style="padding: 20px;">
-                            <h3 style="margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 20px; color: #1d2327;">
-                                PTA Board & Volunteers
-                            </h3>
-                            
-                            <!-- Example role cards - rendered dynamically -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 15px; background: #f8f9fa; border-radius: 4px;">
-                                <tr>
-                                    <td width="60" style="padding: 15px;">
-                                        <div style="width: 50px; height: 50px; background: #2271b1; border-radius: 50%; color: #fff; text-align: center; line-height: 50px; font-family: Arial, sans-serif; font-weight: bold;">JD</div>
-                                    </td>
-                                    <td style="padding: 15px 15px 15px 0;">
-                                        <strong style="font-family: Arial, sans-serif; font-size: 15px; color: #1d2327;">John Doe</strong>
-                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #2271b1;">President</p>
-                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 12px; color: #666;">Executive Board</p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 15px; background: #fff8e5; border-radius: 4px; border: 1px dashed #f0c14b;">
-                                <tr>
-                                    <td width="60" style="padding: 15px;">
-                                        <div style="width: 50px; height: 50px; background: #f0c14b; border-radius: 50%; color: #333; text-align: center; line-height: 50px; font-family: Arial, sans-serif; font-weight: bold;">?</div>
-                                    </td>
-                                    <td style="padding: 15px 15px 15px 0;">
-                                        <strong style="font-family: Arial, sans-serif; font-size: 15px; color: #1d2327;">Open Position</strong>
-                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 13px; color: #b7791f;">Volunteer Coordinator</p>
-                                        <p style="margin: 3px 0 0; font-family: Arial, sans-serif; font-size: 12px; color: #666;">We need YOU! Click to learn more.</p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <p style="margin: 15px 0 0; text-align: center;">
-                                <a href="#" style="font-family: Arial, sans-serif; font-size: 14px; color: #2271b1; text-decoration: underline;">View Full Directory →</a>
+                        <td style="padding: 20px; background: #f0f6fc; border: 2px dashed #2271b1; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #2271b1;">
+                                [pta-roles-directory columns="2"]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Full PTA directory - all departments and roles
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('pta-open-positions', {
+            label: 'Open Positions',
+            category: 'WordPress',
+            media: icons.pta,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; background: #fff8e5; border: 2px dashed #f0c14b; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #b7791f;">
+                                [pta-open-positions limit="5"]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Shows unfilled volunteer positions - We need YOU!
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('pta-department', {
+            label: 'Department',
+            category: 'WordPress',
+            media: icons.pta,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; background: #f0f6fc; border: 2px dashed #2271b1; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #2271b1;">
+                                [pta-department-roles department="executive"]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Shows roles in a specific department
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('pta-org-chart', {
+            label: 'Org Chart',
+            category: 'WordPress',
+            media: icons.pta,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; background: #f5f0ff; border: 2px dashed #7c3aed; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #7c3aed;">
+                                [pta-org-chart interactive="false"]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Visual organization hierarchy
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            `
+        });
+
+        bm.add('pta-vp', {
+            label: 'Department VP',
+            category: 'WordPress',
+            media: icons.user,
+            content: `
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                        <td style="padding: 20px; background: #f0fdf4; border: 2px dashed #22c55e; text-align: center;">
+                            <p style="margin: 0; font-family: monospace; font-size: 14px; color: #16a34a;">
+                                [pta-department-vp department="fundraising"]
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 12px; color: #666;">
+                                Shows the VP for a department
                             </p>
                         </td>
                     </tr>

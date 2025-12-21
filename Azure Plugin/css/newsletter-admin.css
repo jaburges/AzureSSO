@@ -432,8 +432,8 @@
 }
 
 .editor-sidebar {
-    width: 300px;
-    min-width: 300px;
+    width: 320px;
+    min-width: 320px;
     background: #fff !important;
     border-right: 1px solid #e6e9ec;
     display: flex;
@@ -617,33 +617,32 @@
    BLOCKS GRID - STRICT 2 COLUMNS ONLY
    =========================================== */
 
-/* Force 2-column grid - maximum specificity */
+/* Force 2-column grid - maximum specificity with !important on everything */
+.gjs-blocks[style],
 .gjs-blocks,
 .gjs-blocks-c .gjs-blocks,
 #blocks-panel .gjs-blocks,
 .editor-sidebar .gjs-blocks,
 .gjs-block-category .gjs-blocks,
-.sidebar-panel .gjs-blocks {
+.sidebar-panel .gjs-blocks,
+div.gjs-blocks {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
-    grid-auto-rows: minmax(100px, auto) !important;
-    padding: 12px !important;
-    gap: 10px !important;
+    grid-auto-rows: minmax(90px, auto) !important;
+    padding: 10px !important;
+    gap: 8px !important;
     background: #fff !important;
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     box-sizing: border-box !important;
-    /* Kill any flexbox */
+    /* Kill any flexbox completely */
     flex-wrap: unset !important;
     flex-direction: unset !important;
     flex: unset !important;
-}
-
-/* Responsive - single column on very narrow */
-@media (max-width: 350px) {
-    .gjs-blocks {
-        grid-template-columns: 1fr !important;
-    }
+    flex-flow: unset !important;
+    justify-content: unset !important;
+    align-items: unset !important;
 }
 
 /* ===========================================
@@ -654,16 +653,17 @@
 .gjs-blocks .gjs-block,
 .gjs-blocks-c .gjs-block,
 #blocks-panel .gjs-block,
-.gjs-block-category .gjs-block {
-    /* Force block to fill grid cell */
+.gjs-block-category .gjs-block,
+div.gjs-block[style] {
+    /* Force block to fill grid cell - CRITICAL for 2-column */
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
     flex: unset !important;
     float: none !important;
     
-    /* Block dimensions */
-    min-height: 95px !important;
+    /* Block dimensions - compact for 2 columns */
+    min-height: 85px !important;
     height: auto !important;
     
     /* Flexbox for content layout */
@@ -672,8 +672,8 @@
     align-items: center !important;
     justify-content: center !important;
     
-    /* Spacing */
-    padding: 16px 8px 12px !important;
+    /* Spacing - compact */
+    padding: 12px 6px 10px !important;
     margin: 0 !important;
     box-sizing: border-box !important;
     
