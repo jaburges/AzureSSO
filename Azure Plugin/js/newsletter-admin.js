@@ -224,8 +224,13 @@
         var $subject = $('#newsletter_subject');
         var $counter = $('#subject-chars');
 
+        // Only run if elements exist (editor page only)
+        if (!$subject.length || !$counter.length) {
+            return;
+        }
+
         function updateCount() {
-            var len = $subject.val().length;
+            var len = $subject.val() ? $subject.val().length : 0;
             $counter.text(len);
             
             if (len > 60) {

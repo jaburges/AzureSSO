@@ -105,6 +105,12 @@ class Azure_Newsletter_Ajax {
         // Queue for sending if scheduled for now
         if ($send_option === 'now' || $send_option === 'schedule') {
             $list_id = sanitize_text_field($_POST['newsletter_list'] ?? 'all');
+            
+            // Ensure queue class is loaded
+            if (!class_exists('Azure_Newsletter_Queue')) {
+                require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-queue.php';
+            }
+            
             $queue = new Azure_Newsletter_Queue();
             $queue_result = $queue->queue_newsletter($newsletter_id, $list_id, $data['scheduled_at']);
             
@@ -146,6 +152,11 @@ class Azure_Newsletter_Ajax {
         
         if (empty($html)) {
             wp_send_json_error('No email content provided');
+        }
+        
+        // Ensure sender class is loaded
+        if (!class_exists('Azure_Newsletter_Sender')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
         }
         
         $sender = new Azure_Newsletter_Sender();
@@ -340,6 +351,11 @@ class Azure_Newsletter_Ajax {
         
         $service = sanitize_key($_POST['service'] ?? '');
         
+        // Ensure sender class is loaded
+        if (!class_exists('Azure_Newsletter_Sender')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
+        }
+        
         $sender = new Azure_Newsletter_Sender($service);
         $result = $sender->test_connection();
         
@@ -409,6 +425,11 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Invalid newsletter ID');
         }
         
+        // Ensure queue class is loaded
+        if (!class_exists('Azure_Newsletter_Queue')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-queue.php';
+        }
+        
         $queue = new Azure_Newsletter_Queue();
         $queue->pause_newsletter($newsletter_id);
         
@@ -431,6 +452,11 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Invalid newsletter ID');
         }
         
+        // Ensure queue class is loaded
+        if (!class_exists('Azure_Newsletter_Queue')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-queue.php';
+        }
+        
         $queue = new Azure_Newsletter_Queue();
         $queue->resume_newsletter($newsletter_id);
         
@@ -451,6 +477,11 @@ class Azure_Newsletter_Ajax {
         
         if (!$newsletter_id) {
             wp_send_json_error('Invalid newsletter ID');
+        }
+        
+        // Ensure queue class is loaded
+        if (!class_exists('Azure_Newsletter_Queue')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-queue.php';
         }
         
         $queue = new Azure_Newsletter_Queue();
