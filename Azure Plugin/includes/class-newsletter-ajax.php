@@ -25,6 +25,9 @@ class Azure_Newsletter_Ajax {
         // Database management
         add_action('wp_ajax_azure_newsletter_create_tables', array($this, 'create_tables'));
         add_action('wp_ajax_azure_newsletter_reset_data', array($this, 'reset_data'));
+        
+        // Settings page test email
+        add_action('wp_ajax_azure_newsletter_send_test_email', array($this, 'send_test_email_from_settings'));
     }
     
     /**
@@ -363,6 +366,161 @@ class Azure_Newsletter_Ajax {
             wp_send_json_success('Connection successful');
         } else {
             wp_send_json_error($result['error']);
+        }
+    }
+    
+    /**
+     * Send a test email from the settings page
+     */
+    public function send_test_email_from_settings() {
+        check_ajax_referer('newsletter_send_test_email', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Permission denied', 'azure-plugin'));
+        }
+        
+        $email = sanitize_email($_POST['email'] ?? '');
+        
+        if (!is_email($email)) {
+            wp_send_json_error(__('Invalid email address', 'azure-plugin'));
+        }
+        
+        // Ensure sender class is loaded
+        if (!class_exists('Azure_Newsletter_Sender')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
+        }
+        
+        $settings = Azure_Settings::get_all_settings();
+        $service = $settings['newsletter_sending_service'] ?? 'mailgun';
+        $from_email = $settings['newsletter_from_addresses'][0] ?? get_option('admin_email');
+        $from_name = get_bloginfo('name');
+        
+        // Parse from address if it contains name
+        if (strpos($from_email, '|') !== false) {
+            $parts = explode('|', $from_email);
+            $from_email = $parts[0];
+            $from_name = $parts[1] ?? $from_name;
+        }
+        
+        // Create test email HTML
+        $site_name = get_bloginfo('name');
+        $site_url = home_url();
+        $current_time = current_time('F j, Y g:i a');
+        
+        $html = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Email</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #2271b1 0%, #135e96 100%); border-radius: 8px 8px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">✉️ Test Email</h1>
+                            <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">Email Configuration Test</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #1d2327; font-size: 20px;">🎉 Success!</h2>
+                            <p style="margin: 0 0 20px; color: #50575e; font-size: 16px; line-height: 1.6;">
+                                Congratulations! Your newsletter email configuration is working correctly. 
+                                This test email was sent using the <strong>' . esc_html(ucfirst($service)) . '</strong> sending service.
+                            </p>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f8f9fa; border-radius: 6px; margin: 20px 0;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td style="padding: 8px 0; color: #646970; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    <strong>From:</strong>
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1d2327; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    ' . esc_html($from_name) . ' &lt;' . esc_html($from_email) . '&gt;
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; color: #646970; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    <strong>To:</strong>
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1d2327; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    ' . esc_html($email) . '
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; color: #646970; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    <strong>Service:</strong>
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1d2327; font-size: 13px; border-bottom: 1px solid #e6e9ec;">
+                                                    ' . esc_html(ucfirst($service)) . '
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; color: #646970; font-size: 13px;">
+                                                    <strong>Sent at:</strong>
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1d2327; font-size: 13px;">
+                                                    ' . esc_html($current_time) . '
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="margin: 20px 0 0; color: #50575e; font-size: 14px; line-height: 1.6;">
+                                You can now start sending newsletters to your subscribers with confidence!
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px 40px; background: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; border-top: 1px solid #e6e9ec;">
+                            <p style="margin: 0; color: #646970; font-size: 13px;">
+                                Sent from <a href="' . esc_url($site_url) . '" style="color: #2271b1; text-decoration: none;">' . esc_html($site_name) . '</a>
+                            </p>
+                            <p style="margin: 10px 0 0; color: #a0a5aa; font-size: 12px;">
+                                This is a test email from the Azure Plugin Newsletter Module
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+        
+        $sender = new Azure_Newsletter_Sender($service);
+        $result = $sender->send(array(
+            'to' => $email,
+            'from_email' => $from_email,
+            'from_name' => $from_name,
+            'subject' => sprintf(__('[%s] Test Email - Email Configuration Verified', 'azure-plugin'), $site_name),
+            'html' => $html,
+            'text' => "Test Email from {$site_name}\n\nYour email configuration is working correctly!\n\nService: {$service}\nFrom: {$from_name} <{$from_email}>\nTo: {$email}\nSent at: {$current_time}\n\nYou can now start sending newsletters to your subscribers."
+        ));
+        
+        if ($result['success']) {
+            wp_send_json_success(sprintf(
+                __('Test email sent successfully to %s', 'azure-plugin'),
+                $email
+            ));
+        } else {
+            wp_send_json_error(sprintf(
+                __('Failed to send test email: %s', 'azure-plugin'),
+                $result['error']
+            ));
         }
     }
     

@@ -343,6 +343,31 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
         </p>
     </form>
     
+    <!-- Test Email Section -->
+    <div class="settings-section test-email-section">
+        <h3><?php _e('Send Test Email', 'azure-plugin'); ?></h3>
+        <p class="description"><?php _e('Send a test email to verify your email configuration is working correctly.', 'azure-plugin'); ?></p>
+        
+        <table class="form-table">
+            <tr>
+                <th><label for="test_email_address"><?php _e('Recipient Email', 'azure-plugin'); ?></label></th>
+                <td>
+                    <input type="email" id="test_email_address" class="regular-text" 
+                           value="<?php echo esc_attr(wp_get_current_user()->user_email); ?>" 
+                           placeholder="your@email.com">
+                </td>
+            </tr>
+        </table>
+        
+        <p>
+            <button type="button" class="button button-primary" id="send-test-email">
+                <span class="dashicons dashicons-email-alt" style="margin-top: 4px;"></span>
+                <?php _e('Send Test Email', 'azure-plugin'); ?>
+            </button>
+            <span id="test-email-status" style="margin-left: 10px;"></span>
+        </p>
+    </div>
+    
     <!-- Danger Zone -->
     <?php
     // Check table status
@@ -519,6 +544,34 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
     background: #6d1c1c !important;
     border-color: #6d1c1c !important;
 }
+
+/* Test Email Section */
+.newsletter-settings .test-email-section {
+    border-left: 4px solid #00a32a;
+}
+.newsletter-settings .test-email-section h3 {
+    margin-top: 0;
+    color: #1d2327;
+}
+.newsletter-settings #test-email-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.newsletter-settings #test-email-status .dashicons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+}
+
+/* Spin animation for loading */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.newsletter-settings .spin {
+    animation: spin 1s linear infinite;
+}
 </style>
 
 <script>
@@ -567,6 +620,41 @@ jQuery(document).ready(function($) {
             } else {
                 alert('<?php _e('Connection failed:', 'azure-plugin'); ?> ' + response.data);
             }
+        });
+    });
+    
+    // Send test email
+    $('#send-test-email').on('click', function() {
+        var btn = $(this);
+        var email = $('#test_email_address').val();
+        var statusSpan = $('#test-email-status');
+        
+        if (!email || !email.includes('@')) {
+            alert('<?php _e('Please enter a valid email address.', 'azure-plugin'); ?>');
+            return;
+        }
+        
+        btn.prop('disabled', true);
+        btn.find('.dashicons').removeClass('dashicons-email-alt').addClass('dashicons-update spin');
+        statusSpan.html('<span style="color: #2271b1;"><?php _e('Sending test email...', 'azure-plugin'); ?></span>');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_send_test_email',
+            email: email,
+            nonce: '<?php echo wp_create_nonce('newsletter_send_test_email'); ?>'
+        }, function(response) {
+            btn.prop('disabled', false);
+            btn.find('.dashicons').removeClass('dashicons-update spin').addClass('dashicons-email-alt');
+            
+            if (response.success) {
+                statusSpan.html('<span style="color: #00a32a;"><span class="dashicons dashicons-yes"></span> ' + response.data + '</span>');
+            } else {
+                statusSpan.html('<span style="color: #d63638;"><span class="dashicons dashicons-no"></span> ' + response.data + '</span>');
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            btn.find('.dashicons').removeClass('dashicons-update spin').addClass('dashicons-email-alt');
+            statusSpan.html('<span style="color: #d63638;"><?php _e('Request failed. Please try again.', 'azure-plugin'); ?></span>');
         });
     });
     
