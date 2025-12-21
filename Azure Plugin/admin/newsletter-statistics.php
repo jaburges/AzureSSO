@@ -44,11 +44,14 @@ $total_opened = $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM {$stats_table}
 $total_clicked = $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE event_type = 'clicked' {$date_condition} {$campaign_condition}");
 $total_bounced = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'bounced' {$date_condition} {$campaign_condition}");
 $total_unsubscribed = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'unsubscribed' {$date_condition} {$campaign_condition}");
+$total_complained = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'complained' {$date_condition} {$campaign_condition}");
 
-// Calculate rates
-$open_rate = $total_sent > 0 ? round(($total_opened / $total_sent) * 100, 1) : 0;
-$click_rate = $total_sent > 0 ? round(($total_clicked / $total_sent) * 100, 1) : 0;
+// Calculate rates - use delivered count if available, otherwise fall back to sent
+$base_count = $total_delivered > 0 ? $total_delivered : $total_sent;
+$open_rate = $base_count > 0 ? round(($total_opened / $base_count) * 100, 1) : 0;
+$click_rate = $base_count > 0 ? round(($total_clicked / $base_count) * 100, 1) : 0;
 $bounce_rate = $total_sent > 0 ? round(($total_bounced / $total_sent) * 100, 1) : 0;
+$delivery_rate = $total_sent > 0 ? round(($total_delivered / $total_sent) * 100, 1) : 0;
 
 // Get all campaigns for filter dropdown
 $campaigns = $wpdb->get_results("SELECT id, name, sent_at FROM {$newsletters_table} WHERE status = 'sent' ORDER BY sent_at DESC");
@@ -58,8 +61,10 @@ $daily_stats = $wpdb->get_results("
     SELECT 
         DATE(created_at) as date,
         SUM(CASE WHEN event_type = 'sent' THEN 1 ELSE 0 END) as sent,
+        SUM(CASE WHEN event_type = 'delivered' THEN 1 ELSE 0 END) as delivered,
         SUM(CASE WHEN event_type = 'opened' THEN 1 ELSE 0 END) as opened,
-        SUM(CASE WHEN event_type = 'clicked' THEN 1 ELSE 0 END) as clicked
+        SUM(CASE WHEN event_type = 'clicked' THEN 1 ELSE 0 END) as clicked,
+        SUM(CASE WHEN event_type = 'bounced' THEN 1 ELSE 0 END) as bounced
     FROM {$stats_table}
     WHERE 1=1 {$date_condition} {$campaign_condition}
     GROUP BY DATE(created_at)
@@ -112,24 +117,37 @@ if ($campaign_filter > 0) {
             <div class="stat-value"><?php echo number_format($total_sent); ?></div>
             <div class="stat-label"><?php _e('Emails Sent', 'azure-plugin'); ?></div>
         </div>
+        <div class="stat-card <?php echo $delivery_rate >= 95 ? 'success' : ($delivery_rate >= 90 ? '' : 'warning'); ?>">
+            <div class="stat-value"><?php echo $delivery_rate; ?>%</div>
+            <div class="stat-label"><?php _e('Delivered', 'azure-plugin'); ?></div>
+            <div class="stat-detail"><?php echo number_format($total_delivered); ?> <?php _e('delivered', 'azure-plugin'); ?></div>
+        </div>
         <div class="stat-card">
             <div class="stat-value"><?php echo $open_rate; ?>%</div>
             <div class="stat-label"><?php _e('Open Rate', 'azure-plugin'); ?></div>
-            <div class="stat-detail"><?php echo number_format($total_opened); ?> <?php _e('opens', 'azure-plugin'); ?></div>
+            <div class="stat-detail"><?php echo number_format($total_opened); ?> <?php _e('unique opens', 'azure-plugin'); ?></div>
         </div>
         <div class="stat-card">
             <div class="stat-value"><?php echo $click_rate; ?>%</div>
             <div class="stat-label"><?php _e('Click Rate', 'azure-plugin'); ?></div>
-            <div class="stat-detail"><?php echo number_format($total_clicked); ?> <?php _e('clicks', 'azure-plugin'); ?></div>
+            <div class="stat-detail"><?php echo number_format($total_clicked); ?> <?php _e('unique clicks', 'azure-plugin'); ?></div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card <?php echo $bounce_rate > 5 ? 'warning' : ''; ?>">
             <div class="stat-value"><?php echo $bounce_rate; ?>%</div>
             <div class="stat-label"><?php _e('Bounce Rate', 'azure-plugin'); ?></div>
             <div class="stat-detail"><?php echo number_format($total_bounced); ?> <?php _e('bounced', 'azure-plugin'); ?></div>
         </div>
-        <div class="stat-card">
-            <div class="stat-value"><?php echo number_format($total_unsubscribed); ?></div>
-            <div class="stat-label"><?php _e('Unsubscribes', 'azure-plugin'); ?></div>
+    </div>
+    
+    <!-- Secondary Stats -->
+    <div class="stats-secondary">
+        <div class="secondary-stat">
+            <span class="dashicons dashicons-no"></span>
+            <strong><?php echo number_format($total_unsubscribed); ?></strong> <?php _e('unsubscribed', 'azure-plugin'); ?>
+        </div>
+        <div class="secondary-stat <?php echo $total_complained > 0 ? 'warning' : ''; ?>">
+            <span class="dashicons dashicons-flag"></span>
+            <strong><?php echo number_format($total_complained); ?></strong> <?php _e('complaints', 'azure-plugin'); ?>
         </div>
     </div>
     
@@ -288,6 +306,50 @@ if ($campaign_filter > 0) {
 .newsletter-statistics-page .event-clicked { background: #e7f5e7; color: #006505; }
 .newsletter-statistics-page .event-bounced { background: #fef2f1; color: #8a2424; }
 .newsletter-statistics-page .event-unsubscribed { background: #f0f0f1; color: #50575e; }
+.newsletter-statistics-page .event-complained { background: #fef2f1; color: #8a2424; }
+
+/* Stat card states */
+.newsletter-statistics-page .stat-card.success {
+    border-color: #00a32a;
+    background: #edfaef;
+}
+.newsletter-statistics-page .stat-card.success .stat-value {
+    color: #007017;
+}
+.newsletter-statistics-page .stat-card.warning {
+    border-color: #dba617;
+    background: #fcf9e8;
+}
+.newsletter-statistics-page .stat-card.warning .stat-value {
+    color: #996800;
+}
+
+/* Secondary stats */
+.newsletter-statistics-page .stats-secondary {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 30px;
+    padding: 15px 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+.newsletter-statistics-page .secondary-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #646970;
+}
+.newsletter-statistics-page .secondary-stat .dashicons {
+    color: #646970;
+}
+.newsletter-statistics-page .secondary-stat.warning {
+    color: #8a2424;
+}
+.newsletter-statistics-page .secondary-stat.warning .dashicons {
+    color: #d63638;
+}
 .newsletter-statistics-page .no-data {
     text-align: center;
     padding: 40px;
@@ -329,6 +391,13 @@ jQuery(document).ready(function($) {
                 tension: 0.4
             },
             {
+                label: '<?php _e('Delivered', 'azure-plugin'); ?>',
+                data: <?php echo json_encode(array_map(function($d) { return intval($d->delivered); }, $daily_stats)); ?>,
+                borderColor: '#00a32a',
+                backgroundColor: 'transparent',
+                tension: 0.4
+            },
+            {
                 label: '<?php _e('Opened', 'azure-plugin'); ?>',
                 data: <?php echo json_encode(array_map(function($d) { return intval($d->opened); }, $daily_stats)); ?>,
                 borderColor: '#dba617',
@@ -338,7 +407,14 @@ jQuery(document).ready(function($) {
             {
                 label: '<?php _e('Clicked', 'azure-plugin'); ?>',
                 data: <?php echo json_encode(array_map(function($d) { return intval($d->clicked); }, $daily_stats)); ?>,
-                borderColor: '#00a32a',
+                borderColor: '#9b59b6',
+                backgroundColor: 'transparent',
+                tension: 0.4
+            },
+            {
+                label: '<?php _e('Bounced', 'azure-plugin'); ?>',
+                data: <?php echo json_encode(array_map(function($d) { return intval($d->bounced); }, $daily_stats)); ?>,
+                borderColor: '#d63638',
                 backgroundColor: 'transparent',
                 tension: 0.4
             }

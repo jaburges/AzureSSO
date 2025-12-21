@@ -90,16 +90,46 @@ class Azure_Newsletter_Tracking {
         $body = $request->get_body();
         $data = json_decode($body, true);
         
-        // Verify signature
+        // Log incoming webhook for debugging
+        Azure_Logger::debug_module('Newsletter', 'Mailgun webhook received', array(
+            'raw_size' => strlen($body),
+            'decoded' => !empty($data)
+        ));
+        
+        // Verify signature (skip in development/testing if needed)
         if (!$this->verify_mailgun_signature($request)) {
-            Azure_Logger::warning('Mailgun webhook: Invalid signature');
+            Azure_Logger::warning('Mailgun webhook: Invalid signature', $data);
             return new WP_REST_Response(array('error' => 'Invalid signature'), 403);
         }
         
+        // Mailgun sends data in different formats depending on webhook version
+        // New format: { "signature": {...}, "event-data": {...} }
+        // Legacy format: flat structure
         $event_data = $data['event-data'] ?? $data;
+        
+        // Get event type
         $event_type = $event_data['event'] ?? '';
-        $email = $event_data['recipient'] ?? ($event_data['message']['headers']['to'] ?? '');
-        $newsletter_id = $event_data['user-variables']['newsletter_id'] ?? null;
+        
+        // Get recipient email - Mailgun uses different fields based on event
+        $email = $event_data['recipient'] ?? 
+                 $event_data['message']['headers']['to'] ?? 
+                 $event_data['envelope']['targets'] ?? 
+                 '';
+        
+        // Get newsletter_id from custom variables (we send this when sending emails)
+        $newsletter_id = null;
+        if (isset($event_data['user-variables']['newsletter_id'])) {
+            $newsletter_id = intval($event_data['user-variables']['newsletter_id']);
+        } elseif (isset($data['newsletter_id'])) {
+            $newsletter_id = intval($data['newsletter_id']);
+        }
+        
+        // Get link URL for click events
+        if ($event_type === 'clicked' && isset($event_data['url'])) {
+            $event_data['url'] = $event_data['url'];
+        }
+        
+        Azure_Logger::debug_module('Newsletter', "Processing Mailgun event: {$event_type} for {$email}");
         
         $this->process_event($event_type, $email, $newsletter_id, $event_data);
         
@@ -171,33 +201,46 @@ class Azure_Newsletter_Tracking {
         
         // Map service-specific event types to our standard types
         $event_map = array(
-            // Mailgun
-            'delivered' => 'delivered',
-            'opened' => 'opened',
-            'clicked' => 'clicked',
-            'bounced' => 'bounced',
-            'complained' => 'complained',
+            // Mailgun events
+            'accepted' => 'sent',           // Email accepted by Mailgun for delivery
+            'delivered' => 'delivered',     // Successfully delivered to recipient's mail server
+            'opened' => 'opened',           // Recipient opened the email
+            'clicked' => 'clicked',         // Recipient clicked a link
+            'complained' => 'complained',   // Recipient marked as spam
             'unsubscribed' => 'unsubscribed',
-            'failed' => 'bounced',
+            'temporary_fail' => 'bounced',  // Soft bounce - temporary failure
+            'permanent_fail' => 'bounced',  // Hard bounce - permanent failure
+            'failed' => 'bounced',          // Legacy: generic failure
+            'bounced' => 'bounced',         // Legacy: bounce
             
-            // SendGrid
-            'delivered' => 'delivered',
+            // SendGrid events
+            'processed' => 'sent',
+            'dropped' => 'bounced',
+            'deferred' => 'bounced',
+            'bounce' => 'bounced',
             'open' => 'opened',
             'click' => 'clicked',
-            'bounce' => 'bounced',
             'spamreport' => 'complained',
             'unsubscribe' => 'unsubscribed',
-            'dropped' => 'bounced'
+            'group_unsubscribe' => 'unsubscribed',
+            'group_resubscribe' => 'sent'
         );
         
         $normalized_type = $event_map[$event_type] ?? null;
         
-        if (!$normalized_type || !$email) {
+        // Log unknown event types for debugging
+        if (!$normalized_type) {
+            Azure_Logger::debug_module('Newsletter', "Unknown webhook event type: {$event_type}", $raw_data);
+            return;
+        }
+        
+        if (!$email) {
+            Azure_Logger::debug_module('Newsletter', "Webhook event missing email: {$event_type}");
             return;
         }
         
         // Record the event
-        $wpdb->insert($this->stats_table, array(
+        $result = $wpdb->insert($this->stats_table, array(
             'newsletter_id' => $newsletter_id,
             'email' => $email,
             'user_id' => $this->get_user_id_by_email($email),
@@ -207,12 +250,36 @@ class Azure_Newsletter_Tracking {
             'created_at' => current_time('mysql')
         ));
         
-        // Handle bounces
-        if ($normalized_type === 'bounced') {
-            $this->record_bounce($email, $this->determine_bounce_type($raw_data));
+        if ($result) {
+            Azure_Logger::debug_module('Newsletter', "Recorded {$normalized_type} event for {$email}");
         }
         
-        // Handle complaints
+        // Handle bounces - determine if hard or soft
+        if ($normalized_type === 'bounced') {
+            $bounce_type = 'soft';
+            
+            // Mailgun permanent_fail = hard bounce
+            if ($event_type === 'permanent_fail') {
+                $bounce_type = 'hard';
+            }
+            // SendGrid bounce severity
+            elseif (isset($raw_data['type']) && $raw_data['type'] === 'bounce') {
+                $bounce_type = 'hard';
+            }
+            // Check severity field
+            elseif (isset($raw_data['severity']) && $raw_data['severity'] === 'permanent') {
+                $bounce_type = 'hard';
+            }
+            
+            $reason = $raw_data['delivery-status']['message'] ?? 
+                      $raw_data['delivery-status']['description'] ?? 
+                      $raw_data['reason'] ?? 
+                      null;
+            
+            $this->record_bounce($email, $bounce_type, $reason);
+        }
+        
+        // Handle complaints - always block
         if ($normalized_type === 'complained') {
             $this->record_bounce($email, 'complaint');
         }
@@ -310,28 +377,57 @@ class Azure_Newsletter_Tracking {
     
     /**
      * Verify Mailgun webhook signature
+     * 
+     * Mailgun webhooks are signed using the HTTP webhook signing key,
+     * which is different from the API key. If not configured separately,
+     * we'll use the API key as a fallback.
      */
     private function verify_mailgun_signature($request) {
         $settings = Azure_Settings::get_all_settings();
-        $api_key = $settings['newsletter_mailgun_api_key'] ?? '';
         
-        if (empty($api_key)) {
-            return true; // Skip verification if no key configured
+        // Mailgun recommends using a separate webhook signing key
+        // but defaults to API key if not configured
+        $signing_key = $settings['newsletter_mailgun_webhook_key'] ?? 
+                       $settings['newsletter_mailgun_api_key'] ?? '';
+        
+        if (empty($signing_key)) {
+            // Skip verification if no key configured (development mode)
+            Azure_Logger::debug_module('Newsletter', 'Mailgun webhook: No signing key, skipping verification');
+            return true;
         }
         
         $body = $request->get_body();
         $data = json_decode($body, true);
         
+        // Signature data location depends on webhook format
         $signature = $data['signature'] ?? array();
         $timestamp = $signature['timestamp'] ?? '';
         $token = $signature['token'] ?? '';
         $sig = $signature['signature'] ?? '';
         
+        // Legacy format uses flat structure
+        if (empty($timestamp) && isset($data['timestamp'])) {
+            $timestamp = $data['timestamp'];
+            $token = $data['token'] ?? '';
+            $sig = $data['signature'] ?? '';
+        }
+        
         if (empty($timestamp) || empty($token) || empty($sig)) {
+            Azure_Logger::debug_module('Newsletter', 'Mailgun webhook: Missing signature components', array(
+                'has_timestamp' => !empty($timestamp),
+                'has_token' => !empty($token),
+                'has_signature' => !empty($sig)
+            ));
             return false;
         }
         
-        $expected = hash_hmac('sha256', $timestamp . $token, $api_key);
+        // Check timestamp is not too old (prevent replay attacks, allow 5 minutes)
+        if (abs(time() - intval($timestamp)) > 300) {
+            Azure_Logger::debug_module('Newsletter', 'Mailgun webhook: Timestamp too old');
+            return false;
+        }
+        
+        $expected = hash_hmac('sha256', $timestamp . $token, $signing_key);
         
         return hash_equals($expected, $sig);
     }

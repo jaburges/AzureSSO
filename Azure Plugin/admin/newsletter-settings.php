@@ -19,6 +19,7 @@ if (isset($_POST['save_newsletter_settings']) && wp_verify_nonce($_POST['_wpnonc
         
         // Mailgun settings
         'newsletter_mailgun_api_key' => sanitize_text_field($_POST['newsletter_mailgun_api_key'] ?? ''),
+        'newsletter_mailgun_webhook_key' => sanitize_text_field($_POST['newsletter_mailgun_webhook_key'] ?? ''),
         'newsletter_mailgun_domain' => sanitize_text_field($_POST['newsletter_mailgun_domain'] ?? ''),
         'newsletter_mailgun_region' => sanitize_text_field($_POST['newsletter_mailgun_region'] ?? 'us'),
         
@@ -118,10 +119,19 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
                         </select>
                     </td>
                 </tr>
+                <tr>
+                    <th><label><?php _e('Webhook Signing Key', 'azure-plugin'); ?></label></th>
+                    <td>
+                        <input type="password" name="newsletter_mailgun_webhook_key" 
+                               value="<?php echo esc_attr($settings['newsletter_mailgun_webhook_key'] ?? ''); ?>" class="regular-text">
+                        <p class="description"><?php _e('Found in Mailgun Dashboard → Sending → Webhooks → HTTP webhook signing key. Leave blank to use API key.', 'azure-plugin'); ?></p>
+                    </td>
+                </tr>
             </table>
             <p class="webhook-url">
-                <strong><?php _e('Webhook URL:', 'azure-plugin'); ?></strong><br>
+                <strong><?php _e('Webhook URL (add for all events):', 'azure-plugin'); ?></strong><br>
                 <code><?php echo rest_url('azure-plugin/v1/newsletter/webhook/mailgun'); ?></code>
+                <br><small class="description"><?php _e('Configure in Mailgun Dashboard → Sending → Webhooks. Add this URL for: accepted, delivered, opened, clicked, complained, temporary_fail, permanent_fail', 'azure-plugin'); ?></small>
             </p>
         </div>
         
