@@ -22,7 +22,18 @@ class Azure_Logger {
             return;
         }
         
-        self::$log_file = AZURE_PLUGIN_PATH . 'logs.md';
+        // Store logs in wp-content/uploads to avoid plugin update issues
+        $upload_dir = wp_upload_dir();
+        $log_dir = $upload_dir['basedir'] . '/azure-plugin';
+        
+        // Create log directory if it doesn't exist
+        if (!file_exists($log_dir)) {
+            wp_mkdir_p($log_dir);
+            // Add .htaccess to protect logs
+            file_put_contents($log_dir . '/.htaccess', 'Deny from all');
+        }
+        
+        self::$log_file = $log_dir . '/logs.md';
         self::$initialized = true;
         
         // Create log file header if it doesn't exist
