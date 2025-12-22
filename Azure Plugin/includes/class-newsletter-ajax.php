@@ -453,12 +453,45 @@ class Azure_Newsletter_Ajax {
      * https://spamcheck.postmarkapp.com/
      */
     private function run_postmark_spamcheck($html, $subject, $from_email) {
-        // Build raw email format for SpamAssassin
+        // Generate proper email headers to avoid false positives
+        $message_id = '<' . uniqid('newsletter-', true) . '@' . parse_url(home_url(), PHP_URL_HOST) . '>';
+        $date = date('r'); // RFC 2822 format
+        $to_email = 'test@example.com'; // Placeholder for spam check
+        
+        // Generate plain text version from HTML
+        $plain_text = $this->html_to_plain_text($html);
+        
+        // Build multipart email with both HTML and plain text
+        $boundary = 'boundary_' . md5(time());
+        
+        // Build raw email format for SpamAssassin with proper headers
         $raw_email = "From: {$from_email}\r\n";
+        $raw_email .= "To: {$to_email}\r\n";
         $raw_email .= "Subject: {$subject}\r\n";
+        $raw_email .= "Date: {$date}\r\n";
+        $raw_email .= "Message-ID: {$message_id}\r\n";
         $raw_email .= "MIME-Version: 1.0\r\n";
-        $raw_email .= "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-        $raw_email .= $html;
+        $raw_email .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
+        $raw_email .= "\r\n";
+        
+        // Plain text part
+        $raw_email .= "--{$boundary}\r\n";
+        $raw_email .= "Content-Type: text/plain; charset=UTF-8\r\n";
+        $raw_email .= "Content-Transfer-Encoding: quoted-printable\r\n";
+        $raw_email .= "\r\n";
+        $raw_email .= $plain_text . "\r\n";
+        $raw_email .= "\r\n";
+        
+        // HTML part
+        $raw_email .= "--{$boundary}\r\n";
+        $raw_email .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $raw_email .= "Content-Transfer-Encoding: quoted-printable\r\n";
+        $raw_email .= "\r\n";
+        $raw_email .= $html . "\r\n";
+        $raw_email .= "\r\n";
+        
+        // End boundary
+        $raw_email .= "--{$boundary}--\r\n";
         
         $response = wp_remote_post('https://spamcheck.postmarkapp.com/filter', array(
             'headers' => array('Accept' => 'application/json', 'Content-Type' => 'application/json'),
@@ -493,6 +526,39 @@ class Azure_Newsletter_Ajax {
             'is_spam' => isset($body['success']) && $body['success'] === false,
             'rules' => $rules
         );
+    }
+    
+    /**
+     * Convert HTML email to plain text
+     */
+    private function html_to_plain_text($html) {
+        // Remove style and script tags
+        $text = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $html);
+        $text = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $text);
+        
+        // Convert common HTML elements
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
+        $text = preg_replace('/<\/p>/i', "\n\n", $text);
+        $text = preg_replace('/<\/div>/i', "\n", $text);
+        $text = preg_replace('/<\/tr>/i', "\n", $text);
+        $text = preg_replace('/<\/h[1-6]>/i', "\n\n", $text);
+        
+        // Convert links to text with URL
+        $text = preg_replace('/<a[^>]+href=["\']([^"\']+)["\'][^>]*>([^<]+)<\/a>/i', '$2 ($1)', $text);
+        
+        // Remove remaining HTML tags
+        $text = strip_tags($text);
+        
+        // Decode HTML entities
+        $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+        
+        // Clean up whitespace
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\n\s+\n/', "\n\n", $text);
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
+        $text = trim($text);
+        
+        return $text;
     }
     
     /**
