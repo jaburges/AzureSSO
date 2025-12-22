@@ -52,8 +52,22 @@ class Azure_Newsletter_Ajax {
         global $wpdb;
         $table = $wpdb->prefix . 'azure_newsletter_templates';
         
-        // Delete existing system templates
-        $deleted = $wpdb->delete($table, array('is_system' => 1), array('%d'));
+        // Check if is_system column exists, add it if not
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'is_system'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN is_system tinyint(1) DEFAULT 0");
+        }
+        
+        // Check if content_html column exists, add it if not
+        $content_col_exists = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'content_html'");
+        if (empty($content_col_exists)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN content_html longtext AFTER description");
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN content_json longtext AFTER content_html");
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN thumbnail_url varchar(500) AFTER description");
+        }
+        
+        // Delete ALL existing templates (since old ones don't have is_system)
+        $deleted = $wpdb->query("DELETE FROM {$table}");
         
         // Re-insert default templates with HTML content
         $default_templates = Azure_Newsletter_Module::get_default_templates();
