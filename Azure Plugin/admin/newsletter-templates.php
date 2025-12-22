@@ -7,6 +7,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Ensure Newsletter Module class is loaded
+if (!class_exists('Azure_Newsletter_Module')) {
+    require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-module.php';
+}
+
 global $wpdb;
 
 $templates_table = $wpdb->prefix . 'azure_newsletter_templates';
@@ -31,15 +36,29 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
 // Handle reset system templates
 if (isset($_POST['reset_system_templates']) && wp_verify_nonce($_POST['_wpnonce'], 'reset_templates')) {
     // Delete existing system templates
-    $wpdb->delete($templates_table, array('is_system' => 1), array('%d'));
+    $deleted = $wpdb->delete($templates_table, array('is_system' => 1), array('%d'));
     
     // Re-insert default templates with HTML content
     $default_templates = Azure_Newsletter_Module::get_default_templates();
+    $inserted = 0;
+    $errors = array();
+    
     foreach ($default_templates as $template) {
-        $wpdb->insert($templates_table, $template);
+        $result = $wpdb->insert($templates_table, $template);
+        if ($result) {
+            $inserted++;
+        } else {
+            $errors[] = $template['name'] . ': ' . $wpdb->last_error;
+        }
     }
     
-    echo '<div class="notice notice-success"><p>' . __('System templates have been reset with updated designs.', 'azure-plugin') . '</p></div>';
+    if ($inserted > 0) {
+        echo '<div class="notice notice-success"><p>' . sprintf(__('System templates reset. Deleted %d, inserted %d templates.', 'azure-plugin'), $deleted, $inserted) . '</p></div>';
+    }
+    
+    if (!empty($errors)) {
+        echo '<div class="notice notice-error"><p>' . __('Some templates failed to insert:', 'azure-plugin') . '<br>' . implode('<br>', $errors) . '</p></div>';
+    }
 }
 
 // Get templates grouped by category
