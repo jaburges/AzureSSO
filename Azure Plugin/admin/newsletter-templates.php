@@ -7,11 +7,6 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Ensure Newsletter Module class is loaded
-if (!class_exists('Azure_Newsletter_Module')) {
-    require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-module.php';
-}
-
 global $wpdb;
 
 $templates_table = $wpdb->prefix . 'azure_newsletter_templates';
@@ -30,34 +25,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
         $id = intval($_GET['id']);
         $wpdb->delete($templates_table, array('id' => $id, 'is_system' => 0), array('%d', '%d'));
         echo '<div class="notice notice-success"><p>' . __('Template deleted.', 'azure-plugin') . '</p></div>';
-    }
-}
-
-// Handle reset system templates
-if (isset($_POST['reset_system_templates']) && wp_verify_nonce($_POST['_wpnonce'], 'reset_templates')) {
-    // Delete existing system templates
-    $deleted = $wpdb->delete($templates_table, array('is_system' => 1), array('%d'));
-    
-    // Re-insert default templates with HTML content
-    $default_templates = Azure_Newsletter_Module::get_default_templates();
-    $inserted = 0;
-    $errors = array();
-    
-    foreach ($default_templates as $template) {
-        $result = $wpdb->insert($templates_table, $template);
-        if ($result) {
-            $inserted++;
-        } else {
-            $errors[] = $template['name'] . ': ' . $wpdb->last_error;
-        }
-    }
-    
-    if ($inserted > 0) {
-        echo '<div class="notice notice-success"><p>' . sprintf(__('System templates reset. Deleted %d, inserted %d templates.', 'azure-plugin'), $deleted, $inserted) . '</p></div>';
-    }
-    
-    if (!empty($errors)) {
-        echo '<div class="notice notice-error"><p>' . __('Some templates failed to insert:', 'azure-plugin') . '<br>' . implode('<br>', $errors) . '</p></div>';
     }
 }
 
@@ -149,16 +116,6 @@ foreach ($templates as $template) {
         </a>
     </div>
     
-    <div class="reset-templates-section">
-        <h3><?php _e('Reset System Templates', 'azure-plugin'); ?></h3>
-        <p><?php _e('If your built-in templates are missing content or outdated, you can reset them to the latest versions.', 'azure-plugin'); ?></p>
-        <form method="post" onsubmit="return confirm('<?php _e('This will reset all system templates to their default state. Custom templates will not be affected. Continue?', 'azure-plugin'); ?>');">
-            <?php wp_nonce_field('reset_templates'); ?>
-            <button type="submit" name="reset_system_templates" class="button">
-                <?php _e('Reset System Templates', 'azure-plugin'); ?>
-            </button>
-        </form>
-    </div>
 </div>
 
 <!-- Template Preview Modal -->
@@ -288,16 +245,11 @@ jQuery(document).ready(function($) {
     padding: 2px 8px;
     border-radius: 3px;
 }
-.newsletter-templates .create-template-section,
-.newsletter-templates .reset-templates-section {
+.newsletter-templates .create-template-section {
     background: #f8f9fa;
     padding: 20px;
     border-radius: 4px;
     margin-top: 20px;
-}
-.newsletter-templates .reset-templates-section {
-    background: #fff8e5;
-    border: 1px solid #ffcc00;
 }
 
 /* Template Preview Modal */

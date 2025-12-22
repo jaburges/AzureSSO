@@ -420,6 +420,16 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
                 <?php if ($tables_exist): ?>
                 <div class="danger-action">
                     <div class="action-info">
+                        <strong><?php _e('Reset System Templates', 'azure-plugin'); ?></strong>
+                        <p><?php _e('Resets built-in email templates to their default state with updated designs. Custom templates are not affected.', 'azure-plugin'); ?></p>
+                    </div>
+                    <button type="button" class="button button-danger" id="reset-system-templates">
+                        <?php _e('Reset Templates', 'azure-plugin'); ?>
+                    </button>
+                </div>
+                
+                <div class="danger-action">
+                    <div class="action-info">
                         <strong><?php _e('Reset All Newsletter Data', 'azure-plugin'); ?></strong>
                         <p><?php _e('Deletes ALL newsletter data including campaigns, statistics, lists, and templates. This cannot be undone!', 'azure-plugin'); ?></p>
                     </div>
@@ -689,6 +699,31 @@ jQuery(document).ready(function($) {
             }
         }).fail(function() {
             btn.prop('disabled', false).text('<?php _e('Create Tables', 'azure-plugin'); ?>');
+            alert('<?php _e('Request failed. Please try again.', 'azure-plugin'); ?>');
+        });
+    });
+    
+    // Reset system templates
+    $('#reset-system-templates').on('click', function() {
+        if (!confirm('<?php _e('This will reset all built-in templates to their default state. Custom templates will not be affected. Continue?', 'azure-plugin'); ?>')) {
+            return;
+        }
+        
+        var btn = $(this);
+        btn.prop('disabled', true).text('<?php _e('Resetting...', 'azure-plugin'); ?>');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_reset_templates',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_reset_templates'); ?>'
+        }, function(response) {
+            btn.prop('disabled', false).text('<?php _e('Reset Templates', 'azure-plugin'); ?>');
+            if (response.success) {
+                alert(response.data.message || '<?php _e('System templates have been reset.', 'azure-plugin'); ?>');
+            } else {
+                alert('<?php _e('Failed to reset templates:', 'azure-plugin'); ?> ' + response.data);
+            }
+        }).fail(function() {
+            btn.prop('disabled', false).text('<?php _e('Reset Templates', 'azure-plugin'); ?>');
             alert('<?php _e('Request failed. Please try again.', 'azure-plugin'); ?>');
         });
     });

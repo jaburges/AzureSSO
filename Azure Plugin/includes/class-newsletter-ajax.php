@@ -31,6 +31,53 @@ class Azure_Newsletter_Ajax {
         
         // Template management
         add_action('wp_ajax_azure_newsletter_get_template', array($this, 'get_template'));
+        add_action('wp_ajax_azure_newsletter_reset_templates', array($this, 'reset_templates'));
+    }
+    
+    /**
+     * Reset system templates to defaults
+     */
+    public function reset_templates() {
+        check_ajax_referer('azure_newsletter_reset_templates', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        // Ensure Newsletter Module class is loaded
+        if (!class_exists('Azure_Newsletter_Module')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-module.php';
+        }
+        
+        global $wpdb;
+        $table = $wpdb->prefix . 'azure_newsletter_templates';
+        
+        // Delete existing system templates
+        $deleted = $wpdb->delete($table, array('is_system' => 1), array('%d'));
+        
+        // Re-insert default templates with HTML content
+        $default_templates = Azure_Newsletter_Module::get_default_templates();
+        $inserted = 0;
+        $errors = array();
+        
+        foreach ($default_templates as $template) {
+            $result = $wpdb->insert($table, $template);
+            if ($result) {
+                $inserted++;
+            } else {
+                $errors[] = $template['name'] . ': ' . $wpdb->last_error;
+            }
+        }
+        
+        if (!empty($errors)) {
+            wp_send_json_error('Insert errors: ' . implode(', ', $errors));
+        }
+        
+        wp_send_json_success(array(
+            'message' => sprintf(__('Reset complete. Deleted %d old templates, inserted %d new templates.', 'azure-plugin'), $deleted, $inserted),
+            'deleted' => $deleted,
+            'inserted' => $inserted
+        ));
     }
     
     /**
