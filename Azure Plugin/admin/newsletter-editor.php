@@ -310,10 +310,17 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
                         <div class="review-section">
                             <h4><?php _e('Spam Score', 'azure-plugin'); ?></h4>
                             <div id="spam-score-container">
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="checkbox" id="use-spamassassin" checked>
+                                        <span><?php _e('Include SpamAssassin check', 'azure-plugin'); ?></span>
+                                        <span class="dashicons dashicons-info" title="<?php esc_attr_e('Uses Postmark\'s free SpamAssassin API for detailed analysis', 'azure-plugin'); ?>" style="color: #2271b1; cursor: help;"></span>
+                                    </label>
+                                </div>
                                 <button type="button" class="button" id="check-spam-score">
                                     <?php _e('Check Spam Score', 'azure-plugin'); ?>
                                 </button>
-                                <div id="spam-score-result" style="display:none;"></div>
+                                <div id="spam-score-result" style="display:none; margin-top: 15px;"></div>
                             </div>
                         </div>
                         

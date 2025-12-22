@@ -1685,17 +1685,21 @@
     });
 
     /**
-     * Spam score check
+     * Spam score check - supports local and external (SpamAssassin) checks
      */
     $(document).on('click', '#check-spam-score', function() {
         var btn = $(this);
-        btn.prop('disabled', true).text('Checking...');
+        var useExternal = $('#use-spamassassin').is(':checked');
+        
+        btn.prop('disabled', true).text(useExternal ? 'Running SpamAssassin...' : 'Checking...');
 
         $.post(newsletterEditorConfig.ajaxUrl, {
             action: 'azure_newsletter_spam_check',
             nonce: newsletterEditorConfig.nonce,
             html: $('#newsletter_content_html').val(),
-            subject: $('#newsletter_subject').val()
+            subject: $('#newsletter_subject').val(),
+            from_email: $('select[name="from_address"]').val() || 'test@example.com',
+            use_external: useExternal ? 'true' : 'false'
         }, function(response) {
             btn.prop('disabled', false).text('Check Spam Score');
             var result = $('#spam-score-result').show();
@@ -1703,16 +1707,69 @@
             if (response.success) {
                 var score = response.data.score;
                 var scoreClass = score <= 3 ? 'good' : (score <= 5 ? 'warning' : 'bad');
-                result.html(
-                    '<div class="spam-score">' +
-                    '<span class="spam-score-value ' + scoreClass + '">' + score + '/10</span>' +
+                
+                var html = '<div class="spam-score">' +
+                    '<span class="spam-score-value ' + scoreClass + '">' + score.toFixed(1) + '/10</span>' +
                     '<span>' + response.data.message + '</span>' +
-                    '</div>' +
-                    (response.data.issues && response.data.issues.length ? '<ul><li>' + response.data.issues.join('</li><li>') + '</li></ul>' : '')
-                );
+                    '</div>';
+                
+                // Show which checks were performed
+                var checks = response.data.checks_performed || {};
+                html += '<p class="spam-checks-info" style="font-size:12px;color:#666;margin:5px 0;">';
+                html += '<strong>Checks:</strong> Local';
+                if (checks.spamassassin) {
+                    html += ' + SpamAssassin';
+                }
+                html += '</p>';
+                
+                // Show issues grouped by type
+                if (response.data.issues && response.data.issues.length) {
+                    html += '<div class="spam-issues">';
+                    
+                    var issuesByType = {};
+                    response.data.issues.forEach(function(issue) {
+                        var type = issue.type || 'other';
+                        if (!issuesByType[type]) issuesByType[type] = [];
+                        issuesByType[type].push(issue);
+                    });
+                    
+                    var typeLabels = {
+                        'subject': '📝 Subject Line',
+                        'content': '📄 Content',
+                        'compliance': '⚖️ Compliance',
+                        'spamassassin': '🔍 SpamAssassin',
+                        'other': 'Other'
+                    };
+                    
+                    for (var type in issuesByType) {
+                        html += '<div class="issue-group">';
+                        html += '<strong>' + (typeLabels[type] || type) + '</strong>';
+                        html += '<ul>';
+                        issuesByType[type].forEach(function(issue) {
+                            var issueText = typeof issue === 'string' ? issue : issue.message;
+                            var issueScore = issue.score ? ' <span style="color:#d63638;">(+' + issue.score + ')</span>' : '';
+                            html += '<li>' + issueText + issueScore + '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    html += '</div>';
+                }
+                
+                // Show SpamAssassin score separately if available
+                if (response.data.external_result && response.data.external_result.success) {
+                    html += '<p class="sa-score" style="margin-top:10px;padding:8px;background:#f0f6fc;border-radius:4px;">';
+                    html += '<strong>SpamAssassin Score:</strong> ' + response.data.external_result.score.toFixed(1);
+                    html += ' <span style="color:#666;">(5+ is typically spam)</span>';
+                    html += '</p>';
+                }
+                
+                result.html(html);
             } else {
                 result.html('<p class="error" style="color:#d63638;">' + (response.data || 'Error checking spam score') + '</p>');
             }
+        }).fail(function() {
+            btn.prop('disabled', false).text('Check Spam Score');
+            $('#spam-score-result').show().html('<p class="error" style="color:#d63638;">Request failed. Please try again.</p>');
         });
     });
 

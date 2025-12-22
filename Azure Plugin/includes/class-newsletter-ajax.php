@@ -280,7 +280,7 @@ class Azure_Newsletter_Ajax {
     }
     
     /**
-     * Check spam score
+     * Check spam score - combines local checks with optional external SpamAssassin
      */
     public function check_spam_score() {
         check_ajax_referer('azure_newsletter_nonce', 'nonce');
@@ -291,73 +291,208 @@ class Azure_Newsletter_Ajax {
         
         $html = wp_kses_post($_POST['html'] ?? '');
         $subject = sanitize_text_field($_POST['subject'] ?? '');
+        $from_email = sanitize_email($_POST['from_email'] ?? 'test@example.com');
+        $use_external = isset($_POST['use_external']) && $_POST['use_external'] === 'true';
         
-        // Simple spam checks
-        $issues = array();
-        $score = 0;
+        // Run local checks first (always available, fast)
+        $local_result = $this->run_local_spam_checks($html, $subject);
         
-        // Check subject line
-        $spam_words = array('free', 'win', 'winner', 'cash', 'prize', 'urgent', 'act now', 'limited time', 'click here', 'buy now');
-        foreach ($spam_words as $word) {
-            if (stripos($subject, $word) !== false) {
-                $issues[] = "Subject contains spam trigger word: '{$word}'";
-                $score += 1;
-            }
+        // Optionally run external SpamAssassin check via Postmark (free API)
+        $external_result = null;
+        if ($use_external) {
+            $external_result = $this->run_postmark_spamcheck($html, $subject, $from_email);
         }
         
-        // Check for ALL CAPS in subject
-        if (strtoupper($subject) === $subject && strlen($subject) > 5) {
-            $issues[] = 'Subject is all uppercase';
-            $score += 2;
-        }
+        // Combine results
+        $combined_score = $local_result['score'];
+        $combined_issues = $local_result['issues'];
         
-        // Check for excessive exclamation marks
-        if (substr_count($subject, '!') > 1) {
-            $issues[] = 'Subject has multiple exclamation marks';
-            $score += 1;
-        }
-        
-        // Check HTML content
-        if (empty($html)) {
-            $issues[] = 'No HTML content';
-            $score += 3;
-        } else {
-            // Check image to text ratio
-            preg_match_all('/<img/i', $html, $images);
-            $text_length = strlen(strip_tags($html));
+        if ($external_result && $external_result['success']) {
+            $sa_score = $external_result['score'];
             
-            if (count($images[0]) > 0 && $text_length < 100) {
-                $issues[] = 'Low text-to-image ratio';
-                $score += 2;
+            // Add SpamAssassin findings
+            if (!empty($external_result['rules'])) {
+                foreach ($external_result['rules'] as $rule) {
+                    if ($rule['score'] > 0) { // Only show rules that add to spam score
+                        $combined_issues[] = array(
+                            'type' => 'spamassassin',
+                            'message' => $rule['description'] . ' [' . $rule['name'] . ']',
+                            'score' => $rule['score']
+                        );
+                    }
+                }
             }
             
-            // Check for unsubscribe link
-            if (stripos($html, 'unsubscribe') === false) {
-                $issues[] = 'Missing unsubscribe link';
-                $score += 2;
-            }
-            
-            // Check for physical address (CAN-SPAM)
-            // This is a simplified check
-            if (stripos($html, 'address') === false && stripos($html, 'contact') === false) {
-                $issues[] = 'Consider adding physical address (CAN-SPAM compliance)';
-                $score += 1;
-            }
+            // Weight: average of local and SpamAssassin scores
+            $combined_score = round(($local_result['score'] + min($sa_score, 10)) / 2, 1);
         }
         
-        // Determine message
+        // Determine overall message
         $message = 'Excellent! Your email looks good.';
-        if ($score >= 3 && $score < 5) {
+        if ($combined_score >= 3 && $combined_score < 5) {
             $message = 'Good, but there are some areas for improvement.';
-        } elseif ($score >= 5) {
+        } elseif ($combined_score >= 5) {
             $message = 'Warning: Your email may be flagged as spam.';
         }
         
         wp_send_json_success(array(
-            'score' => min($score, 10),
+            'score' => min($combined_score, 10),
             'message' => $message,
-            'issues' => $issues
+            'issues' => $combined_issues,
+            'local_score' => $local_result['score'],
+            'external_result' => $external_result,
+            'checks_performed' => array(
+                'local' => true,
+                'spamassassin' => $use_external && $external_result && $external_result['success']
+            )
         ));
+    }
+    
+    /**
+     * Run local spam checks (no external dependencies)
+     */
+    private function run_local_spam_checks($html, $subject) {
+        $issues = array();
+        $score = 0;
+        
+        // === Subject Line Checks ===
+        $spam_words = array(
+            'free' => 1, 'win' => 1.5, 'winner' => 1.5, 'cash' => 1.5, 
+            'prize' => 1.5, 'urgent' => 1, 'act now' => 1.5, 'limited time' => 1,
+            'click here' => 1, 'buy now' => 1, 'order now' => 1, 'don\'t miss' => 0.5,
+            'exclusive deal' => 1, 'risk free' => 1.5, 'no obligation' => 1,
+            'million' => 1.5, 'billion' => 1.5, 'guarantee' => 0.5,
+            '100%' => 1, 'double your' => 1.5, 'earn money' => 1.5
+        );
+        
+        foreach ($spam_words as $word => $weight) {
+            if (stripos($subject, $word) !== false) {
+                $issues[] = array(
+                    'type' => 'subject',
+                    'message' => "Subject contains spam trigger: '{$word}'",
+                    'score' => $weight
+                );
+                $score += $weight;
+            }
+        }
+        
+        // ALL CAPS subject
+        if (strlen($subject) > 5 && strtoupper($subject) === $subject) {
+            $issues[] = array('type' => 'subject', 'message' => 'Subject is all uppercase', 'score' => 2);
+            $score += 2;
+        }
+        
+        // Excessive punctuation
+        if (substr_count($subject, '!') > 1) {
+            $issues[] = array('type' => 'subject', 'message' => 'Multiple exclamation marks', 'score' => 1);
+            $score += 1;
+        }
+        
+        // RE: or FW: spam trick
+        if (preg_match('/^(RE:|FW:|FWD:)/i', $subject)) {
+            $issues[] = array('type' => 'subject', 'message' => 'Starts with RE:/FW: (spam technique)', 'score' => 1.5);
+            $score += 1.5;
+        }
+        
+        // === Content Checks ===
+        if (empty($html)) {
+            $issues[] = array('type' => 'content', 'message' => 'No HTML content', 'score' => 3);
+            $score += 3;
+        } else {
+            // Image to text ratio
+            preg_match_all('/<img/i', $html, $images);
+            $text_length = strlen(trim(strip_tags($html)));
+            $image_count = count($images[0]);
+            
+            if ($image_count > 0 && $text_length < 100) {
+                $issues[] = array('type' => 'content', 'message' => 'Low text-to-image ratio', 'score' => 2);
+                $score += 2;
+            }
+            
+            // Unsubscribe link
+            if (stripos($html, 'unsubscribe') === false) {
+                $issues[] = array('type' => 'compliance', 'message' => 'Missing unsubscribe link', 'score' => 2);
+                $score += 2;
+            }
+            
+            // Physical address
+            $has_address = stripos($html, 'address') !== false || 
+                           stripos($html, 'street') !== false ||
+                           preg_match('/\d{5}(-\d{4})?/', $html);
+            if (!$has_address) {
+                $issues[] = array('type' => 'compliance', 'message' => 'No physical address (CAN-SPAM)', 'score' => 1);
+                $score += 1;
+            }
+            
+            // Spam phrases in content
+            $content_spam = array('click below' => 0.5, 'act immediately' => 1, 'dear friend' => 1,
+                'you have been selected' => 1.5, 'this is not spam' => 2);
+            foreach ($content_spam as $phrase => $weight) {
+                if (stripos($html, $phrase) !== false) {
+                    $issues[] = array('type' => 'content', 'message' => "Spam phrase: '{$phrase}'", 'score' => $weight);
+                    $score += $weight;
+                }
+            }
+            
+            // URL shorteners
+            $shorteners = array('bit.ly', 'tinyurl', 'goo.gl', 't.co');
+            foreach ($shorteners as $shortener) {
+                if (stripos($html, $shortener) !== false) {
+                    $issues[] = array('type' => 'content', 'message' => "URL shortener ({$shortener})", 'score' => 1);
+                    $score += 1;
+                    break;
+                }
+            }
+        }
+        
+        return array('score' => round($score, 1), 'issues' => $issues);
+    }
+    
+    /**
+     * Run SpamAssassin check via Postmark's free API
+     * https://spamcheck.postmarkapp.com/
+     */
+    private function run_postmark_spamcheck($html, $subject, $from_email) {
+        // Build raw email format for SpamAssassin
+        $raw_email = "From: {$from_email}\r\n";
+        $raw_email .= "Subject: {$subject}\r\n";
+        $raw_email .= "MIME-Version: 1.0\r\n";
+        $raw_email .= "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+        $raw_email .= $html;
+        
+        $response = wp_remote_post('https://spamcheck.postmarkapp.com/filter', array(
+            'headers' => array('Accept' => 'application/json', 'Content-Type' => 'application/json'),
+            'body' => json_encode(array('email' => $raw_email, 'options' => 'long')),
+            'timeout' => 15
+        ));
+        
+        if (is_wp_error($response)) {
+            return array('success' => false, 'error' => $response->get_error_message());
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (!isset($body['score'])) {
+            return array('success' => false, 'error' => 'Invalid API response');
+        }
+        
+        $rules = array();
+        if (!empty($body['rules'])) {
+            foreach ($body['rules'] as $rule) {
+                $rules[] = array(
+                    'name' => $rule['name'] ?? 'Unknown',
+                    'score' => floatval($rule['score'] ?? 0),
+                    'description' => $rule['description'] ?? ''
+                );
+            }
+        }
+        
+        return array(
+            'success' => true,
+            'score' => floatval($body['score']),
+            'is_spam' => isset($body['success']) && $body['success'] === false,
+            'rules' => $rules
+        );
     }
     
     /**
