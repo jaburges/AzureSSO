@@ -297,6 +297,9 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('No email content provided');
         }
         
+        // Clean and prepare HTML for email
+        $html = self::prepare_email_html($html);
+        
         // Ensure sender class is loaded
         if (!class_exists('Azure_Newsletter_Sender')) {
             require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
@@ -316,6 +319,65 @@ class Azure_Newsletter_Ajax {
         } else {
             wp_send_json_error($result['error']);
         }
+    }
+    
+    /**
+     * Prepare HTML for email sending - clean up GrapesJS output
+     */
+    private static function prepare_email_html($html) {
+        // Remove raw CSS text that appears before HTML tags (GrapesJS bug)
+        // This catches patterns like: "* { box-sizing: border-box; } body {margin: 0;} ..."
+        $html = preg_replace('/^[^<]*\*\s*\{[^}]*\}[^<]*/s', '', $html);
+        
+        // Remove any text content before the first HTML tag
+        $html = preg_replace('/^[^<]+/', '', $html);
+        
+        // Extract style tags from body and collect them
+        $styles = '';
+        if (preg_match_all('/<style[^>]*>(.*?)<\/style>/is', $html, $matches)) {
+            foreach ($matches[1] as $style) {
+                $styles .= $style . "\n";
+            }
+            // Remove style tags from body
+            $html = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $html);
+        }
+        
+        // Check if it already has a proper structure
+        if (stripos($html, '<!DOCTYPE') === false) {
+            // Build proper email HTML structure
+            $email_html = "<!DOCTYPE html>\n";
+            $email_html .= "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n";
+            $email_html .= "<head>\n";
+            $email_html .= "<meta charset=\"UTF-8\">\n";
+            $email_html .= "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
+            $email_html .= "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n";
+            $email_html .= "<title>Newsletter</title>\n";
+            
+            // Add collected styles in head
+            if (!empty($styles)) {
+                $email_html .= "<style type=\"text/css\">\n";
+                $email_html .= "/* Email Reset */\n";
+                $email_html .= "body, table, td { margin: 0; padding: 0; }\n";
+                $email_html .= "img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; display: block; }\n";
+                $email_html .= $styles;
+                $email_html .= "</style>\n";
+            }
+            
+            $email_html .= "</head>\n";
+            $email_html .= "<body style=\"margin:0;padding:0;\">\n";
+            $email_html .= trim($html);
+            $email_html .= "\n</body>\n</html>";
+            
+            return $email_html;
+        }
+        
+        // Already has structure - just move styles to head if they're in body
+        if (!empty($styles) && preg_match('/<head[^>]*>(.*?)<\/head>/is', $html, $head_match)) {
+            $new_head = $head_match[1] . "\n<style type=\"text/css\">\n" . $styles . "\n</style>\n";
+            $html = str_replace($head_match[1], $new_head, $html);
+        }
+        
+        return $html;
     }
     
     /**

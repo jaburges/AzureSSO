@@ -9,33 +9,45 @@
     var currentStep = 1;
 
     /**
-     * Get email-ready HTML with CSS inlined into elements
-     * Email clients strip <style> tags, so CSS must be inline
+     * Get email-ready HTML with CSS properly handled
+     * Email clients strip <style> tags, so we need clean HTML
      */
     function getEmailReadyHtml() {
         if (!editor) return '';
         
-        // Use gjs-get-inlined-html command from newsletter preset
-        // This inlines CSS directly into element style attributes
-        var inlinedHtml = editor.runCommand('gjs-get-inlined-html');
+        // Get HTML and CSS separately
+        var html = editor.getHtml();
+        var css = editor.getCss();
         
-        // If command failed or returned empty, fall back to manual approach
-        if (!inlinedHtml) {
-            var html = editor.getHtml();
-            var css = editor.getCss();
-            // As fallback, include CSS in style tag (some clients support it)
-            inlinedHtml = html;
-            if (css) {
-                inlinedHtml = '<style>' + css + '</style>' + inlinedHtml;
-            }
+        // Clean up the HTML - remove any raw CSS text that might be at the start
+        // GrapesJS sometimes outputs CSS as text content
+        html = html.replace(/^\s*\*\s*\{[^}]*\}[^<]*/i, ''); // Remove leading CSS rules
+        html = html.replace(/^[^<]*(?=<)/i, ''); // Remove any text before first tag
+        
+        // Build proper email HTML structure
+        var emailHtml = '<!DOCTYPE html>\n';
+        emailHtml += '<html>\n<head>\n';
+        emailHtml += '<meta charset="UTF-8">\n';
+        emailHtml += '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
+        emailHtml += '<meta http-equiv="X-UA-Compatible" content="IE=edge">\n';
+        emailHtml += '<title>Newsletter</title>\n';
+        
+        // Add CSS in head (better than body, some clients support it)
+        if (css) {
+            emailHtml += '<style type="text/css">\n';
+            emailHtml += '/* Email Reset */\n';
+            emailHtml += 'body { margin: 0 !important; padding: 0 !important; }\n';
+            emailHtml += 'table { border-collapse: collapse !important; }\n';
+            emailHtml += 'img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }\n';
+            emailHtml += css + '\n';
+            emailHtml += '</style>\n';
         }
         
-        // Wrap in proper email HTML structure if needed
-        if (inlinedHtml && !inlinedHtml.toLowerCase().includes('<!doctype')) {
-            inlinedHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + inlinedHtml + '\n</body>\n</html>';
-        }
+        emailHtml += '</head>\n<body style="margin:0;padding:0;">\n';
+        emailHtml += html;
+        emailHtml += '\n</body>\n</html>';
         
-        return inlinedHtml;
+        return emailHtml;
     }
 
     // Initialize when document is ready
