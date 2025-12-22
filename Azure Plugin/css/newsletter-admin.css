@@ -1316,25 +1316,50 @@ div.gjs-block[style] {
     overflow: hidden !important;
 }
 
+/* Device preview frame styling - Tablet */
+.gjs-frame-wrapper[data-device="Tablet"],
+.gjs-frame[style*="width: 768px"] {
+    border: 8px solid #444 !important;
+    border-radius: 16px !important;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.2) !important;
+    margin: 0 auto !important;
+    overflow: auto !important;
+}
+
 /* Mobile preview device frame styling */
 .gjs-frame-wrapper--mobile .gjs-frame,
+.gjs-frame-wrapper[data-device="Mobile"],
 .gjs-frame[style*="width: 320px"],
 .gjs-frame[style*="width: 375px"] {
     border: 10px solid #333 !important;
     border-radius: 30px !important;
     box-shadow: 0 5px 25px rgba(0,0,0,0.2) !important;
     margin: 0 auto !important;
+    overflow: auto !important;
+}
+
+/* Ensure the frame wrapper allows scrolling for all device previews */
+.gjs-frame-wrapper {
+    overflow: auto !important;
+}
+
+/* Ensure email content doesn't overflow in tablet view */
+.gjs-frame-wrapper[data-device="Tablet"] .gjs-frame table,
+.gjs-frame[style*="width: 768px"] table {
+    max-width: 100% !important;
+    width: 100% !important;
 }
 
 /* Ensure email content doesn't overflow in mobile view */
 .gjs-frame-wrapper--mobile .gjs-frame table,
+.gjs-frame-wrapper[data-device="Mobile"] .gjs-frame table,
 .gjs-frame[style*="width: 320px"] table,
 .gjs-frame[style*="width: 375px"] table {
     max-width: 100% !important;
     width: 100% !important;
 }
 
-/* Force responsive tables in canvas */
+/* Force responsive tables in canvas for all views */
 #gjs-editor table {
     max-width: 100%;
 }
@@ -1342,6 +1367,17 @@ div.gjs-block[style] {
 #gjs-editor img {
     max-width: 100%;
     height: auto;
+}
+
+/* Fix GrapesJS canvas height to allow full content view */
+.gjs-cv-canvas {
+    overflow: auto !important;
+}
+
+.gjs-cv-canvas__frames {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 100% !important;
 }
 
 /* Step 3: Review */

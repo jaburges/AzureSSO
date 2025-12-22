@@ -1312,17 +1312,34 @@
             $(this).addClass('active');
             
             if (editor) {
+                var deviceName = '';
                 switch (device) {
                     case 'desktop':
-                        editor.setDevice('Desktop');
+                        deviceName = 'Desktop';
                         break;
                     case 'tablet':
-                        editor.setDevice('Tablet');
+                        deviceName = 'Tablet';
                         break;
                     case 'mobile':
-                        editor.setDevice('Mobile');
+                        deviceName = 'Mobile';
                         break;
                 }
+                
+                editor.setDevice(deviceName);
+                
+                // Add data attribute for CSS targeting
+                var frameWrapper = document.querySelector('.gjs-frame-wrapper');
+                if (frameWrapper) {
+                    frameWrapper.setAttribute('data-device', deviceName);
+                }
+                
+                // Force canvas to recalculate scroll area after device change
+                setTimeout(function() {
+                    var canvas = editor.Canvas;
+                    if (canvas && canvas.refresh) {
+                        canvas.refresh();
+                    }
+                }, 100);
             }
         });
     }
