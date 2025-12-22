@@ -8,6 +8,36 @@
     var editor = null;
     var currentStep = 1;
 
+    /**
+     * Get email-ready HTML with CSS inlined into elements
+     * Email clients strip <style> tags, so CSS must be inline
+     */
+    function getEmailReadyHtml() {
+        if (!editor) return '';
+        
+        // Use gjs-get-inlined-html command from newsletter preset
+        // This inlines CSS directly into element style attributes
+        var inlinedHtml = editor.runCommand('gjs-get-inlined-html');
+        
+        // If command failed or returned empty, fall back to manual approach
+        if (!inlinedHtml) {
+            var html = editor.getHtml();
+            var css = editor.getCss();
+            // As fallback, include CSS in style tag (some clients support it)
+            inlinedHtml = html;
+            if (css) {
+                inlinedHtml = '<style>' + css + '</style>' + inlinedHtml;
+            }
+        }
+        
+        // Wrap in proper email HTML structure if needed
+        if (inlinedHtml && !inlinedHtml.toLowerCase().includes('<!doctype')) {
+            inlinedHtml = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + inlinedHtml + '\n</body>\n</html>';
+        }
+        
+        return inlinedHtml;
+    }
+
     // Initialize when document is ready
     $(document).ready(function() {
         initWorkflowNavigation();
@@ -1485,10 +1515,8 @@
     function goToStep(step) {
         // Save editor content before leaving step 2
         if (currentStep === 2 && editor) {
-            var html = editor.getHtml();
-            var css = editor.getCss();
-            var fullHtml = '<!DOCTYPE html><html><head><style>' + css + '</style></head><body>' + html + '</body></html>';
-            $('#newsletter_content_html').val(fullHtml);
+            // Get email-ready HTML with CSS inlined
+            $('#newsletter_content_html').val(getEmailReadyHtml());
             $('#newsletter_content_json').val(JSON.stringify(editor.getProjectData()));
         }
 
@@ -1835,12 +1863,19 @@
         }
 
         btn.prop('disabled', true).text('Sending...');
+        
+        // Sync latest content from editor before sending
+        var htmlContent = $('#newsletter_content_html').val();
+        if (editor) {
+            htmlContent = getEmailReadyHtml();
+            $('#newsletter_content_html').val(htmlContent);
+        }
 
         $.post(newsletterEditorConfig.ajaxUrl, {
             action: 'azure_newsletter_send_test',
             nonce: newsletterEditorConfig.nonce,
             email: email,
-            html: $('#newsletter_content_html').val(),
+            html: htmlContent,
             subject: $('#newsletter_subject').val(),
             from: $('#newsletter_from').val()
         }, function(response) {
@@ -1896,9 +1931,9 @@
         
         // Sync GrapesJS content to hidden fields if editor exists
         if (editor) {
-            var html = editor.runCommand('gjs-get-inlined-html');
+            var inlinedHtml = getEmailReadyHtml();
             var json = JSON.stringify(editor.getProjectData());
-            $('#newsletter_content_html').val(html);
+            $('#newsletter_content_html').val(inlinedHtml);
             $('#newsletter_content_json').val(json);
         }
         
