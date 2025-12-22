@@ -32,6 +32,9 @@ class Azure_Newsletter_Ajax {
         // Template management
         add_action('wp_ajax_azure_newsletter_get_template', array($this, 'get_template'));
         add_action('wp_ajax_azure_newsletter_reset_templates', array($this, 'reset_templates'));
+        
+        // Campaign preview
+        add_action('wp_ajax_azure_newsletter_get_preview', array($this, 'get_newsletter_preview'));
     }
     
     /**
@@ -128,6 +131,42 @@ class Azure_Newsletter_Ajax {
             'description' => $template->description,
             'content_html' => $template->content_html,
             'content_json' => $template->content_json
+        ));
+    }
+    
+    /**
+     * Get newsletter preview HTML for Quick View
+     */
+    public function get_newsletter_preview() {
+        check_ajax_referer('azure_newsletter_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $newsletter_id = intval($_POST['newsletter_id'] ?? 0);
+        
+        if (!$newsletter_id) {
+            wp_send_json_error('Invalid newsletter ID');
+        }
+        
+        global $wpdb;
+        $table = $wpdb->prefix . 'azure_newsletters';
+        
+        $newsletter = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE id = %d",
+            $newsletter_id
+        ));
+        
+        if (!$newsletter) {
+            wp_send_json_error('Newsletter not found');
+        }
+        
+        // Return the HTML content
+        wp_send_json_success(array(
+            'html' => $newsletter->content_html,
+            'subject' => $newsletter->subject,
+            'name' => $newsletter->name
         ));
     }
     

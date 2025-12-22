@@ -44,7 +44,19 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 ?>
 
 <div class="wrap newsletter-editor-wrap">
-    <h1><?php echo $newsletter ? __('Edit Newsletter', 'azure-plugin') : __('Create Newsletter', 'azure-plugin'); ?></h1>
+    <div class="editor-header">
+        <h1><?php echo $newsletter ? __('Edit Newsletter', 'azure-plugin') : __('Create Newsletter', 'azure-plugin'); ?></h1>
+        <div class="editor-header-actions">
+            <span id="save-status"></span>
+            <button type="button" class="button" id="save-draft-top">
+                <span class="dashicons dashicons-cloud-saved"></span>
+                <?php _e('Save Draft', 'azure-plugin'); ?>
+            </button>
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=campaigns'); ?>" class="button">
+                <?php _e('Back to Campaigns', 'azure-plugin'); ?>
+            </a>
+        </div>
+    </div>
     
     <!-- Arrow Flow Progress Steps -->
     <div class="arrow-flow-steps">

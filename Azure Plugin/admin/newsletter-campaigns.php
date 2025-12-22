@@ -20,6 +20,29 @@ if (!$table_exists) {
     return;
 }
 
+// Handle single-row actions
+if (isset($_GET['action']) && isset($_GET['id'])) {
+    $action = sanitize_key($_GET['action']);
+    $id = intval($_GET['id']);
+    
+    if ($action === 'delete' && wp_verify_nonce($_GET['_wpnonce'] ?? '', 'delete_' . $id)) {
+        $wpdb->delete($newsletters_table, array('id' => $id), array('%d'));
+        echo '<div class="notice notice-success is-dismissible"><p>' . __('Campaign deleted.', 'azure-plugin') . '</p></div>';
+    } elseif ($action === 'duplicate' && wp_verify_nonce($_GET['_wpnonce'] ?? '', 'duplicate_' . $id)) {
+        $original = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$newsletters_table} WHERE id = %d", $id), ARRAY_A);
+        if ($original) {
+            unset($original['id']);
+            $original['name'] = $original['name'] . ' (Copy)';
+            $original['status'] = 'draft';
+            $original['created_at'] = current_time('mysql');
+            $original['sent_at'] = null;
+            $original['scheduled_at'] = null;
+            $wpdb->insert($newsletters_table, $original);
+            echo '<div class="notice notice-success is-dismissible"><p>' . __('Campaign duplicated.', 'azure-plugin') . '</p></div>';
+        }
+    }
+}
+
 // Handle bulk actions
 if (isset($_POST['action']) && isset($_POST['newsletter_ids'])) {
     if (wp_verify_nonce($_POST['_wpnonce'], 'bulk_newsletters')) {
@@ -211,6 +234,14 @@ $status_counts = $wpdb->get_results("
                             </a>
                         </strong>
                         <div class="row-actions">
+                            <span class="quick-view">
+                                <a href="#" class="quick-view-link" 
+                                   data-id="<?php echo $campaign->id; ?>" 
+                                   data-name="<?php echo esc_attr($campaign->name); ?>"
+                                   data-subject="<?php echo esc_attr($campaign->subject); ?>">
+                                    <?php _e('Quick View', 'azure-plugin'); ?>
+                                </a> |
+                            </span>
                             <span class="edit">
                                 <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new&id=' . $campaign->id); ?>">
                                     <?php _e('Edit', 'azure-plugin'); ?>
@@ -226,7 +257,7 @@ $status_counts = $wpdb->get_results("
                                 <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=azure-plugin-newsletter&tab=campaigns&action=delete&id=' . $campaign->id), 'delete_' . $campaign->id); ?>" 
                                    class="submitdelete" onclick="return confirm('<?php _e('Are you sure?', 'azure-plugin'); ?>')">
                                     <?php _e('Delete', 'azure-plugin'); ?>
-                                </a>
+                                </a> |
                             </span>
                             <?php endif; ?>
                             <span class="view">
@@ -334,6 +365,106 @@ $status_counts = $wpdb->get_results("
 }
 </style>
 
+<!-- Quick View Modal -->
+<div id="quick-view-modal" class="newsletter-modal" style="display:none;">
+    <div class="newsletter-modal-overlay"></div>
+    <div class="newsletter-modal-content">
+        <div class="newsletter-modal-header">
+            <h2 id="modal-title"><?php _e('Newsletter Preview', 'azure-plugin'); ?></h2>
+            <button type="button" class="close-modal">&times;</button>
+        </div>
+        <div class="newsletter-modal-meta">
+            <span class="modal-subject"><strong><?php _e('Subject:', 'azure-plugin'); ?></strong> <span id="modal-subject-text"></span></span>
+        </div>
+        <div class="newsletter-modal-body">
+            <div id="modal-loading" style="text-align:center;padding:40px;">
+                <span class="spinner is-active" style="float:none;"></span>
+                <p><?php _e('Loading preview...', 'azure-plugin'); ?></p>
+            </div>
+            <iframe id="preview-iframe" style="width:100%;height:500px;border:none;display:none;"></iframe>
+        </div>
+        <div class="newsletter-modal-footer">
+            <a href="#" id="modal-edit-btn" class="button button-primary"><?php _e('Edit', 'azure-plugin'); ?></a>
+            <button type="button" class="button close-modal"><?php _e('Close', 'azure-plugin'); ?></button>
+        </div>
+    </div>
+</div>
+
+<style>
+.newsletter-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.newsletter-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.6);
+}
+.newsletter-modal-content {
+    position: relative;
+    background: #fff;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+}
+.newsletter-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px;
+    border-bottom: 1px solid #dcdcde;
+}
+.newsletter-modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+}
+.newsletter-modal-header .close-modal {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #646970;
+    padding: 0;
+    line-height: 1;
+}
+.newsletter-modal-header .close-modal:hover {
+    color: #1d2327;
+}
+.newsletter-modal-meta {
+    padding: 10px 20px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #dcdcde;
+    font-size: 13px;
+    color: #50575e;
+}
+.newsletter-modal-body {
+    flex: 1;
+    overflow: auto;
+    padding: 0;
+}
+.newsletter-modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #dcdcde;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+</style>
+
 <script>
 jQuery(document).ready(function($) {
     $('#filter-btn').on('click', function() {
@@ -347,6 +478,69 @@ jQuery(document).ready(function($) {
     
     $('#cb-select-all').on('change', function() {
         $('input[name="newsletter_ids[]"]').prop('checked', $(this).is(':checked'));
+    });
+    
+    // Quick View Modal
+    $('.quick-view-link').on('click', function(e) {
+        e.preventDefault();
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        var subject = $(this).data('subject');
+        
+        $('#modal-title').text(name || 'Newsletter Preview');
+        $('#modal-subject-text').text(subject);
+        $('#modal-edit-btn').attr('href', '<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new&id='); ?>' + id);
+        
+        // Reset modal state
+        $('#modal-loading').show();
+        $('#preview-iframe').hide();
+        
+        // Show modal
+        $('#quick-view-modal').show();
+        $('body').css('overflow', 'hidden');
+        
+        // Load preview content via AJAX
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_get_preview',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_nonce'); ?>',
+            newsletter_id: id
+        }, function(response) {
+            $('#modal-loading').hide();
+            if (response.success && response.data.html) {
+                var iframe = $('#preview-iframe')[0];
+                iframe.contentWindow.document.open();
+                iframe.contentWindow.document.write(response.data.html);
+                iframe.contentWindow.document.close();
+                $('#preview-iframe').show();
+            } else {
+                $('#preview-iframe').show();
+                var iframe = $('#preview-iframe')[0];
+                iframe.contentWindow.document.open();
+                iframe.contentWindow.document.write('<p style="padding:20px;color:#d63638;">Unable to load preview.</p>');
+                iframe.contentWindow.document.close();
+            }
+        }).fail(function() {
+            $('#modal-loading').hide();
+            $('#preview-iframe').show();
+            var iframe = $('#preview-iframe')[0];
+            iframe.contentWindow.document.open();
+            iframe.contentWindow.document.write('<p style="padding:20px;color:#d63638;">Network error loading preview.</p>');
+            iframe.contentWindow.document.close();
+        });
+    });
+    
+    // Close modal
+    $('.close-modal, .newsletter-modal-overlay').on('click', function() {
+        $('#quick-view-modal').hide();
+        $('body').css('overflow', '');
+    });
+    
+    // Close on Escape key
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape' && $('#quick-view-modal').is(':visible')) {
+            $('#quick-view-modal').hide();
+            $('body').css('overflow', '');
+        }
     });
 });
 </script>

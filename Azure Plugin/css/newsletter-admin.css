@@ -2,6 +2,69 @@
  * Newsletter Admin Styles
  */
 
+/* Editor Header with Save Draft */
+.editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.editor-header h1 {
+    margin: 0;
+    flex: 1;
+}
+
+.editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.editor-header-actions .button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.editor-header-actions .button .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+}
+
+#save-status {
+    font-size: 13px;
+    padding: 0 10px;
+}
+
+#save-status .saving {
+    color: #646970;
+}
+
+#save-status .saved {
+    color: #00a32a;
+    font-weight: 500;
+}
+
+#save-status .error {
+    color: #d63638;
+    font-weight: 500;
+}
+
+/* Spinning animation for save icon */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.dashicons.spin {
+    animation: spin 1s linear infinite;
+}
+
 /* Arrow Flow Progress Steps */
 .arrow-flow-steps {
     display: flex;

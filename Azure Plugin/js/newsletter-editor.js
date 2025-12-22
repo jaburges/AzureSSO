@@ -1873,4 +1873,93 @@
         input.focus();
     });
 
+    /**
+     * Save Draft functionality - accessible from all steps
+     */
+    $(document).on('click', '#save-draft-top, #save-draft-btn', function(e) {
+        e.preventDefault();
+        saveDraft($(this));
+    });
+    
+    function saveDraft(btn) {
+        var statusEl = $('#save-status');
+        var originalText = btn.find('.dashicons').length ? btn.html() : btn.text();
+        
+        // Update button state
+        btn.prop('disabled', true);
+        if (btn.attr('id') === 'save-draft-top') {
+            btn.html('<span class="dashicons dashicons-update-alt spin"></span> Saving...');
+        } else {
+            btn.text('Saving...');
+        }
+        statusEl.html('<span class="saving">Saving...</span>');
+        
+        // Sync GrapesJS content to hidden fields if editor exists
+        if (editor) {
+            var html = editor.runCommand('gjs-get-inlined-html');
+            var json = JSON.stringify(editor.getProjectData());
+            $('#newsletter_content_html').val(html);
+            $('#newsletter_content_json').val(json);
+        }
+        
+        // Collect form data
+        var formData = {
+            action: 'azure_newsletter_save',
+            nonce: newsletterEditorConfig.nonce,
+            newsletter_id: $('#newsletter_id').val(),
+            newsletter_name: $('#newsletter_name').val(),
+            newsletter_subject: $('#newsletter_subject').val(),
+            newsletter_from: $('#newsletter_from').val(),
+            newsletter_content_html: $('#newsletter_content_html').val(),
+            newsletter_content_json: $('#newsletter_content_json').val(),
+            send_option: 'draft' // Always save as draft
+        };
+        
+        $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
+            btn.prop('disabled', false);
+            
+            if (response.success) {
+                // Update newsletter ID if new
+                if (response.data.newsletter_id) {
+                    $('#newsletter_id').val(response.data.newsletter_id);
+                    // Update URL without reload
+                    var newUrl = newsletterEditorConfig.ajaxUrl.replace('admin-ajax.php', 
+                        'admin.php?page=azure-plugin-newsletter&action=new&id=' + response.data.newsletter_id);
+                    if (window.history.replaceState) {
+                        window.history.replaceState({}, '', newUrl);
+                    }
+                }
+                
+                if (btn.attr('id') === 'save-draft-top') {
+                    btn.html('<span class="dashicons dashicons-cloud-saved"></span> Save Draft');
+                } else {
+                    btn.text('Save Draft');
+                }
+                statusEl.html('<span class="saved">✓ Saved</span>');
+                
+                // Clear saved status after 3 seconds
+                setTimeout(function() {
+                    statusEl.html('');
+                }, 3000);
+            } else {
+                if (btn.attr('id') === 'save-draft-top') {
+                    btn.html('<span class="dashicons dashicons-cloud-saved"></span> Save Draft');
+                } else {
+                    btn.text('Save Draft');
+                }
+                statusEl.html('<span class="error">✗ Failed to save</span>');
+                alert('Error saving: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            if (btn.attr('id') === 'save-draft-top') {
+                btn.html('<span class="dashicons dashicons-cloud-saved"></span> Save Draft');
+            } else {
+                btn.text('Save Draft');
+            }
+            statusEl.html('<span class="error">✗ Failed to save</span>');
+            alert('Network error. Please try again.');
+        });
+    }
+
 })(jQuery);
