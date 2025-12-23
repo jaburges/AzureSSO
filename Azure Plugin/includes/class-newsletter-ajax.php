@@ -253,9 +253,12 @@ class Azure_Newsletter_Ajax {
             $scheduled_at = date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($newsletter->scheduled_at));
         }
         
+        // Clean up HTML for preview - remove any CSS text that leaked into body
+        $clean_html = $this->clean_html_for_preview($newsletter->content_html);
+        
         // Return all data
         wp_send_json_success(array(
-            'html' => $newsletter->content_html,
+            'html' => $clean_html,
             'subject' => $newsletter->subject,
             'name' => $newsletter->name,
             'status' => $newsletter->status,
@@ -446,19 +449,9 @@ class Azure_Newsletter_Ajax {
         
         // Handle recipient lists - decode from JSON string
         $recipient_lists = array();
-        $debug_lists = array(
-            'raw_post' => $_POST['newsletter_lists'] ?? 'NOT SET',
-            'after_stripslashes' => '',
-            'decoded' => null,
-            'final' => array()
-        );
-        
         if (!empty($_POST['newsletter_lists'])) {
             $lists_raw = stripslashes($_POST['newsletter_lists']);
-            $debug_lists['after_stripslashes'] = $lists_raw;
             $decoded = json_decode($lists_raw, true);
-            $debug_lists['decoded'] = $decoded;
-            
             if (is_array($decoded)) {
                 $recipient_lists = array_map('sanitize_text_field', $decoded);
             } elseif (is_string($_POST['newsletter_lists'])) {
@@ -466,10 +459,6 @@ class Azure_Newsletter_Ajax {
                 $recipient_lists = array(sanitize_text_field($_POST['newsletter_lists']));
             }
         }
-        $debug_lists['final'] = $recipient_lists;
-        
-        // Log for debugging
-        error_log('Newsletter save - lists debug: ' . print_r($debug_lists, true));
         
         $data = array(
             'name' => sanitize_text_field($_POST['newsletter_name'] ?? ''),
@@ -554,9 +543,7 @@ class Azure_Newsletter_Ajax {
         
         wp_send_json_success(array(
             'newsletter_id' => $newsletter_id,
-            'status' => $data['status'],
-            'debug_lists' => $debug_lists, // Temporary debug info
-            'saved_lists' => $recipient_lists
+            'status' => $data['status']
         ));
     }
     
@@ -1638,6 +1625,36 @@ class Azure_Newsletter_Ajax {
         }
         
         wp_send_json_success(__('Newsletter data has been reset.', 'azure-plugin'));
+    }
+    
+    /**
+     * Clean HTML for preview display
+     * Removes CSS text that may have leaked into body content
+     */
+    private function clean_html_for_preview($html) {
+        if (empty($html)) {
+            return '';
+        }
+        
+        // If it's a full HTML document, extract and clean the body
+        if (preg_match('/<body[^>]*>(.*?)<\/body>/is', $html, $matches)) {
+            $body_content = $matches[1];
+            
+            // Remove CSS comments and rules from body content
+            $body_content = preg_replace('/^\s*\/\*[\s\S]*?\*\/\s*/i', '', $body_content);
+            $body_content = preg_replace('/^[^<]*?}\s*/i', '', $body_content);
+            $body_content = preg_replace('/^[^<]+(?=<)/', '', $body_content);
+            
+            // Rebuild the HTML
+            $html = preg_replace('/(<body[^>]*>).*?(<\/body>)/is', '$1' . $body_content . '$2', $html);
+        } else {
+            // Not a full document, just clean the content
+            $html = preg_replace('/^\s*\/\*[\s\S]*?\*\/\s*/i', '', $html);
+            $html = preg_replace('/^[^<]*?}\s*/i', '', $html);
+            $html = preg_replace('/^[^<]+(?=<)/', '', $html);
+        }
+        
+        return $html;
     }
 }
 

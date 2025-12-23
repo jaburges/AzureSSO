@@ -20,9 +20,30 @@
         var css = editor.getCss();
         
         // Clean up the HTML - remove any raw CSS text that might be at the start
-        // GrapesJS sometimes outputs CSS as text content
-        html = html.replace(/^\s*\*\s*\{[^}]*\}[^<]*/i, ''); // Remove leading CSS rules
-        html = html.replace(/^[^<]*(?=<)/i, ''); // Remove any text before first tag
+        // GrapesJS and previous saves might have CSS as text content
+        
+        // Remove CSS comment blocks at start
+        html = html.replace(/^[\s\S]*?\/\*[\s\S]*?\*\/[\s\S]*?(?=<)/i, '');
+        
+        // Remove CSS rules at start (e.g., "body { ... } table { ... }")
+        html = html.replace(/^[\s\S]*?}\s*(?=<)/i, '');
+        
+        // Remove any remaining text before first HTML tag
+        html = html.replace(/^[^<]+/, '');
+        
+        // Also clean up if CSS is embedded after doctype/html/head but before body content
+        // This catches full HTML documents with CSS bleeding into visible area
+        if (html.indexOf('<!DOCTYPE') === 0 || html.indexOf('<html') === 0) {
+            // It's already a full document - extract just the body content
+            var bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyMatch) {
+                html = bodyMatch[1];
+                // Clean any leading CSS text from body content
+                html = html.replace(/^[\s\S]*?\/\*[\s\S]*?\*\/[\s\S]*?(?=<)/i, '');
+                html = html.replace(/^[\s\S]*?}\s*(?=<)/i, '');
+                html = html.replace(/^[^<]+/, '');
+            }
+        }
         
         // Build proper email HTML structure
         var emailHtml = '<!DOCTYPE html>\n';
@@ -2059,12 +2080,6 @@
             selectedLists.push($(this).val());
         });
         
-        // Debug: log what we're sending
-        console.log('Save Draft - Selected lists:', selectedLists);
-        console.log('Save Draft - JSON:', JSON.stringify(selectedLists));
-        console.log('Save Draft - Checkboxes found:', $('input[name="newsletter_lists[]"]').length);
-        console.log('Save Draft - Checked checkboxes:', $('input[name="newsletter_lists[]"]:checked').length);
-        
         // Collect form data - use JSON.stringify for array to ensure proper transmission
         var formData = {
             action: 'azure_newsletter_save',
@@ -2081,13 +2096,6 @@
         
         $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
             btn.prop('disabled', false);
-            
-            // Debug: log the response
-            console.log('Save Draft - Response:', response);
-            if (response.data && response.data.debug_lists) {
-                console.log('Save Draft - Server received lists:', response.data.debug_lists);
-                console.log('Save Draft - Saved lists:', response.data.saved_lists);
-            }
             
             if (response.success) {
                 // Update newsletter ID if new
