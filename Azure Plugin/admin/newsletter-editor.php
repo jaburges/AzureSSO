@@ -41,6 +41,15 @@ if ($template_id > 0 && !$newsletter) {
 }
 
 $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
+
+// Get saved recipient lists for editing
+$saved_lists = array('all'); // Default to all
+if ($newsletter && !empty($newsletter->recipient_lists)) {
+    $saved_lists = json_decode($newsletter->recipient_lists, true);
+    if (!is_array($saved_lists)) {
+        $saved_lists = array('all');
+    }
+}
 ?>
 
 <div class="wrap newsletter-editor-wrap">
@@ -160,7 +169,7 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
                         <td>
                             <div class="recipient-checkboxes">
                                 <label class="recipient-checkbox">
-                                    <input type="checkbox" name="newsletter_lists[]" value="all" checked>
+                                    <input type="checkbox" name="newsletter_lists[]" value="all" <?php checked(in_array('all', $saved_lists)); ?>>
                                     <span class="checkbox-label">
                                         <strong><?php _e('All WordPress Subscribers', 'azure-plugin'); ?></strong>
                                         <span class="list-count" data-list="all"></span>
@@ -174,7 +183,7 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
                                     $lists = $wpdb->get_results("SELECT id, name, type FROM {$lists_table} ORDER BY name");
                                     foreach ($lists as $list): ?>
                                 <label class="recipient-checkbox">
-                                    <input type="checkbox" name="newsletter_lists[]" value="<?php echo esc_attr($list->id); ?>">
+                                    <input type="checkbox" name="newsletter_lists[]" value="<?php echo esc_attr($list->id); ?>" <?php checked(in_array((string)$list->id, $saved_lists) || in_array($list->id, $saved_lists)); ?>>
                                     <span class="checkbox-label">
                                         <strong><?php echo esc_html($list->name); ?></strong>
                                         <span class="list-type"><?php echo esc_html(ucfirst($list->type)); ?></span>

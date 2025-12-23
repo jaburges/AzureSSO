@@ -171,13 +171,51 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Newsletter not found');
         }
         
-        // Get recipient info from queue
+        // Get recipient info from saved lists OR queue
         $recipients = array('total' => 0, 'lists' => array());
-        $queued_count = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$queue_table} WHERE newsletter_id = %d",
-            $newsletter_id
-        ));
-        $recipients['total'] = intval($queued_count);
+        
+        // First try to get from saved recipient_lists
+        $saved_lists = json_decode($newsletter->recipient_lists ?? '[]', true);
+        if (!empty($saved_lists)) {
+            foreach ($saved_lists as $list_id) {
+                if ($list_id === 'all') {
+                    $count = count_users()['total_users'];
+                    $recipients['lists'][] = array('name' => 'All WordPress Subscribers', 'count' => $count);
+                    $recipients['total'] += $count;
+                } else {
+                    $list = $wpdb->get_row($wpdb->prepare(
+                        "SELECT * FROM {$lists_table} WHERE id = %d",
+                        intval($list_id)
+                    ));
+                    if ($list) {
+                        $count = 0;
+                        if ($list->type === 'role') {
+                            $criteria = json_decode($list->criteria, true);
+                            if (!empty($criteria['roles'])) {
+                                foreach ($criteria['roles'] as $role) {
+                                    $count += count(get_users(array('role' => $role)));
+                                }
+                            }
+                        } elseif ($list->type === 'custom') {
+                            $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
+                            $count = intval($wpdb->get_var($wpdb->prepare(
+                                "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d AND unsubscribed_at IS NULL",
+                                $list_id
+                            )));
+                        }
+                        $recipients['lists'][] = array('name' => $list->name, 'count' => $count);
+                        $recipients['total'] += $count;
+                    }
+                }
+            }
+        } else {
+            // Fall back to queue count for sent newsletters
+            $queued_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$queue_table} WHERE newsletter_id = %d",
+                $newsletter_id
+            ));
+            $recipients['total'] = intval($queued_count);
+        }
         
         // Get stats if sent
         $stats = null;
@@ -392,6 +430,12 @@ class Azure_Newsletter_Ajax {
         global $wpdb;
         $table = $wpdb->prefix . 'azure_newsletters';
         
+        // Ensure recipient_lists column exists (migration)
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'recipient_lists'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN recipient_lists text AFTER content_json");
+        }
+        
         $newsletter_id = intval($_POST['newsletter_id'] ?? 0);
         $send_option = sanitize_key($_POST['send_option'] ?? 'draft');
         
@@ -400,6 +444,13 @@ class Azure_Newsletter_Ajax {
         $from_email = $from_parts[0] ?? '';
         $from_name = $from_parts[1] ?? '';
         
+        // Handle recipient lists
+        $recipient_lists = array();
+        if (isset($_POST['newsletter_lists'])) {
+            $lists = is_array($_POST['newsletter_lists']) ? $_POST['newsletter_lists'] : array($_POST['newsletter_lists']);
+            $recipient_lists = array_map('sanitize_text_field', $lists);
+        }
+        
         $data = array(
             'name' => sanitize_text_field($_POST['newsletter_name'] ?? ''),
             'subject' => sanitize_text_field($_POST['newsletter_subject'] ?? ''),
@@ -407,6 +458,7 @@ class Azure_Newsletter_Ajax {
             'from_name' => $from_name,
             'content_html' => wp_kses_post($_POST['newsletter_content_html'] ?? ''),
             'content_json' => sanitize_text_field($_POST['newsletter_content_json'] ?? ''),
+            'recipient_lists' => json_encode($recipient_lists),
             'updated_at' => current_time('mysql')
         );
         
@@ -1378,6 +1430,7 @@ class Azure_Newsletter_Ajax {
                 from_name varchar(255) NOT NULL,
                 content_html longtext,
                 content_json longtext,
+                recipient_lists text,
                 status varchar(20) DEFAULT 'draft',
                 scheduled_at datetime DEFAULT NULL,
                 sent_at datetime DEFAULT NULL,

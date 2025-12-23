@@ -2041,6 +2041,12 @@
             $('#newsletter_content_json').val(json);
         }
         
+        // Get selected lists
+        var selectedLists = [];
+        $('input[name="newsletter_lists[]"]:checked').each(function() {
+            selectedLists.push($(this).val());
+        });
+        
         // Collect form data
         var formData = {
             action: 'azure_newsletter_save',
@@ -2051,6 +2057,7 @@
             newsletter_from: $('#newsletter_from').val(),
             newsletter_content_html: $('#newsletter_content_html').val(),
             newsletter_content_json: $('#newsletter_content_json').val(),
+            newsletter_lists: selectedLists,
             send_option: 'draft' // Always save as draft
         };
         
