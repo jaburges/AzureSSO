@@ -54,6 +54,25 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
     }
 }
 
+// Get list being edited (if any)
+$editing_list = null;
+$editing_members = array();
+if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['id'])) {
+    $edit_id = intval($_GET['id']);
+    $editing_list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$lists_table} WHERE id = %d", $edit_id));
+    
+    if ($editing_list && $editing_list->type === 'custom') {
+        $editing_members = $wpdb->get_results($wpdb->prepare(
+            "SELECT m.*, u.user_email, u.display_name 
+             FROM {$members_table} m
+             LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+             WHERE m.list_id = %d AND m.unsubscribed_at IS NULL
+             ORDER BY u.display_name ASC",
+            $edit_id
+        ));
+    }
+}
+
 // Get all lists
 $lists = $wpdb->get_results("SELECT * FROM {$lists_table} ORDER BY name ASC");
 
@@ -136,9 +155,13 @@ $roles = $wp_roles->get_names();
                 <?php endif; ?>
                 
                 <div class="list-actions">
-                    <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=lists&action=edit&id=' . $list->id); ?>" class="button button-small">
+                    <button type="button" class="button button-small edit-list-btn" 
+                            data-id="<?php echo $list->id; ?>"
+                            data-name="<?php echo esc_attr($list->name); ?>"
+                            data-description="<?php echo esc_attr($list->description); ?>"
+                            data-type="<?php echo esc_attr($list->type); ?>">
                         <?php _e('Edit', 'azure-plugin'); ?>
-                    </a>
+                    </button>
                     <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=azure-plugin-newsletter&tab=lists&action=delete&id=' . $list->id), 'delete_list'); ?>" 
                        class="button button-small" onclick="return confirm('<?php _e('Are you sure?', 'azure-plugin'); ?>')">
                         <?php _e('Delete', 'azure-plugin'); ?>
@@ -203,6 +226,47 @@ $roles = $wp_roles->get_names();
                 <button type="submit" name="create_list" class="button button-primary"><?php _e('Create List', 'azure-plugin'); ?></button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Edit List Modal -->
+<div id="edit-list-modal" class="modal" style="display:none;">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3><?php _e('Edit List', 'azure-plugin'); ?>: <span id="edit-list-name"></span></h3>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-list-id" value="">
+            
+            <!-- Role-based list info -->
+            <div id="edit-role-info" style="display:none;">
+                <p class="description"><?php _e('This is a role-based list. Members are automatically determined by user roles. To change the roles, delete this list and create a new one.', 'azure-plugin'); ?></p>
+            </div>
+            
+            <!-- Custom list management -->
+            <div id="edit-custom-list">
+                <div class="user-search-section">
+                    <h4><?php _e('Add Members', 'azure-plugin'); ?></h4>
+                    <div class="search-box-wrapper">
+                        <input type="text" id="user-search-input" class="regular-text" 
+                               placeholder="<?php _e('Search users by name or email...', 'azure-plugin'); ?>">
+                        <span class="spinner" id="search-spinner"></span>
+                    </div>
+                    <div id="user-search-results"></div>
+                </div>
+                
+                <div class="current-members-section">
+                    <h4><?php _e('Current Members', 'azure-plugin'); ?> (<span id="member-count">0</span>)</h4>
+                    <div id="current-members-list">
+                        <p class="no-members"><?php _e('No members in this list yet.', 'azure-plugin'); ?></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="button modal-close"><?php _e('Close', 'azure-plugin'); ?></button>
+        </div>
     </div>
 </div>
 
@@ -340,24 +404,155 @@ $roles = $wp_roles->get_names();
     align-items: center;
     gap: 5px;
 }
+
+/* Edit Modal Styles */
+.modal-large {
+    max-width: 800px;
+}
+.user-search-section {
+    margin-bottom: 25px;
+}
+.search-box-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.search-box-wrapper input {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+.search-box-wrapper .spinner {
+    visibility: hidden;
+}
+.search-box-wrapper .spinner.is-active {
+    visibility: visible;
+}
+#user-search-results {
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: none;
+}
+#user-search-results.has-results {
+    display: block;
+}
+.search-result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.search-result-item:last-child {
+    border-bottom: none;
+}
+.search-result-item:hover {
+    background: #f0f6fc;
+}
+.search-result-item.already-member {
+    background: #f8f9fa;
+    color: #999;
+    cursor: default;
+}
+.search-result-item .user-info {
+    display: flex;
+    flex-direction: column;
+}
+.search-result-item .user-name {
+    font-weight: 500;
+}
+.search-result-item .user-email {
+    font-size: 12px;
+    color: #666;
+}
+.search-result-item .add-btn {
+    color: #2271b1;
+    font-size: 12px;
+}
+.search-result-item.already-member .add-btn {
+    color: #999;
+}
+
+/* Current Members List */
+.current-members-section h4 {
+    margin-bottom: 10px;
+}
+#current-members-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f8f9fa;
+}
+.member-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+}
+.member-item:last-child {
+    border-bottom: none;
+}
+.member-item .member-info {
+    display: flex;
+    flex-direction: column;
+}
+.member-item .member-name {
+    font-weight: 500;
+}
+.member-item .member-email {
+    font-size: 12px;
+    color: #666;
+}
+.member-item .remove-btn {
+    color: #d63638;
+    cursor: pointer;
+    font-size: 12px;
+}
+.member-item .remove-btn:hover {
+    text-decoration: underline;
+}
+.no-members {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    margin: 0;
+}
 </style>
 
 <script>
 jQuery(document).ready(function($) {
-    // Open modal
+    var searchTimeout = null;
+    var currentListId = null;
+    var currentMembers = [];
+    
+    // Open create modal
     $('#create-list-btn').on('click', function() {
         $('#create-list-modal').show();
     });
     
-    // Close modal
+    // Close modals
     $('.modal-close, .modal-cancel').on('click', function() {
-        $('#create-list-modal').hide();
+        $('.modal').hide();
+        $('#user-search-input').val('');
+        $('#user-search-results').removeClass('has-results').empty();
     });
     
     // Close on background click
-    $('#create-list-modal').on('click', function(e) {
+    $('.modal').on('click', function(e) {
         if (e.target === this) {
             $(this).hide();
+            $('#user-search-input').val('');
+            $('#user-search-results').removeClass('has-results').empty();
         }
     });
     
@@ -370,5 +565,181 @@ jQuery(document).ready(function($) {
             $('#custom-options').show();
         }
     });
+    
+    // Edit list button click
+    $('.edit-list-btn').on('click', function() {
+        var listId = $(this).data('id');
+        var listName = $(this).data('name');
+        var listType = $(this).data('type');
+        
+        currentListId = listId;
+        $('#edit-list-id').val(listId);
+        $('#edit-list-name').text(listName);
+        
+        // Show/hide appropriate sections based on list type
+        if (listType === 'custom') {
+            $('#edit-role-info').hide();
+            $('#edit-custom-list').show();
+            loadListMembers(listId);
+        } else {
+            $('#edit-role-info').show();
+            $('#edit-custom-list').hide();
+        }
+        
+        $('#edit-list-modal').show();
+    });
+    
+    // Load list members
+    function loadListMembers(listId) {
+        $('#current-members-list').html('<p class="no-members">Loading...</p>');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_get_list_members',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_lists'); ?>',
+            list_id: listId
+        }, function(response) {
+            if (response.success) {
+                currentMembers = response.data.members || [];
+                renderMembers();
+            } else {
+                $('#current-members-list').html('<p class="no-members">Error loading members.</p>');
+            }
+        });
+    }
+    
+    // Render members list
+    function renderMembers() {
+        var html = '';
+        $('#member-count').text(currentMembers.length);
+        
+        if (currentMembers.length === 0) {
+            html = '<p class="no-members"><?php _e('No members in this list yet.', 'azure-plugin'); ?></p>';
+        } else {
+            currentMembers.forEach(function(member) {
+                html += '<div class="member-item" data-user-id="' + member.user_id + '">';
+                html += '<div class="member-info">';
+                html += '<span class="member-name">' + escapeHtml(member.display_name || 'User #' + member.user_id) + '</span>';
+                html += '<span class="member-email">' + escapeHtml(member.user_email || '') + '</span>';
+                html += '</div>';
+                html += '<span class="remove-btn" data-user-id="' + member.user_id + '"><?php _e('Remove', 'azure-plugin'); ?></span>';
+                html += '</div>';
+            });
+        }
+        
+        $('#current-members-list').html(html);
+    }
+    
+    // User search
+    $('#user-search-input').on('input', function() {
+        var query = $(this).val().trim();
+        
+        clearTimeout(searchTimeout);
+        
+        if (query.length < 2) {
+            $('#user-search-results').removeClass('has-results').empty();
+            return;
+        }
+        
+        $('#search-spinner').addClass('is-active');
+        
+        searchTimeout = setTimeout(function() {
+            $.post(ajaxurl, {
+                action: 'azure_newsletter_search_users',
+                nonce: '<?php echo wp_create_nonce('azure_newsletter_lists'); ?>',
+                query: query,
+                list_id: currentListId
+            }, function(response) {
+                $('#search-spinner').removeClass('is-active');
+                
+                if (response.success && response.data.users.length > 0) {
+                    var html = '';
+                    response.data.users.forEach(function(user) {
+                        var isMember = currentMembers.some(m => m.user_id == user.ID);
+                        html += '<div class="search-result-item ' + (isMember ? 'already-member' : '') + '" data-user-id="' + user.ID + '">';
+                        html += '<div class="user-info">';
+                        html += '<span class="user-name">' + escapeHtml(user.display_name) + '</span>';
+                        html += '<span class="user-email">' + escapeHtml(user.user_email) + '</span>';
+                        html += '</div>';
+                        html += '<span class="add-btn">' + (isMember ? '<?php _e('Already added', 'azure-plugin'); ?>' : '<?php _e('+ Add', 'azure-plugin'); ?>') + '</span>';
+                        html += '</div>';
+                    });
+                    $('#user-search-results').addClass('has-results').html(html);
+                } else {
+                    $('#user-search-results').addClass('has-results').html('<div style="padding:10px;color:#666;"><?php _e('No users found', 'azure-plugin'); ?></div>');
+                }
+            });
+        }, 300);
+    });
+    
+    // Add user to list
+    $(document).on('click', '.search-result-item:not(.already-member)', function() {
+        var userId = $(this).data('user-id');
+        var userName = $(this).find('.user-name').text();
+        var userEmail = $(this).find('.user-email').text();
+        var $item = $(this);
+        
+        $item.addClass('already-member');
+        $item.find('.add-btn').text('Adding...');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_add_list_member',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_lists'); ?>',
+            list_id: currentListId,
+            user_id: userId
+        }, function(response) {
+            if (response.success) {
+                $item.find('.add-btn').text('<?php _e('Already added', 'azure-plugin'); ?>');
+                currentMembers.push({
+                    user_id: userId,
+                    display_name: userName,
+                    user_email: userEmail
+                });
+                renderMembers();
+            } else {
+                $item.removeClass('already-member');
+                $item.find('.add-btn').text('<?php _e('+ Add', 'azure-plugin'); ?>');
+                alert(response.data || 'Error adding user');
+            }
+        });
+    });
+    
+    // Remove user from list
+    $(document).on('click', '.remove-btn', function() {
+        var userId = $(this).data('user-id');
+        var $item = $(this).closest('.member-item');
+        
+        if (!confirm('<?php _e('Remove this member from the list?', 'azure-plugin'); ?>')) {
+            return;
+        }
+        
+        $item.css('opacity', '0.5');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_remove_list_member',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_lists'); ?>',
+            list_id: currentListId,
+            user_id: userId
+        }, function(response) {
+            if (response.success) {
+                currentMembers = currentMembers.filter(m => m.user_id != userId);
+                renderMembers();
+                // Update search results if visible
+                $('.search-result-item[data-user-id="' + userId + '"]')
+                    .removeClass('already-member')
+                    .find('.add-btn').text('<?php _e('+ Add', 'azure-plugin'); ?>');
+            } else {
+                $item.css('opacity', '1');
+                alert(response.data || 'Error removing user');
+            }
+        });
+    });
+    
+    // Escape HTML helper
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 });
 </script>

@@ -35,6 +35,12 @@ class Azure_Newsletter_Ajax {
         
         // Campaign preview
         add_action('wp_ajax_azure_newsletter_get_preview', array($this, 'get_newsletter_preview'));
+        
+        // List member management
+        add_action('wp_ajax_azure_newsletter_get_list_members', array($this, 'get_list_members'));
+        add_action('wp_ajax_azure_newsletter_search_users', array($this, 'search_users'));
+        add_action('wp_ajax_azure_newsletter_add_list_member', array($this, 'add_list_member'));
+        add_action('wp_ajax_azure_newsletter_remove_list_member', array($this, 'remove_list_member'));
     }
     
     /**
@@ -168,6 +174,156 @@ class Azure_Newsletter_Ajax {
             'subject' => $newsletter->subject,
             'name' => $newsletter->name
         ));
+    }
+    
+    /**
+     * Get list members
+     */
+    public function get_list_members() {
+        check_ajax_referer('azure_newsletter_lists', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $list_id = intval($_POST['list_id'] ?? 0);
+        
+        if (!$list_id) {
+            wp_send_json_error('Invalid list ID');
+        }
+        
+        global $wpdb;
+        $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
+        
+        $members = $wpdb->get_results($wpdb->prepare(
+            "SELECT m.user_id, m.email, u.user_email, u.display_name 
+             FROM {$members_table} m
+             LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+             WHERE m.list_id = %d AND m.unsubscribed_at IS NULL
+             ORDER BY u.display_name ASC",
+            $list_id
+        ));
+        
+        wp_send_json_success(array('members' => $members));
+    }
+    
+    /**
+     * Search WordPress users
+     */
+    public function search_users() {
+        check_ajax_referer('azure_newsletter_lists', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $query = sanitize_text_field($_POST['query'] ?? '');
+        
+        if (strlen($query) < 2) {
+            wp_send_json_success(array('users' => array()));
+        }
+        
+        // Search users by name or email
+        $users = get_users(array(
+            'search' => '*' . $query . '*',
+            'search_columns' => array('user_login', 'user_email', 'display_name'),
+            'number' => 20,
+            'orderby' => 'display_name',
+            'order' => 'ASC'
+        ));
+        
+        $results = array();
+        foreach ($users as $user) {
+            $results[] = array(
+                'ID' => $user->ID,
+                'user_email' => $user->user_email,
+                'display_name' => $user->display_name
+            );
+        }
+        
+        wp_send_json_success(array('users' => $results));
+    }
+    
+    /**
+     * Add member to list
+     */
+    public function add_list_member() {
+        check_ajax_referer('azure_newsletter_lists', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $list_id = intval($_POST['list_id'] ?? 0);
+        $user_id = intval($_POST['user_id'] ?? 0);
+        
+        if (!$list_id || !$user_id) {
+            wp_send_json_error('Invalid parameters');
+        }
+        
+        // Get user email
+        $user = get_user_by('id', $user_id);
+        if (!$user) {
+            wp_send_json_error('User not found');
+        }
+        
+        global $wpdb;
+        $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
+        
+        // Check if already a member
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$members_table} WHERE list_id = %d AND user_id = %d",
+            $list_id, $user_id
+        ));
+        
+        if ($existing) {
+            // Reactivate if unsubscribed
+            $wpdb->update(
+                $members_table,
+                array('unsubscribed_at' => null),
+                array('id' => $existing)
+            );
+        } else {
+            // Insert new member
+            $wpdb->insert($members_table, array(
+                'list_id' => $list_id,
+                'user_id' => $user_id,
+                'email' => $user->user_email,
+                'subscribed_at' => current_time('mysql')
+            ));
+        }
+        
+        wp_send_json_success(array('message' => 'Member added'));
+    }
+    
+    /**
+     * Remove member from list
+     */
+    public function remove_list_member() {
+        check_ajax_referer('azure_newsletter_lists', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        $list_id = intval($_POST['list_id'] ?? 0);
+        $user_id = intval($_POST['user_id'] ?? 0);
+        
+        if (!$list_id || !$user_id) {
+            wp_send_json_error('Invalid parameters');
+        }
+        
+        global $wpdb;
+        $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
+        
+        // Soft delete by setting unsubscribed_at
+        $wpdb->update(
+            $members_table,
+            array('unsubscribed_at' => current_time('mysql')),
+            array('list_id' => $list_id, 'user_id' => $user_id)
+        );
+        
+        wp_send_json_success(array('message' => 'Member removed'));
     }
     
     /**
