@@ -446,9 +446,19 @@ class Azure_Newsletter_Ajax {
         
         // Handle recipient lists - decode from JSON string
         $recipient_lists = array();
+        $debug_lists = array(
+            'raw_post' => $_POST['newsletter_lists'] ?? 'NOT SET',
+            'after_stripslashes' => '',
+            'decoded' => null,
+            'final' => array()
+        );
+        
         if (!empty($_POST['newsletter_lists'])) {
             $lists_raw = stripslashes($_POST['newsletter_lists']);
+            $debug_lists['after_stripslashes'] = $lists_raw;
             $decoded = json_decode($lists_raw, true);
+            $debug_lists['decoded'] = $decoded;
+            
             if (is_array($decoded)) {
                 $recipient_lists = array_map('sanitize_text_field', $decoded);
             } elseif (is_string($_POST['newsletter_lists'])) {
@@ -456,6 +466,10 @@ class Azure_Newsletter_Ajax {
                 $recipient_lists = array(sanitize_text_field($_POST['newsletter_lists']));
             }
         }
+        $debug_lists['final'] = $recipient_lists;
+        
+        // Log for debugging
+        error_log('Newsletter save - lists debug: ' . print_r($debug_lists, true));
         
         $data = array(
             'name' => sanitize_text_field($_POST['newsletter_name'] ?? ''),
@@ -540,7 +554,9 @@ class Azure_Newsletter_Ajax {
         
         wp_send_json_success(array(
             'newsletter_id' => $newsletter_id,
-            'status' => $data['status']
+            'status' => $data['status'],
+            'debug_lists' => $debug_lists, // Temporary debug info
+            'saved_lists' => $recipient_lists
         ));
     }
     

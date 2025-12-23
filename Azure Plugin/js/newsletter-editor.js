@@ -2047,6 +2047,12 @@
             selectedLists.push($(this).val());
         });
         
+        // Debug: log what we're sending
+        console.log('Save Draft - Selected lists:', selectedLists);
+        console.log('Save Draft - JSON:', JSON.stringify(selectedLists));
+        console.log('Save Draft - Checkboxes found:', $('input[name="newsletter_lists[]"]').length);
+        console.log('Save Draft - Checked checkboxes:', $('input[name="newsletter_lists[]"]:checked').length);
+        
         // Collect form data - use JSON.stringify for array to ensure proper transmission
         var formData = {
             action: 'azure_newsletter_save',
@@ -2063,6 +2069,13 @@
         
         $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
             btn.prop('disabled', false);
+            
+            // Debug: log the response
+            console.log('Save Draft - Response:', response);
+            if (response.data && response.data.debug_lists) {
+                console.log('Save Draft - Server received lists:', response.data.debug_lists);
+                console.log('Save Draft - Saved lists:', response.data.saved_lists);
+            }
             
             if (response.success) {
                 // Update newsletter ID if new
