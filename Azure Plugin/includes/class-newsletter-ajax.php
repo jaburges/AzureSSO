@@ -1637,24 +1637,55 @@ class Azure_Newsletter_Ajax {
         }
         
         // If it's a full HTML document, extract and clean the body
-        if (preg_match('/<body[^>]*>(.*?)<\/body>/is', $html, $matches)) {
+        if (preg_match('/<body[^>]*>(.*)<\/body>/is', $html, $matches)) {
             $body_content = $matches[1];
+            $body_content = $this->strip_css_text($body_content);
             
-            // Remove CSS comments and rules from body content
-            $body_content = preg_replace('/^\s*\/\*[\s\S]*?\*\/\s*/i', '', $body_content);
-            $body_content = preg_replace('/^[^<]*?}\s*/i', '', $body_content);
-            $body_content = preg_replace('/^[^<]+(?=<)/', '', $body_content);
-            
-            // Rebuild the HTML
-            $html = preg_replace('/(<body[^>]*>).*?(<\/body>)/is', '$1' . $body_content . '$2', $html);
+            // Rebuild the HTML with cleaned body
+            $html = preg_replace('/(<body[^>]*>).*(<\/body>)/is', '$1' . $body_content . '$2', $html);
         } else {
             // Not a full document, just clean the content
-            $html = preg_replace('/^\s*\/\*[\s\S]*?\*\/\s*/i', '', $html);
-            $html = preg_replace('/^[^<]*?}\s*/i', '', $html);
-            $html = preg_replace('/^[^<]+(?=<)/', '', $html);
+            $html = $this->strip_css_text($html);
         }
         
         return $html;
+    }
+    
+    /**
+     * Strip CSS text that appears before HTML content
+     */
+    private function strip_css_text($content) {
+        // Trim whitespace first
+        $content = ltrim($content);
+        
+        // If content starts with a tag, it's clean
+        if (strpos($content, '<') === 0) {
+            return $content;
+        }
+        
+        // Find the position of the first HTML tag
+        $first_tag_pos = strpos($content, '<');
+        
+        if ($first_tag_pos === false) {
+            // No HTML tags found, return as-is
+            return $content;
+        }
+        
+        // Get the text before the first tag
+        $before_tag = substr($content, 0, $first_tag_pos);
+        
+        // Check if this looks like CSS (contains { and })
+        if (strpos($before_tag, '{') !== false && strpos($before_tag, '}') !== false) {
+            // It's CSS text, strip it all
+            return substr($content, $first_tag_pos);
+        }
+        
+        // Also check for CSS comment at start
+        if (preg_match('/^\s*\/\*/', $before_tag)) {
+            return substr($content, $first_tag_pos);
+        }
+        
+        return $content;
     }
 }
 
