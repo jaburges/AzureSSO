@@ -9,41 +9,64 @@
     var currentStep = 1;
 
     /**
+     * Clean HTML content - remove any CSS text that leaked into body
+     */
+    function cleanHtmlContent(html) {
+        if (!html) return '';
+        
+        // Trim whitespace
+        html = html.trim();
+        
+        // If it's a full HTML document, extract body content
+        var bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) {
+            html = bodyMatch[1].trim();
+        }
+        
+        // Also handle if there's DOCTYPE/html but no body tags
+        if (html.indexOf('<!DOCTYPE') === 0 || html.indexOf('<html') === 0) {
+            var headEnd = html.indexOf('</head>');
+            if (headEnd > -1) {
+                html = html.substring(headEnd + 7);
+            }
+            html = html.replace(/<\/?html[^>]*>/gi, '').replace(/<\/?body[^>]*>/gi, '');
+            html = html.trim();
+        }
+        
+        // Find first HTML tag position
+        var firstTagPos = html.search(/<[a-z]/i);
+        
+        if (firstTagPos > 0) {
+            // There's text before the first HTML tag
+            var beforeTag = html.substring(0, firstTagPos);
+            
+            // Check if it looks like CSS (has { and })
+            if (beforeTag.indexOf('{') !== -1 && beforeTag.indexOf('}') !== -1) {
+                // Strip everything before first tag
+                html = html.substring(firstTagPos);
+            }
+            // Also check for CSS comments
+            else if (beforeTag.indexOf('/*') !== -1) {
+                html = html.substring(firstTagPos);
+            }
+        }
+        
+        return html;
+    }
+
+    /**
      * Get email-ready HTML with CSS properly handled
      * Email clients strip <style> tags, so we need clean HTML
      */
     function getEmailReadyHtml() {
         if (!editor) return '';
         
-        // Get HTML and CSS separately
+        // Get HTML and CSS separately from GrapesJS
         var html = editor.getHtml();
         var css = editor.getCss();
         
-        // Clean up the HTML - remove any raw CSS text that might be at the start
-        // GrapesJS and previous saves might have CSS as text content
-        
-        // Remove CSS comment blocks at start
-        html = html.replace(/^[\s\S]*?\/\*[\s\S]*?\*\/[\s\S]*?(?=<)/i, '');
-        
-        // Remove CSS rules at start (e.g., "body { ... } table { ... }")
-        html = html.replace(/^[\s\S]*?}\s*(?=<)/i, '');
-        
-        // Remove any remaining text before first HTML tag
-        html = html.replace(/^[^<]+/, '');
-        
-        // Also clean up if CSS is embedded after doctype/html/head but before body content
-        // This catches full HTML documents with CSS bleeding into visible area
-        if (html.indexOf('<!DOCTYPE') === 0 || html.indexOf('<html') === 0) {
-            // It's already a full document - extract just the body content
-            var bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-            if (bodyMatch) {
-                html = bodyMatch[1];
-                // Clean any leading CSS text from body content
-                html = html.replace(/^[\s\S]*?\/\*[\s\S]*?\*\/[\s\S]*?(?=<)/i, '');
-                html = html.replace(/^[\s\S]*?}\s*(?=<)/i, '');
-                html = html.replace(/^[^<]+/, '');
-            }
-        }
+        // Aggressively clean up the HTML - remove any CSS text that leaked in
+        html = cleanHtmlContent(html);
         
         // Build proper email HTML structure
         var emailHtml = '<!DOCTYPE html>\n';
@@ -1326,6 +1349,7 @@
     function loadInitialContent() {
         if (!editor || typeof newsletterEditorConfig === 'undefined') return;
 
+        // Always prefer JSON content as it preserves GrapesJS state perfectly
         if (newsletterEditorConfig.initialContent) {
             try {
                 var data = JSON.parse(newsletterEditorConfig.initialContent);
@@ -1339,7 +1363,30 @@
         }
 
         if (newsletterEditorConfig.initialHtml) {
-            editor.setComponents(newsletterEditorConfig.initialHtml);
+            // Extract body content if this is a full HTML document
+            var html = newsletterEditorConfig.initialHtml;
+            
+            // Check if it's a full document (contains <body>)
+            var bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyMatch) {
+                html = bodyMatch[1];
+            }
+            
+            // Also check for doctype/html tags without body
+            if (html.indexOf('<!DOCTYPE') === 0 || html.indexOf('<html') === 0) {
+                // Try to extract content after </head> or after <html>
+                var headEnd = html.indexOf('</head>');
+                if (headEnd > -1) {
+                    html = html.substring(headEnd + 7);
+                }
+                // Remove closing tags
+                html = html.replace(/<\/html>/gi, '').replace(/<\/body>/gi, '');
+            }
+            
+            // Strip any CSS text that leaked into the content
+            html = html.replace(/^[\s\S]*?(?=<table|<div|<p|<h[1-6])/i, '');
+            
+            editor.setComponents(html);
         } else {
             // Set default starter template
             editor.setComponents(`
