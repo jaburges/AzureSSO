@@ -1980,7 +1980,7 @@
             $('#newsletter_content_json').val(json);
         }
         
-        // Collect form data
+        // Collect form data - use JSON.stringify for array to ensure proper transmission
         var formData = {
             action: 'azure_newsletter_save',
             nonce: newsletterEditorConfig.nonce,
@@ -1991,7 +1991,7 @@
             newsletter_content_html: $('#newsletter_content_html').val(),
             newsletter_content_json: $('#newsletter_content_json').val(),
             send_option: sendOption,
-            newsletter_lists: selectedLists,
+            newsletter_lists: JSON.stringify(selectedLists),
             schedule_date: $('#schedule_date').val(),
             schedule_time: $('#schedule_time').val()
         };
@@ -2047,7 +2047,7 @@
             selectedLists.push($(this).val());
         });
         
-        // Collect form data
+        // Collect form data - use JSON.stringify for array to ensure proper transmission
         var formData = {
             action: 'azure_newsletter_save',
             nonce: newsletterEditorConfig.nonce,
@@ -2057,7 +2057,7 @@
             newsletter_from: $('#newsletter_from').val(),
             newsletter_content_html: $('#newsletter_content_html').val(),
             newsletter_content_json: $('#newsletter_content_json').val(),
-            newsletter_lists: selectedLists,
+            newsletter_lists: JSON.stringify(selectedLists),
             send_option: 'draft' // Always save as draft
         };
         

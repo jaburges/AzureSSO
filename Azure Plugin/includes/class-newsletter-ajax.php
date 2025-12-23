@@ -444,11 +444,17 @@ class Azure_Newsletter_Ajax {
         $from_email = $from_parts[0] ?? '';
         $from_name = $from_parts[1] ?? '';
         
-        // Handle recipient lists
+        // Handle recipient lists - decode from JSON string
         $recipient_lists = array();
-        if (isset($_POST['newsletter_lists'])) {
-            $lists = is_array($_POST['newsletter_lists']) ? $_POST['newsletter_lists'] : array($_POST['newsletter_lists']);
-            $recipient_lists = array_map('sanitize_text_field', $lists);
+        if (!empty($_POST['newsletter_lists'])) {
+            $lists_raw = stripslashes($_POST['newsletter_lists']);
+            $decoded = json_decode($lists_raw, true);
+            if (is_array($decoded)) {
+                $recipient_lists = array_map('sanitize_text_field', $decoded);
+            } elseif (is_string($_POST['newsletter_lists'])) {
+                // Fallback for single value
+                $recipient_lists = array(sanitize_text_field($_POST['newsletter_lists']));
+            }
         }
         
         $data = array(
@@ -508,12 +514,8 @@ class Azure_Newsletter_Ajax {
         
         // Queue for sending if scheduled for now
         if ($send_option === 'now' || $send_option === 'schedule') {
-            // Handle multiple lists - form sends newsletter_lists[] array
-            $lists = isset($_POST['newsletter_lists']) ? $_POST['newsletter_lists'] : array('all');
-            if (!is_array($lists)) {
-                $lists = array($lists);
-            }
-            $lists = array_map('sanitize_text_field', $lists);
+            // Use the already-decoded recipient_lists
+            $lists_to_queue = !empty($recipient_lists) ? $recipient_lists : array('all');
             
             // Ensure queue class is loaded
             if (!class_exists('Azure_Newsletter_Queue')) {
@@ -524,7 +526,7 @@ class Azure_Newsletter_Ajax {
             $total_queued = 0;
             
             // Queue for each selected list
-            foreach ($lists as $list_id) {
+            foreach ($lists_to_queue as $list_id) {
                 $queue_result = $queue->queue_newsletter($newsletter_id, $list_id, $data['scheduled_at']);
                 $total_queued += ($queue_result['queued'] ?? 0);
             }
