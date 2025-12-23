@@ -1928,6 +1928,98 @@
         saveDraft($(this));
     });
     
+    /**
+     * Send Newsletter functionality
+     */
+    $(document).on('click', '#final-send-btn', function(e) {
+        e.preventDefault();
+        sendNewsletter($(this));
+    });
+    
+    function sendNewsletter(btn) {
+        var sendOption = $('input[name="send_option"]:checked').val();
+        
+        // Validate
+        if (sendOption === 'schedule') {
+            var scheduleDate = $('#schedule_date').val();
+            if (!scheduleDate) {
+                alert('Please select a schedule date.');
+                return;
+            }
+        }
+        
+        // Get selected lists
+        var selectedLists = [];
+        $('input[name="newsletter_lists[]"]:checked').each(function() {
+            selectedLists.push($(this).val());
+        });
+        
+        if (selectedLists.length === 0) {
+            alert('Please select at least one recipient list.');
+            return;
+        }
+        
+        // Confirm
+        var confirmMsg = sendOption === 'now' 
+            ? 'Are you sure you want to send this newsletter now?' 
+            : 'Are you sure you want to schedule this newsletter?';
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        btn.prop('disabled', true);
+        var originalHtml = btn.html();
+        btn.html('<span class="dashicons dashicons-update-alt spin"></span> ' + (sendOption === 'now' ? 'Sending...' : 'Scheduling...'));
+        
+        // Sync GrapesJS content to hidden fields if editor exists
+        if (editor) {
+            var inlinedHtml = getEmailReadyHtml();
+            var json = JSON.stringify(editor.getProjectData());
+            $('#newsletter_content_html').val(inlinedHtml);
+            $('#newsletter_content_json').val(json);
+        }
+        
+        // Collect form data
+        var formData = {
+            action: 'azure_newsletter_save',
+            nonce: newsletterEditorConfig.nonce,
+            newsletter_id: $('#newsletter_id').val(),
+            newsletter_name: $('#newsletter_name').val(),
+            newsletter_subject: $('#newsletter_subject').val(),
+            newsletter_from: $('#newsletter_from').val(),
+            newsletter_content_html: $('#newsletter_content_html').val(),
+            newsletter_content_json: $('#newsletter_content_json').val(),
+            send_option: sendOption,
+            newsletter_lists: selectedLists,
+            schedule_date: $('#schedule_date').val(),
+            schedule_time: $('#schedule_time').val()
+        };
+        
+        $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            
+            if (response.success) {
+                var msg = sendOption === 'now' 
+                    ? 'Newsletter queued for sending! ' + (response.data.queued || 0) + ' emails will be sent.'
+                    : 'Newsletter scheduled successfully! ' + (response.data.queued || 0) + ' emails queued.';
+                
+                alert(msg);
+                
+                // Redirect to campaigns
+                window.location.href = newsletterEditorConfig.ajaxUrl.replace('admin-ajax.php', 
+                    'admin.php?page=azure-plugin-newsletter&tab=campaigns');
+            } else {
+                alert('Error: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            alert('Network error. Please try again.');
+        });
+    }
+    
     function saveDraft(btn) {
         var statusEl = $('#save-status');
         var originalText = btn.find('.dashicons').length ? btn.html() : btn.text();

@@ -158,6 +158,9 @@ class Azure_Newsletter_Ajax {
         
         global $wpdb;
         $table = $wpdb->prefix . 'azure_newsletters';
+        $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        $lists_table = $wpdb->prefix . 'azure_newsletter_lists';
         
         $newsletter = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$table} WHERE id = %d",
@@ -168,11 +171,61 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Newsletter not found');
         }
         
-        // Return the HTML content
+        // Get recipient info from queue
+        $recipients = array('total' => 0, 'lists' => array());
+        $queued_count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$queue_table} WHERE newsletter_id = %d",
+            $newsletter_id
+        ));
+        $recipients['total'] = intval($queued_count);
+        
+        // Get stats if sent
+        $stats = null;
+        if ($newsletter->status === 'sent') {
+            $sent_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'sent'",
+                $newsletter_id
+            ));
+            $open_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'opened'",
+                $newsletter_id
+            ));
+            $click_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'clicked'",
+                $newsletter_id
+            ));
+            $bounce_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'bounced'",
+                $newsletter_id
+            ));
+            
+            $stats = array(
+                'sent' => intval($sent_count),
+                'opens' => intval($open_count),
+                'clicks' => intval($click_count),
+                'bounces' => intval($bounce_count),
+                'open_rate' => $sent_count > 0 ? round(($open_count / $sent_count) * 100, 1) : 0,
+                'click_rate' => $sent_count > 0 ? round(($click_count / $sent_count) * 100, 1) : 0
+            );
+        }
+        
+        // Format scheduled_at
+        $scheduled_at = null;
+        if ($newsletter->scheduled_at) {
+            $scheduled_at = date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($newsletter->scheduled_at));
+        }
+        
+        // Return all data
         wp_send_json_success(array(
             'html' => $newsletter->content_html,
             'subject' => $newsletter->subject,
-            'name' => $newsletter->name
+            'name' => $newsletter->name,
+            'status' => $newsletter->status,
+            'from_email' => $newsletter->from_email,
+            'from_name' => $newsletter->from_name,
+            'scheduled_at' => $scheduled_at,
+            'recipients' => $recipients,
+            'stats' => $stats
         ));
     }
     
@@ -403,7 +456,12 @@ class Azure_Newsletter_Ajax {
         
         // Queue for sending if scheduled for now
         if ($send_option === 'now' || $send_option === 'schedule') {
-            $list_id = sanitize_text_field($_POST['newsletter_list'] ?? 'all');
+            // Handle multiple lists - form sends newsletter_lists[] array
+            $lists = isset($_POST['newsletter_lists']) ? $_POST['newsletter_lists'] : array('all');
+            if (!is_array($lists)) {
+                $lists = array($lists);
+            }
+            $lists = array_map('sanitize_text_field', $lists);
             
             // Ensure queue class is loaded
             if (!class_exists('Azure_Newsletter_Queue')) {
@@ -411,12 +469,18 @@ class Azure_Newsletter_Ajax {
             }
             
             $queue = new Azure_Newsletter_Queue();
-            $queue_result = $queue->queue_newsletter($newsletter_id, $list_id, $data['scheduled_at']);
+            $total_queued = 0;
+            
+            // Queue for each selected list
+            foreach ($lists as $list_id) {
+                $queue_result = $queue->queue_newsletter($newsletter_id, $list_id, $data['scheduled_at']);
+                $total_queued += ($queue_result['queued'] ?? 0);
+            }
             
             wp_send_json_success(array(
                 'newsletter_id' => $newsletter_id,
                 'status' => $data['status'],
-                'queued' => $queue_result['queued'] ?? 0
+                'queued' => $total_queued
             ));
         }
         

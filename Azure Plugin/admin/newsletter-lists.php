@@ -265,7 +265,8 @@ $roles = $wp_roles->get_names();
             </div>
         </div>
         <div class="modal-footer">
-            <button type="button" class="button modal-close"><?php _e('Close', 'azure-plugin'); ?></button>
+            <span id="edit-list-status" style="flex:1;color:#00a32a;"></span>
+            <button type="button" class="button button-primary" id="save-list-btn"><?php _e('Done', 'azure-plugin'); ?></button>
         </div>
     </div>
 </div>
@@ -542,19 +543,36 @@ jQuery(document).ready(function($) {
     
     // Close modals
     $('.modal-close, .modal-cancel').on('click', function() {
-        $('.modal').hide();
-        $('#user-search-input').val('');
-        $('#user-search-results').removeClass('has-results').empty();
+        closeModal($(this).closest('.modal'));
+    });
+    
+    // Save/Done button for edit list
+    $('#save-list-btn').on('click', function() {
+        closeModal($('#edit-list-modal'));
     });
     
     // Close on background click
     $('.modal').on('click', function(e) {
         if (e.target === this) {
-            $(this).hide();
-            $('#user-search-input').val('');
-            $('#user-search-results').removeClass('has-results').empty();
+            closeModal($(this));
         }
     });
+    
+    function closeModal($modal) {
+        // If closing edit list modal, update the UI
+        if ($modal.attr('id') === 'edit-list-modal' && currentListId) {
+            // Update the member count in the list card
+            var $listCard = $('.edit-list-btn[data-id="' + currentListId + '"]').closest('.list-card');
+            var memberCount = currentMembers.length;
+            $listCard.find('.list-meta span:last-child').text(memberCount + ' subscribers');
+        }
+        
+        $modal.hide();
+        $('#user-search-input').val('');
+        $('#user-search-results').removeClass('has-results').empty();
+        $('#edit-list-status').text('');
+        $('body').css('overflow', '');
+    }
     
     // Toggle type options
     $('#list_type').on('change', function() {
@@ -695,6 +713,7 @@ jQuery(document).ready(function($) {
                     user_email: userEmail
                 });
                 renderMembers();
+                showStatus('<?php _e('Member added', 'azure-plugin'); ?>');
             } else {
                 $item.removeClass('already-member');
                 $item.find('.add-btn').text('<?php _e('+ Add', 'azure-plugin'); ?>');
@@ -702,6 +721,13 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    function showStatus(message) {
+        $('#edit-list-status').text('✓ ' + message);
+        setTimeout(function() {
+            $('#edit-list-status').text('');
+        }, 2000);
+    }
     
     // Remove user from list
     $(document).on('click', '.remove-btn', function() {

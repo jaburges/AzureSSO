@@ -368,20 +368,49 @@ $status_counts = $wpdb->get_results("
 <!-- Quick View Modal -->
 <div id="quick-view-modal" class="newsletter-modal" style="display:none;">
     <div class="newsletter-modal-overlay"></div>
-    <div class="newsletter-modal-content">
+    <div class="newsletter-modal-content newsletter-modal-wide">
         <div class="newsletter-modal-header">
             <h2 id="modal-title"><?php _e('Newsletter Preview', 'azure-plugin'); ?></h2>
             <button type="button" class="close-modal">&times;</button>
         </div>
-        <div class="newsletter-modal-meta">
-            <span class="modal-subject"><strong><?php _e('Subject:', 'azure-plugin'); ?></strong> <span id="modal-subject-text"></span></span>
-        </div>
-        <div class="newsletter-modal-body">
-            <div id="modal-loading" style="text-align:center;padding:40px;">
-                <span class="spinner is-active" style="float:none;"></span>
-                <p><?php _e('Loading preview...', 'azure-plugin'); ?></p>
+        <div class="newsletter-modal-body quick-view-body">
+            <!-- Left: Info Panel -->
+            <div class="quick-view-info">
+                <div class="info-section">
+                    <h4><?php _e('Subject', 'azure-plugin'); ?></h4>
+                    <p id="modal-subject-text"></p>
+                </div>
+                <div class="info-section">
+                    <h4><?php _e('Status', 'azure-plugin'); ?></h4>
+                    <p id="modal-status-text"></p>
+                </div>
+                <div class="info-section">
+                    <h4><?php _e('From', 'azure-plugin'); ?></h4>
+                    <p id="modal-from-text"></p>
+                </div>
+                <div class="info-section">
+                    <h4><?php _e('Recipients', 'azure-plugin'); ?></h4>
+                    <div id="modal-recipients-info">
+                        <span class="spinner is-active" style="float:none;margin:0;"></span>
+                    </div>
+                </div>
+                <div class="info-section" id="modal-schedule-section" style="display:none;">
+                    <h4><?php _e('Scheduled', 'azure-plugin'); ?></h4>
+                    <p id="modal-schedule-text"></p>
+                </div>
+                <div class="info-section" id="modal-stats-section" style="display:none;">
+                    <h4><?php _e('Statistics', 'azure-plugin'); ?></h4>
+                    <div id="modal-stats-info"></div>
+                </div>
             </div>
-            <iframe id="preview-iframe" style="width:100%;height:500px;border:none;display:none;"></iframe>
+            <!-- Right: Preview -->
+            <div class="quick-view-preview">
+                <div id="modal-loading" style="text-align:center;padding:40px;">
+                    <span class="spinner is-active" style="float:none;"></span>
+                    <p><?php _e('Loading preview...', 'azure-plugin'); ?></p>
+                </div>
+                <iframe id="preview-iframe" style="width:100%;height:100%;border:none;display:none;"></iframe>
+            </div>
         </div>
         <div class="newsletter-modal-footer">
             <a href="#" id="modal-edit-btn" class="button button-primary"><?php _e('Edit', 'azure-plugin'); ?></a>
@@ -420,6 +449,9 @@ $status_counts = $wpdb->get_results("
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
+}
+.newsletter-modal-content.newsletter-modal-wide {
+    max-width: 1100px;
 }
 .newsletter-modal-header {
     display: flex;
@@ -463,6 +495,92 @@ $status_counts = $wpdb->get_results("
     gap: 10px;
     justify-content: flex-end;
 }
+
+/* Quick View Two-Column Layout */
+.quick-view-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+.quick-view-info {
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid #dcdcde;
+    padding: 20px;
+    overflow-y: auto;
+    background: #f6f7f7;
+}
+.quick-view-info .info-section {
+    margin-bottom: 20px;
+}
+.quick-view-info .info-section:last-child {
+    margin-bottom: 0;
+}
+.quick-view-info h4 {
+    margin: 0 0 5px;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #646970;
+    font-weight: 600;
+}
+.quick-view-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #1d2327;
+}
+.quick-view-info .recipients-list {
+    font-size: 13px;
+}
+.quick-view-info .recipients-list .recipient-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 0;
+}
+.quick-view-info .recipients-list .recipient-count {
+    color: #2271b1;
+    font-weight: 500;
+}
+.quick-view-info .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.quick-view-info .stat-item {
+    text-align: center;
+    padding: 8px;
+    background: #fff;
+    border-radius: 4px;
+}
+.quick-view-info .stat-item .stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+}
+.quick-view-info .stat-item .stat-label {
+    font-size: 11px;
+    color: #646970;
+}
+.quick-view-preview {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.quick-view-preview iframe {
+    flex: 1;
+}
+.status-badge-modal {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.status-badge-modal.status-draft { background: #dcdcde; color: #50575e; }
+.status-badge-modal.status-scheduled { background: #f0f6fc; color: #2271b1; }
+.status-badge-modal.status-sending { background: #fcf9e8; color: #996800; }
+.status-badge-modal.status-sent { background: #edfaef; color: #00a32a; }
 </style>
 
 <script>
@@ -494,6 +612,11 @@ jQuery(document).ready(function($) {
         // Reset modal state
         $('#modal-loading').show();
         $('#preview-iframe').hide();
+        $('#modal-recipients-info').html('<span class="spinner is-active" style="float:none;margin:0;"></span>');
+        $('#modal-status-text').html('');
+        $('#modal-from-text').html('');
+        $('#modal-schedule-section').hide();
+        $('#modal-stats-section').hide();
         
         // Show modal
         $('#quick-view-modal').show();
@@ -506,17 +629,66 @@ jQuery(document).ready(function($) {
             newsletter_id: id
         }, function(response) {
             $('#modal-loading').hide();
-            if (response.success && response.data.html) {
-                var iframe = $('#preview-iframe')[0];
-                iframe.contentWindow.document.open();
-                iframe.contentWindow.document.write(response.data.html);
-                iframe.contentWindow.document.close();
-                $('#preview-iframe').show();
+            
+            if (response.success) {
+                var data = response.data;
+                
+                // Update info panel
+                $('#modal-status-text').html('<span class="status-badge-modal status-' + data.status + '">' + data.status.charAt(0).toUpperCase() + data.status.slice(1) + '</span>');
+                $('#modal-from-text').text(data.from_name ? data.from_name + ' <' + data.from_email + '>' : data.from_email || '-');
+                
+                // Recipients info
+                var recipientsHtml = '<div class="recipients-list">';
+                if (data.recipients) {
+                    recipientsHtml += '<div class="recipient-item"><span class="recipient-count">' + data.recipients.total + '</span> recipients</div>';
+                    if (data.recipients.lists && data.recipients.lists.length > 0) {
+                        data.recipients.lists.forEach(function(list) {
+                            recipientsHtml += '<div class="recipient-item">• ' + list.name + ' (' + list.count + ')</div>';
+                        });
+                    }
+                } else {
+                    recipientsHtml += '<span style="color:#666;">Not set</span>';
+                }
+                recipientsHtml += '</div>';
+                $('#modal-recipients-info').html(recipientsHtml);
+                
+                // Schedule info
+                if (data.scheduled_at) {
+                    $('#modal-schedule-text').text(data.scheduled_at);
+                    $('#modal-schedule-section').show();
+                }
+                
+                // Stats if sent
+                if (data.stats && data.status === 'sent') {
+                    var statsHtml = '<div class="stats-grid">';
+                    statsHtml += '<div class="stat-item"><div class="stat-value">' + data.stats.sent + '</div><div class="stat-label">Sent</div></div>';
+                    statsHtml += '<div class="stat-item"><div class="stat-value">' + data.stats.open_rate + '%</div><div class="stat-label">Opens</div></div>';
+                    statsHtml += '<div class="stat-item"><div class="stat-value">' + data.stats.click_rate + '%</div><div class="stat-label">Clicks</div></div>';
+                    statsHtml += '<div class="stat-item"><div class="stat-value">' + data.stats.bounces + '</div><div class="stat-label">Bounces</div></div>';
+                    statsHtml += '</div>';
+                    $('#modal-stats-info').html(statsHtml);
+                    $('#modal-stats-section').show();
+                }
+                
+                // Preview
+                if (data.html) {
+                    var iframe = $('#preview-iframe')[0];
+                    iframe.contentWindow.document.open();
+                    iframe.contentWindow.document.write(data.html);
+                    iframe.contentWindow.document.close();
+                    $('#preview-iframe').show();
+                } else {
+                    var iframe = $('#preview-iframe')[0];
+                    iframe.contentWindow.document.open();
+                    iframe.contentWindow.document.write('<p style="padding:20px;color:#666;text-align:center;">No preview available. Edit this newsletter to add content.</p>');
+                    iframe.contentWindow.document.close();
+                    $('#preview-iframe').show();
+                }
             } else {
                 $('#preview-iframe').show();
                 var iframe = $('#preview-iframe')[0];
                 iframe.contentWindow.document.open();
-                iframe.contentWindow.document.write('<p style="padding:20px;color:#d63638;">Unable to load preview.</p>');
+                iframe.contentWindow.document.write('<p style="padding:20px;color:#d63638;">Unable to load preview: ' + (response.data || 'Unknown error') + '</p>');
                 iframe.contentWindow.document.close();
             }
         }).fail(function() {
