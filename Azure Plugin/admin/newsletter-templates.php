@@ -64,7 +64,13 @@ foreach ($templates as $template) {
             <?php foreach ($grouped_templates[$cat_slug] as $template): ?>
             <div class="template-card <?php echo $template->is_system ? 'system-template' : ''; ?>">
                 <div class="template-preview">
-                    <?php if ($template->thumbnail_url): ?>
+                    <?php if (!empty($template->content_html)): ?>
+                    <div class="template-thumbnail-wrapper">
+                        <iframe class="template-thumbnail-iframe" 
+                                data-html="<?php echo esc_attr(base64_encode($template->content_html)); ?>"
+                                scrolling="no" frameborder="0"></iframe>
+                    </div>
+                    <?php elseif ($template->thumbnail_url): ?>
                     <img src="<?php echo esc_url($template->thumbnail_url); ?>" alt="<?php echo esc_attr($template->name); ?>">
                     <?php else: ?>
                     <div class="template-placeholder">
@@ -133,7 +139,36 @@ foreach ($templates as $template) {
 
 <script>
 jQuery(document).ready(function($) {
-    // Preview template
+    // Load template thumbnails into iframes
+    $('.template-thumbnail-iframe').each(function() {
+        var iframe = this;
+        var htmlBase64 = $(this).data('html');
+        
+        if (htmlBase64) {
+            try {
+                var html = atob(htmlBase64);
+                // Clean up CSS that might show as text
+                html = html.replace(/^[\s\S]*?\/\*[\s\S]*?\*\/[\s\S]*?(?=<)/i, '');
+                html = html.replace(/^[^<]+/, '');
+                
+                iframe.onload = function() {
+                    try {
+                        iframe.contentDocument.open();
+                        iframe.contentDocument.write(html);
+                        iframe.contentDocument.close();
+                    } catch(e) {
+                        console.log('Could not write to iframe:', e);
+                    }
+                };
+                // Trigger initial load
+                iframe.src = 'about:blank';
+            } catch(e) {
+                console.log('Could not decode template HTML:', e);
+            }
+        }
+    });
+    
+    // Preview template (full modal)
     $('.preview-template').on('click', function() {
         var templateId = $(this).data('template-id');
         var templateName = $(this).data('template-name');
@@ -208,11 +243,28 @@ jQuery(document).ready(function($) {
     align-items: center;
     justify-content: center;
     border-bottom: 1px solid #eee;
+    overflow: hidden;
+    position: relative;
 }
 .newsletter-templates .template-preview img {
     max-width: 100%;
     max-height: 100%;
     object-fit: cover;
+}
+.newsletter-templates .template-thumbnail-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+.newsletter-templates .template-thumbnail-iframe {
+    width: 600px;
+    height: 600px;
+    transform: scale(0.47);
+    transform-origin: top left;
+    pointer-events: none;
+    border: none;
+    background: #fff;
 }
 .newsletter-templates .template-placeholder {
     color: #ccd0d4;
