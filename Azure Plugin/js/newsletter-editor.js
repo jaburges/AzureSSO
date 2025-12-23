@@ -243,6 +243,18 @@
             setupSidebarTabs();
             setupComponentSelection();
             
+            // Register fallback command for CSS inlining (in case preset doesn't provide it)
+            if (!editor.Commands.has('gjs-get-inlined-html')) {
+                editor.Commands.add('gjs-get-inlined-html', {
+                    run: function(editor) {
+                        // Simple fallback - just return HTML with embedded styles
+                        var html = editor.getHtml();
+                        var css = editor.getCss();
+                        return '<style>' + css + '</style>' + html;
+                    }
+                });
+            }
+            
             console.log('GrapesJS Newsletter Editor initialized successfully');
             
         } catch (error) {
