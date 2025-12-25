@@ -466,7 +466,7 @@ class Azure_Newsletter_Ajax {
             'from_email' => $from_email,
             'from_name' => $from_name,
             'content_html' => wp_kses_post($_POST['newsletter_content_html'] ?? ''),
-            'content_json' => sanitize_text_field($_POST['newsletter_content_json'] ?? ''),
+            'content_json' => wp_unslash($_POST['newsletter_content_json'] ?? ''),
             'recipient_lists' => json_encode($recipient_lists),
             'updated_at' => current_time('mysql')
         );
