@@ -89,7 +89,7 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                                id="calendar_embed_user_email" 
                                name="calendar_embed_user_email" 
                                value="<?php echo esc_attr($calendar_user_email); ?>"
-                               placeholder="admin@wilderptsa.net" 
+                               placeholder="admin@yourorg.net" 
                                class="regular-text">
                         <p class="description">Your Microsoft 365 email address (the account you'll sign in with)</p>
                     </td>
@@ -103,7 +103,7 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
                                id="calendar_embed_mailbox_email" 
                                name="calendar_embed_mailbox_email" 
                                value="<?php echo esc_attr($calendar_mailbox_email); ?>"
-                               placeholder="calendar@wilderptsa.net" 
+                               placeholder="calendar@yourorg.net" 
                                class="regular-text">
                         <p class="description">The shared mailbox email you have delegated access to</p>
                         <button type="button" class="button button-primary" id="save-calendar-emails">

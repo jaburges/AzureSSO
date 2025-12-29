@@ -7,6 +7,23 @@ if (!defined('ABSPATH')) {
 <div class="wrap">
     <h1>Azure Plugin - Main Settings</h1>
     
+    <?php
+    // Show setup wizard progress banner if not completed
+    if (class_exists('Azure_Setup_Wizard') && Azure_Setup_Wizard::should_show_wizard()):
+        $wizard_progress = Azure_Setup_Wizard::get_wizard_progress();
+    ?>
+    <div class="setup-progress-banner">
+        <h3><?php _e('Complete Your Setup', 'azure-plugin'); ?></h3>
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: <?php echo esc_attr($wizard_progress['percent']); ?>%"></div>
+        </div>
+        <p><?php printf(__('Step %d of %d completed', 'azure-plugin'), $wizard_progress['current_step'], $wizard_progress['total_steps']); ?></p>
+        <a href="<?php echo admin_url('admin.php?page=azure-plugin-setup'); ?>" class="button button-primary">
+            <?php _e('Continue Setup', 'azure-plugin'); ?>
+        </a>
+    </div>
+    <?php endif; ?>
+    
     <div class="azure-plugin-dashboard">
         <div class="azure-plugin-modules">
             <h2>Module Status</h2>

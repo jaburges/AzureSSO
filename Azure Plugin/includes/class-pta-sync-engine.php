@@ -429,8 +429,13 @@ class Azure_PTA_Sync_Engine {
             return true;
         }
         
-        // Generate email alias
-        $email_alias = strtolower($user->first_name . substr($user->last_name, 0, 1)) . '@wilderptsa.net';
+        // Generate email alias using configured domain
+        $domain = Azure_Settings::get_setting('org_domain', '');
+        if (empty($domain)) {
+            Azure_Logger::error("PTA Sync: Organization domain not configured. Please set up your domain in the Setup Wizard.");
+            return false;
+        }
+        $email_alias = strtolower($user->first_name . substr($user->last_name, 0, 1)) . '@' . $domain;
         
         // Generate temporary password
         $temp_password = wp_generate_password(12, true, true);
@@ -546,25 +551,37 @@ class Azure_PTA_Sync_Engine {
      * Send welcome email to new user
      */
     private function send_welcome_email($user, $azure_email, $temp_password, $personal_email) {
-        $subject = 'Welcome to Wilder PTA - Your Office 365 Account';
+        // Get organization settings with fallbacks
+        $org_name = Azure_Settings::get_setting('org_name', get_bloginfo('name'));
+        $org_team = Azure_Settings::get_setting('org_team_name', '');
+        if (empty($org_team)) {
+            $org_team = $org_name . ' Administration';
+        }
+        $org_domain = Azure_Settings::get_setting('org_domain', 'yourorg.net');
+        $from_email = Azure_Settings::get_setting('org_admin_email', '');
+        if (empty($from_email)) {
+            $from_email = 'admin@' . $org_domain;
+        }
+        
+        $subject = "Welcome to {$org_name} - Your Office 365 Account";
         
         $message = "Hello {$user->first_name},\n\n";
-        $message .= "Welcome to Wilder PTA! Your Office 365 account has been created.\n\n";
+        $message .= "Welcome to {$org_name}! Your Office 365 account has been created.\n\n";
         $message .= "Your login credentials:\n";
         $message .= "Username: $azure_email\n";
         $message .= "Temporary Password: $temp_password\n\n";
         $message .= "You will be required to change your password on first login.\n\n";
         $message .= "You can access your account at: https://office.com\n\n";
         $message .= "If you have any questions, please contact the PTA administrators.\n\n";
-        $message .= "Best regards,\nWilder PTA Administration";
+        $message .= "Best regards,\n{$org_team}";
         
         // Use the email module if available
         if (class_exists('Azure_Email_Mailer')) {
             $mailer = new Azure_Email_Mailer();
-            return $mailer->send_email_graph($personal_email, $subject, $message, array('From: admin@wilderptsa.net'));
+            return $mailer->send_email_graph($personal_email, $subject, $message, array('From: ' . $from_email));
         } else {
             // Fallback to WordPress mail
-            return wp_mail($personal_email, $subject, $message, array('From: admin@wilderptsa.net'));
+            return wp_mail($personal_email, $subject, $message, array('From: ' . $from_email));
         }
     }
     

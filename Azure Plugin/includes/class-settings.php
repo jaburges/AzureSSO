@@ -281,7 +281,7 @@ class Azure_Settings {
             'sso_auto_create_users' => true,
             'sso_default_role' => 'subscriber',
             'sso_show_on_login_page' => true,
-            'sso_login_button_text' => 'Sign in with WilderPTSA Email',
+            'sso_login_button_text' => 'Sign in with Microsoft',
             'sso_use_custom_role' => false,
             'sso_custom_role_name' => 'AzureAD',
             'sso_sync_enabled' => false,
@@ -390,7 +390,20 @@ class Azure_Settings {
             'newsletter_from_addresses' => array(),
             'newsletter_bounce_mailbox' => '',
             'newsletter_bounce_enabled' => false,
-            'newsletter_default_category' => 'newsletter'
+            'newsletter_default_category' => 'newsletter',
+            
+            // Organization settings (used across modules)
+            'org_domain' => '',              // e.g., "yourptsa.net"
+            'org_name' => '',                // e.g., "LWSD PTA"
+            'org_team_name' => '',           // e.g., "LWSD PTA Team"
+            'org_admin_email' => '',         // e.g., "admin@yourptsa.net" (FROM address for system emails)
+            
+            // Setup wizard settings
+            'setup_wizard_completed' => false,
+            'setup_wizard_step' => 0,
+            'setup_wizard_modules' => array(),
+            'setup_wizard_azure_validated' => false,
+            'setup_wizard_backup_validated' => false
         );
     }
     

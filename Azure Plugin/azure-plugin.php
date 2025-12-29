@@ -127,7 +127,10 @@ class AzurePlugin {
                 'class-upcoming-module.php' => 'Upcoming Events Module class',
                 
                 // Newsletter functionality
-                'class-newsletter-module.php' => 'Newsletter Module class'
+                'class-newsletter-module.php' => 'Newsletter Module class',
+                
+                // Setup Wizard
+                'class-setup-wizard.php' => 'Setup Wizard class'
             );
             
             // Load critical files first - these must succeed

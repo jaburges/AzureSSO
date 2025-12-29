@@ -626,3 +626,49 @@ body.admin-color-midnight .module-description p {
     color: #333 !important;
     border: 1px solid #ccd0d4 !important;
 }
+
+/* Setup Wizard Progress Banner */
+.setup-progress-banner {
+    background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+    color: #fff;
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+}
+
+.setup-progress-banner h3 {
+    margin: 0 0 15px;
+    color: #fff !important;
+    font-size: 18px;
+}
+
+.setup-progress-banner .progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.setup-progress-banner .progress-fill {
+    height: 100%;
+    background: #fff;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.setup-progress-banner p {
+    margin: 0 0 15px;
+    opacity: 0.9;
+}
+
+.setup-progress-banner .button {
+    background: #fff !important;
+    color: #0078d4 !important;
+    border: none !important;
+}
+
+.setup-progress-banner .button:hover {
+    background: #f0f0f0 !important;
+    color: #005a9e !important;
+}
