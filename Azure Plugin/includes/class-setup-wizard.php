@@ -34,7 +34,7 @@ class Azure_Setup_Wizard {
     }
     
     private function __construct() {
-        add_action('admin_menu', array($this, 'add_wizard_menu'), 5);
+        add_action('admin_menu', array($this, 'add_wizard_menu'), 20); // After main menu (priority 10)
         add_action('admin_init', array($this, 'maybe_redirect_to_wizard'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
         
