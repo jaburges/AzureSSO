@@ -923,9 +923,9 @@ jQuery(document).ready(function($) {
             button.prop('disabled', false).html(originalHtml);
             
             if (response.success) {
-                $status.html('<span style="color: #00a32a;">✓ Setup wizard reset! <a href="' + response.data.redirect + '">Start wizard</a></span>');
-                // Update the status display
-                location.reload();
+                $status.html('<span style="color: #00a32a;">✓ Setup wizard reset!</span> <a href="' + response.data.redirect + '" class="button button-primary" style="margin-left: 10px;">Start Setup Wizard</a>');
+                // Update the status text on the page
+                button.closest('.danger-zone-item').find('p strong').text('Not Completed');
             } else {
                 $status.html('<span style="color: #d63638;">✗ ' + (response.data || 'Reset failed') + '</span>');
             }
