@@ -475,9 +475,14 @@ class Azure_Setup_Wizard {
         }
         
         // Test connection to Azure Blob Storage
-        if (class_exists('Azure_Backup_Module')) {
-            $backup = new Azure_Backup_Module();
-            $result = $backup->test_connection($storage_account, $container_name, $storage_key);
+        // Load the storage class if not already loaded
+        if (!class_exists('Azure_Backup_Azure_Storage')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-backup-azure-storage.php';
+        }
+        
+        if (class_exists('Azure_Backup_Azure_Storage')) {
+            $storage = new Azure_Backup_Azure_Storage();
+            $result = $storage->test_connection($storage_account, $storage_key, $container_name);
             
             if ($result['success']) {
                 Azure_Settings::update_setting('setup_wizard_backup_validated', true);
@@ -494,7 +499,7 @@ class Azure_Setup_Wizard {
             }
         } else {
             wp_send_json_error(array(
-                'message' => __('Backup module not available', 'azure-plugin')
+                'message' => __('Backup storage class not available', 'azure-plugin')
             ));
         }
     }
