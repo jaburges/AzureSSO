@@ -58,7 +58,7 @@ class Azure_Setup_Wizard {
         add_submenu_page(
             $wizard_completed ? null : 'azure-plugin', // Hide from menu if completed
             __('Setup Wizard', 'azure-plugin'),
-            __('Setup Wizard', 'azure-plugin'),
+            __('Microsoft PTA Setup', 'azure-plugin'),
             'manage_options',
             'azure-plugin-setup',
             array($this, 'render_wizard_page')

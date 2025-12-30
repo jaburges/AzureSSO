@@ -60,7 +60,7 @@ $available_roles = $wp_roles->get_names();
                         <div class="plugin-logo">
                             <span class="dashicons dashicons-cloud" style="font-size: 64px; width: 64px; height: 64px; color: #0078d4;"></span>
                         </div>
-                        <h1><?php _e('Welcome to Azure Plugin', 'azure-plugin'); ?></h1>
+                        <h1><?php _e('Welcome to Microsoft PTA', 'azure-plugin'); ?></h1>
                         <p class="lead"><?php _e('Integrate your WordPress site with Microsoft Azure and Office 365 services.', 'azure-plugin'); ?></p>
                     </div>
                     

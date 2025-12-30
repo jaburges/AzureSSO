@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Main Settings</h1>
+    <h1>Microsoft PTA - Main Settings</h1>
     
     <?php
     // Show setup wizard progress banner if not completed

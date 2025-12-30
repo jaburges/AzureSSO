@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Microsoft WP
- * Plugin URI: https://github.com/jamieburgess/microsoft-wp
- * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, and OneDrive media integration.
- * Version: 2.2
+ * Plugin Name: Microsoft PTA
+ * Plugin URI: https://github.com/jaburges/AzureSSO
+ * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
+ * Version: 3.0
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -19,9 +19,9 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '2.3');
+define('AZURE_PLUGIN_VERSION', '3.0');
 
-// Main plugin class for Microsoft WP
+// Main plugin class for Microsoft PTA
 class AzurePlugin {
     
     private static $instance = null;

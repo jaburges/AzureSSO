@@ -1,9 +1,9 @@
-# Microsoft WP - Complete Microsoft 365 Integration for WordPress
+# Microsoft PTA - Complete Microsoft 365 Integration for WordPress
 
 [![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)](https://wordpress.org/)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/)
 [![License](https://img.shields.io/badge/License-GPL%20v2-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
-[![Version](https://img.shields.io/badge/Version-2.0-orange.svg)](https://github.com/jamieburgess/microsoft-wp)
+[![Version](https://img.shields.io/badge/Version-3.0-orange.svg)](https://github.com/jaburges/AzureSSO)
 
 **A comprehensive Microsoft 365 integration plugin for WordPress** featuring Azure AD Single Sign-On, automated backups to Azure Blob Storage, Outlook calendar embedding, email via Microsoft Graph API, PTA role management, The Events Calendar integration, WooCommerce class products, and more.
 
@@ -18,7 +18,7 @@
 3. **Enter credentials** → Add Client ID, Secret, and Tenant ID in plugin settings
 4. **Enable modules** → Turn on the features you need
 
-📖 **[Full Documentation →](https://github.com/jamieburgess/microsoft-wp/wiki)**
+📖 **[Full Documentation →](https://github.com/jaburges/AzureSSO/wiki)**
 
 ---
 
@@ -27,39 +27,39 @@
 ### 🔐 Authentication & Security
 | Module | Description |
 |--------|-------------|
-| **[SSO Authentication](https://github.com/jamieburgess/microsoft-wp/wiki/SSO-Module)** | Azure AD login with claims mapping, auto user creation, role sync |
+| **[SSO Authentication](https://github.com/jaburges/AzureSSO/wiki/SSO-Module)** | Azure AD login with claims mapping, auto user creation, role sync |
 
 ### 💾 Data Management
 | Module | Description |
 |--------|-------------|
-| **[Backup to Azure](https://github.com/jamieburgess/microsoft-wp/wiki/Backup-Module)** | Automated backups to Azure Blob Storage with scheduling and restoration |
+| **[Backup to Azure](https://github.com/jaburges/AzureSSO/wiki/Backup-Module)** | Automated backups to Azure Blob Storage with scheduling and restoration |
 
 ### 📅 Calendar & Events
 | Module | Description |
 |--------|-------------|
-| **[Calendar Embed](https://github.com/jamieburgess/microsoft-wp/wiki/Calendar-Embed-Module)** | Embed Outlook calendars with shortcodes, shared mailbox support |
-| **[Calendar Sync (TEC)](https://github.com/jamieburgess/microsoft-wp/wiki/Calendar-Sync-Module)** | Sync Outlook → The Events Calendar with category mapping |
-| **[Upcoming Events](https://github.com/jamieburgess/microsoft-wp/wiki/Upcoming-Events-Module)** | Display upcoming TEC events with customizable shortcode |
+| **[Calendar Embed](https://github.com/jaburges/AzureSSO/wiki/Calendar-Embed-Module)** | Embed Outlook calendars with shortcodes, shared mailbox support |
+| **[Calendar Sync (TEC)](https://github.com/jaburges/AzureSSO/wiki/Calendar-Sync-Module)** | Sync Outlook → The Events Calendar with category mapping |
+| **[Upcoming Events](https://github.com/jaburges/AzureSSO/wiki/Upcoming-Events-Module)** | Display upcoming TEC events with customizable shortcode |
 
 ### 📧 Communication
 | Module | Description |
 |--------|-------------|
-| **[Email via Graph API](https://github.com/jamieburgess/microsoft-wp/wiki/Email-Module)** | Send WordPress emails through Microsoft Graph |
+| **[Email via Graph API](https://github.com/jaburges/AzureSSO/wiki/Email-Module)** | Send WordPress emails through Microsoft Graph |
 
 ### 👥 Organization Management
 | Module | Description |
 |--------|-------------|
-| **[PTA Roles](https://github.com/jamieburgess/microsoft-wp/wiki/PTA-Roles-Module)** | Manage volunteer roles, departments, and O365 group sync |
+| **[PTA Roles](https://github.com/jaburges/AzureSSO/wiki/PTA-Roles-Module)** | Manage volunteer roles, departments, and O365 group sync |
 
 ### 🛒 E-Commerce
 | Module | Description |
 |--------|-------------|
-| **[Classes (WooCommerce)](https://github.com/jamieburgess/microsoft-wp/wiki/Classes-Module)** | Create class products with TEC integration, variable pricing, commit-to-buy |
+| **[Classes (WooCommerce)](https://github.com/jaburges/AzureSSO/wiki/Classes-Module)** | Create class products with TEC integration, variable pricing, commit-to-buy |
 
 ### 📁 Media
 | Module | Description |
 |--------|-------------|
-| **[OneDrive Media](https://github.com/jamieburgess/microsoft-wp/wiki/OneDrive-Module)** | Browse and insert OneDrive files into WordPress |
+| **[OneDrive Media](https://github.com/jaburges/AzureSSO/wiki/OneDrive-Module)** | Browse and insert OneDrive files into WordPress |
 
 ---
 
@@ -97,7 +97,7 @@
 cd /path/to/wordpress/wp-content/plugins/
 
 # Clone or extract the plugin
-git clone https://github.com/jamieburgess/microsoft-wp.git azure-plugin
+git clone https://github.com/jaburges/AzureSSO.git azure-plugin
 ```
 
 ### After Installation
@@ -314,18 +314,18 @@ View logs at: **Azure Plugin → System Logs**
 
 ## 📖 Documentation
 
-- **[Wiki Home](https://github.com/jamieburgess/microsoft-wp/wiki)** - Full documentation
-- **[Prerequisites](https://github.com/jamieburgess/microsoft-wp/wiki/Prerequisites)** - What you need before installing
-- **[Quick Start](https://github.com/jamieburgess/microsoft-wp/wiki/Quick-Start)** - Get up and running fast
-- **[Module Guides](https://github.com/jamieburgess/microsoft-wp/wiki/Modules)** - Detailed module documentation
-- **[Advanced Config](https://github.com/jamieburgess/microsoft-wp/wiki/Advanced-Configuration)** - Power user settings
-- **[Contributing](https://github.com/jamieburgess/microsoft-wp/wiki/Contributing)** - How to contribute
+- **[Wiki Home](https://github.com/jaburges/AzureSSO/wiki)** - Full documentation
+- **[Prerequisites](https://github.com/jaburges/AzureSSO/wiki/Prerequisites)** - What you need before installing
+- **[Quick Start](https://github.com/jaburges/AzureSSO/wiki/Quick-Start)** - Get up and running fast
+- **[Module Guides](https://github.com/jaburges/AzureSSO/wiki/Modules)** - Detailed module documentation
+- **[Advanced Config](https://github.com/jaburges/AzureSSO/wiki/Advanced-Configuration)** - Power user settings
+- **[Contributing](https://github.com/jaburges/AzureSSO/wiki/Contributing)** - How to contribute
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/jamieburgess/microsoft-wp/wiki/Contributing).
+Contributions are welcome! Please see our [Contributing Guide](https://github.com/jaburges/AzureSSO/wiki/Contributing).
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -350,4 +350,4 @@ This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) 
 
 ---
 
-**Version 2.0** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jamieburgess/microsoft-wp/issues)
+**Version 2.0** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jaburges/AzureSSO/issues)
