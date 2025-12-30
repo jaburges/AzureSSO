@@ -311,6 +311,38 @@ if ($activity_table) {
                 </div>
             </div>
         </div>
+        
+        <!-- Danger Zone -->
+        <div class="danger-zone-section" style="margin-top: 30px; padding: 20px; background: #fff; border: 2px solid #d63638; border-radius: 4px;">
+            <h2 style="color: #d63638; margin-top: 0;">
+                <span class="dashicons dashicons-warning" style="margin-right: 8px;"></span>
+                Danger Zone
+            </h2>
+            <p class="description" style="color: #666;">These actions are for testing and development purposes. Use with caution.</p>
+            
+            <?php
+            $wizard_completed = Azure_Settings::get_setting('setup_wizard_completed', false);
+            $wizard_step = Azure_Settings::get_setting('setup_wizard_step', 0);
+            ?>
+            
+            <div class="danger-zone-item" style="margin-top: 20px; padding: 15px; background: #fef7f7; border-radius: 4px;">
+                <h4 style="margin: 0 0 10px;">Setup Wizard Status</h4>
+                <p style="margin: 0 0 15px; color: #666;">
+                    Current status: <strong><?php echo $wizard_completed ? 'Completed' : 'Not Completed'; ?></strong>
+                    <?php if ($wizard_step > 0): ?>
+                    (Step <?php echo $wizard_step; ?>)
+                    <?php endif; ?>
+                </p>
+                <p style="margin: 0 0 15px; color: #666; font-size: 13px;">
+                    Reset the setup wizard to test the onboarding experience again. This will show the setup wizard banner on the dashboard and allow you to walk through the setup steps.
+                </p>
+                <button type="button" class="button" id="reset-setup-wizard" style="background-color: #d63638; border-color: #d63638; color: white;">
+                    <span class="dashicons dashicons-image-rotate"></span>
+                    Reset Setup Wizard
+                </button>
+                <span id="reset-wizard-status" style="margin-left: 10px;"></span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -868,6 +900,39 @@ jQuery(document).ready(function($) {
             button.prop('disabled', false).html(originalHtml);
             alert('❌ Reimport failed due to network error:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
             console.error('Reimport AJAX error:', xhr);
+        });
+    });
+    
+    // Reset Setup Wizard
+    $('#reset-setup-wizard').click(function() {
+        var button = $(this);
+        var originalHtml = button.html();
+        var $status = $('#reset-wizard-status');
+        
+        if (!confirm('This will reset the setup wizard status, allowing you to test the onboarding experience again.\n\nContinue?')) {
+            return;
+        }
+        
+        button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Resetting...');
+        $status.html('');
+        
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_reset_setup_wizard',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            button.prop('disabled', false).html(originalHtml);
+            
+            if (response.success) {
+                $status.html('<span style="color: #00a32a;">✓ Setup wizard reset! <a href="' + response.data.redirect + '">Start wizard</a></span>');
+                // Update the status display
+                location.reload();
+            } else {
+                $status.html('<span style="color: #d63638;">✗ ' + (response.data || 'Reset failed') + '</span>');
+            }
+        }).fail(function(xhr) {
+            button.prop('disabled', false).html(originalHtml);
+            $status.html('<span style="color: #d63638;">✗ Network error</span>');
+            console.error('Reset wizard AJAX error:', xhr);
         });
     });
 });
