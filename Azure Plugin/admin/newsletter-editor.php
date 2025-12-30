@@ -1,6 +1,6 @@
 <?php
 /**
- * Newsletter Editor - 4-Step Progressive Workflow
+ * Newsletter Editor - Progressive Workflow with Template Selection
  */
 
 if (!defined('ABSPATH')) {
@@ -40,7 +40,22 @@ if ($template_id > 0 && !$newsletter) {
     $template = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$templates_table} WHERE id = %d", $template_id));
 }
 
+// Load all templates for template selection step
+$all_templates = array();
+global $wpdb;
+$templates_table = $wpdb->prefix . 'azure_newsletter_templates';
+$table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$templates_table}'") === $templates_table;
+if ($table_exists) {
+    $all_templates = $wpdb->get_results("SELECT * FROM {$templates_table} ORDER BY is_system DESC, name ASC");
+}
+
+// Determine the step
+// Step 0 = Template selection (only for new newsletters without template specified)
+// Steps 1-4 = Regular workflow
 $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
+
+// Show template selection for new newsletters without a template pre-selected
+$show_template_selection = (!$newsletter && !$template && $step === 1 && !isset($_GET['blank']));
 
 // Get saved recipient lists for editing
 $saved_lists = array('all'); // Default to all
@@ -53,6 +68,59 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
 ?>
 
 <div class="wrap newsletter-editor-wrap">
+    
+    <?php if ($show_template_selection): ?>
+    <!-- Template Selection Screen -->
+    <div class="template-selection-screen">
+        <div class="template-selection-header">
+            <h1><?php _e('Choose a Template', 'azure-plugin'); ?></h1>
+            <p class="description"><?php _e('Select a template to get started, or start with a blank canvas.', 'azure-plugin'); ?></p>
+        </div>
+        
+        <div class="template-selection-grid">
+            <!-- Start from Scratch Option -->
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new&blank=1'); ?>" class="template-selection-card blank-template">
+                <div class="template-preview blank">
+                    <span class="dashicons dashicons-plus-alt2"></span>
+                </div>
+                <div class="template-info">
+                    <h3><?php _e('Start from Scratch', 'azure-plugin'); ?></h3>
+                    <p><?php _e('Begin with a blank canvas and build your email from scratch.', 'azure-plugin'); ?></p>
+                </div>
+            </a>
+            
+            <?php foreach ($all_templates as $tpl): ?>
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new&template=' . $tpl->id); ?>" class="template-selection-card">
+                <div class="template-preview">
+                    <?php if (!empty($tpl->content_html)): ?>
+                    <iframe srcdoc="<?php echo esc_attr($tpl->content_html); ?>" sandbox="allow-same-origin" scrolling="no"></iframe>
+                    <?php else: ?>
+                    <div class="template-placeholder">
+                        <span class="dashicons dashicons-email-alt"></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <div class="template-info">
+                    <h3><?php echo esc_html($tpl->name); ?></h3>
+                    <?php if ($tpl->is_system): ?>
+                    <span class="template-badge system"><?php _e('System', 'azure-plugin'); ?></span>
+                    <?php else: ?>
+                    <span class="template-badge custom"><?php _e('Custom', 'azure-plugin'); ?></span>
+                    <?php endif; ?>
+                </div>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        
+        <div class="template-selection-footer">
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=campaigns'); ?>" class="button">
+                <?php _e('Cancel', 'azure-plugin'); ?>
+            </a>
+        </div>
+    </div>
+    
+    <?php else: ?>
+    <!-- Regular Editor -->
     <div class="editor-header">
         <h1><?php echo $newsletter ? __('Edit Newsletter', 'azure-plugin') : __('Create Newsletter', 'azure-plugin'); ?></h1>
         <div class="editor-header-actions">
@@ -467,6 +535,7 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
             </div>
         </div>
     </form>
+    <?php endif; // End of else (not template selection) ?>
 </div>
 
 <script>
