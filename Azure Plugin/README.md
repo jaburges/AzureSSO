@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-GPL%20v2-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
 [![Version](https://img.shields.io/badge/Version-3.0-orange.svg)](https://github.com/jaburges/AzureSSO)
 
-**A comprehensive Microsoft 365 integration plugin for WordPress** featuring Azure AD Single Sign-On, automated backups to Azure Blob Storage, Outlook calendar embedding, email via Microsoft Graph API, PTA role management, The Events Calendar integration, WooCommerce class products, and more.
+**A comprehensive Microsoft 365 integration plugin for WordPress** designed for PTAs, nonprofits, and organizations. Features Azure AD Single Sign-On, automated backups to Azure Blob Storage, email newsletters with visual editor, Outlook calendar embedding, PTA role management, The Events Calendar integration, and more.
 
 > 💡 **Perfect for nonprofits!** Microsoft offers [300 free Business Basic licenses](https://nonprofit.microsoft.com/en-us/getting-started) and [$3,500 annual Azure credits](https://www.microsoft.com/en-us/nonprofits/azure) to qualifying nonprofits.
 
@@ -13,6 +13,12 @@
 
 ## 🚀 Quick Start
 
+### First-Time Setup (Recommended)
+1. **Install the plugin** → Upload to `/wp-content/plugins/` and activate
+2. **Complete Setup Wizard** → Follow the guided setup that appears on activation
+3. **You're ready!** → The wizard walks you through Azure configuration, module selection, and initial settings
+
+### Manual Setup
 1. **Install the plugin** → Upload to `/wp-content/plugins/` and activate
 2. **Configure Azure App** → [Create an Azure App Registration](#azure-app-registration)
 3. **Enter credentials** → Add Client ID, Secret, and Tenant ID in plugin settings
@@ -45,6 +51,7 @@
 | Module | Description |
 |--------|-------------|
 | **[Email via Graph API](https://github.com/jaburges/AzureSSO/wiki/Email-Module)** | Send WordPress emails through Microsoft Graph |
+| **[Newsletter](https://github.com/jaburges/AzureSSO/wiki/Newsletter-Module)** | Visual email editor, campaigns, subscriber lists, analytics, spam testing |
 
 ### 👥 Organization Management
 | Module | Description |
@@ -220,6 +227,19 @@ Credentials: Required
 - Email logging and tracking
 - Works with Contact Form 7, WooCommerce, etc.
 
+### Newsletter
+```
+Location: Azure Plugin → Newsletter
+Credentials: Email service (Mailgun, SendGrid, Amazon SES, or Office 365)
+```
+- Visual drag-and-drop email editor (GrapesJS)
+- Pre-built responsive email templates
+- Subscriber list management (WordPress users, custom lists)
+- Campaign scheduling and analytics
+- Open/click tracking with webhooks
+- Spam score testing (SpamAssassin integration)
+- Dynamic content blocks (Latest Posts, Upcoming Events, PTA Roles)
+
 ### PTA Roles
 ```
 Location: Azure Plugin → PTA Roles
@@ -350,4 +370,4 @@ This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) 
 
 ---
 
-**Version 2.0** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jaburges/AzureSSO/issues)
+**Version 3.0** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jaburges/AzureSSO/issues)
