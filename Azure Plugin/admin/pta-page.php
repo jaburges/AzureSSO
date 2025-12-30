@@ -116,21 +116,19 @@ if (class_exists('Azure_PTA_Database')) {
             </div>
             
             <?php if (!empty($sync_stats)): ?>
-            <div class="sync-stats">
-                <h3>Sync Status</h3>
-                <div class="sync-stats-grid">
-                    <div class="sync-stat pending">
-                        <span class="number"><?php echo intval($sync_stats['pending']); ?></span>
-                        <span class="label">Pending</span>
-                    </div>
-                    <div class="sync-stat failed">
-                        <span class="number"><?php echo intval($sync_stats['failed']); ?></span>
-                        <span class="label">Failed</span>
-                    </div>
-                    <div class="sync-stat completed">
-                        <span class="number"><?php echo intval($sync_stats['completed_today']); ?></span>
-                        <span class="label">Completed Today</span>
-                    </div>
+            <h3 style="margin-top: 25px;">Sync Status</h3>
+            <div class="stats-cards">
+                <div class="stat-card warning">
+                    <div class="stat-number"><?php echo intval($sync_stats['pending']); ?></div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card error">
+                    <div class="stat-number"><?php echo intval($sync_stats['failed']); ?></div>
+                    <div class="stat-label">Failed</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-number"><?php echo intval($sync_stats['completed_today']); ?></div>
+                    <div class="stat-label">Completed Today</div>
                 </div>
             </div>
             <?php endif; ?>

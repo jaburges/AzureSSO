@@ -8,23 +8,10 @@ if (!defined('ABSPATH')) {
     <h1>Microsoft PTA - Main Settings</h1>
     
     <?php
-    // Check wizard status
+    // Show setup wizard progress banner if not completed
     $wizard_class_exists = class_exists('Azure_Setup_Wizard');
     $wizard_completed = Azure_Settings::get_setting('setup_wizard_completed', false);
     
-    // Debug notice (can be removed after testing)
-    if (current_user_can('administrator') && isset($_GET['debug'])):
-    ?>
-    <div class="notice notice-info" style="padding: 10px;">
-        <strong>Wizard Debug:</strong> 
-        Class exists: <?php echo $wizard_class_exists ? 'Yes' : 'No'; ?> | 
-        Completed setting: <?php echo $wizard_completed ? 'true' : 'false'; ?> | 
-        Should show: <?php echo (!$wizard_completed) ? 'Yes' : 'No'; ?>
-    </div>
-    <?php endif; ?>
-    
-    <?php
-    // Show setup wizard progress banner if not completed
     if ($wizard_class_exists && !$wizard_completed):
         $wizard_progress = Azure_Setup_Wizard::get_wizard_progress();
     ?>

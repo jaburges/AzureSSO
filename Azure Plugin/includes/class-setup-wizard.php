@@ -54,11 +54,14 @@ class Azure_Setup_Wizard {
     public function add_wizard_menu() {
         $wizard_completed = Azure_Settings::get_setting('setup_wizard_completed', false);
         
-        // Always add a hidden page for the wizard
+        // Always register the page (required for it to work)
+        // Use 'options.php' as parent to hide from menu when completed, 'azure-plugin' to show
+        $parent_slug = $wizard_completed ? 'options.php' : 'azure-plugin';
+        
         add_submenu_page(
-            $wizard_completed ? null : 'azure-plugin', // Hide from menu if completed
+            $parent_slug,
             __('Setup Wizard', 'azure-plugin'),
-            __('Microsoft PTA Setup', 'azure-plugin'),
+            __('Setup Wizard', 'azure-plugin'),
             'manage_options',
             'azure-plugin-setup',
             array($this, 'render_wizard_page')

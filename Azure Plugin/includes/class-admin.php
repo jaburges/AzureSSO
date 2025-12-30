@@ -23,6 +23,7 @@ class Azure_Admin {
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_init', array($this, 'admin_init'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+        add_action('wp_dashboard_setup', array($this, 'add_dashboard_widgets'));
         add_action('wp_ajax_azure_test_credentials', array($this, 'ajax_test_credentials'));
         add_action('wp_ajax_azure_toggle_module', array($this, 'ajax_toggle_module'));
         add_action('wp_ajax_azure_calendar_authorize', array($this, 'ajax_calendar_authorize'));
@@ -2096,5 +2097,314 @@ class Azure_Admin {
         } catch (Exception $e) {
             wp_send_json_error('Error listing drives: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Add dashboard widgets for enabled modules
+     */
+    public function add_dashboard_widgets() {
+        // Only for users who can manage the plugin
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+        
+        // Microsoft PTA Overview widget (always show)
+        wp_add_dashboard_widget(
+            'azure_plugin_overview',
+            __('Microsoft PTA Overview', 'azure-plugin'),
+            array($this, 'render_overview_widget')
+        );
+        
+        // SSO widget (if enabled)
+        if (Azure_Settings::is_module_enabled('sso')) {
+            wp_add_dashboard_widget(
+                'azure_sso_stats',
+                __('SSO Statistics', 'azure-plugin'),
+                array($this, 'render_sso_widget')
+            );
+        }
+        
+        // PTA Roles widget (if enabled)
+        if (Azure_Settings::is_module_enabled('pta')) {
+            wp_add_dashboard_widget(
+                'azure_pta_stats',
+                __('PTA Roles Overview', 'azure-plugin'),
+                array($this, 'render_pta_widget')
+            );
+        }
+        
+        // Backup widget (if enabled)
+        if (Azure_Settings::is_module_enabled('backup')) {
+            wp_add_dashboard_widget(
+                'azure_backup_stats',
+                __('Backup Status', 'azure-plugin'),
+                array($this, 'render_backup_widget')
+            );
+        }
+    }
+    
+    /**
+     * Render Overview Widget
+     */
+    public function render_overview_widget() {
+        $settings = Azure_Settings::get_all_settings();
+        $enabled_modules = array();
+        
+        $module_map = array(
+            'enable_sso' => array('name' => 'SSO Authentication', 'icon' => 'admin-users'),
+            'enable_backup' => array('name' => 'Cloud Backup', 'icon' => 'backup'),
+            'enable_calendar' => array('name' => 'Calendar', 'icon' => 'calendar-alt'),
+            'enable_email' => array('name' => 'Email', 'icon' => 'email-alt'),
+            'enable_pta' => array('name' => 'PTA Roles', 'icon' => 'groups'),
+            'enable_newsletter' => array('name' => 'Newsletter', 'icon' => 'megaphone'),
+            'enable_onedrive_media' => array('name' => 'OneDrive Media', 'icon' => 'cloud-upload'),
+        );
+        
+        foreach ($module_map as $key => $info) {
+            if (!empty($settings[$key])) {
+                $enabled_modules[] = $info;
+            }
+        }
+        ?>
+        <style>
+            .azure-overview-widget .enabled-modules { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+            .azure-overview-widget .module-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: #f0f6fc; border-radius: 3px; font-size: 12px; }
+            .azure-overview-widget .module-badge .dashicons { font-size: 14px; width: 14px; height: 14px; color: #0078d4; }
+            .azure-overview-widget .quick-links { display: flex; gap: 10px; flex-wrap: wrap; }
+        </style>
+        <div class="azure-overview-widget">
+            <p><strong><?php echo count($enabled_modules); ?></strong> <?php _e('modules enabled', 'azure-plugin'); ?></p>
+            
+            <div class="enabled-modules">
+                <?php foreach ($enabled_modules as $module): ?>
+                <span class="module-badge">
+                    <span class="dashicons dashicons-<?php echo esc_attr($module['icon']); ?>"></span>
+                    <?php echo esc_html($module['name']); ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+            
+            <div class="quick-links">
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>" class="button button-primary">
+                    <?php _e('Dashboard', 'azure-plugin'); ?>
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-logs'); ?>" class="button">
+                    <?php _e('System Logs', 'azure-plugin'); ?>
+                </a>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render SSO Widget
+     */
+    public function render_sso_widget() {
+        global $wpdb;
+        $activity_table = Azure_Database::get_table_name('activity_log');
+        
+        $stats = array(
+            'total_users' => 0,
+            'logins_today' => 0,
+            'last_sync' => null,
+            'last_sync_status' => 'unknown'
+        );
+        
+        if ($activity_table) {
+            // Get total SSO users (users with Azure mapping)
+            $stats['total_users'] = $wpdb->get_var(
+                "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta} WHERE meta_key = 'azure_object_id'"
+            ) ?: 0;
+            
+            // Get logins today
+            $stats['logins_today'] = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$activity_table} WHERE module = 'sso' AND action = 'user_login' AND DATE(created_at) = CURDATE()"
+            )) ?: 0;
+            
+            // Get last sync
+            $last_sync = $wpdb->get_row(
+                "SELECT created_at, status FROM {$activity_table} WHERE module = 'sso' AND action = 'users_synced' ORDER BY created_at DESC LIMIT 1"
+            );
+            if ($last_sync) {
+                $stats['last_sync'] = $last_sync->created_at;
+                $stats['last_sync_status'] = $last_sync->status;
+            }
+        }
+        ?>
+        <style>
+            .azure-sso-widget .dashboard-widget-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+            .azure-sso-widget .stat-card { background: #f9f9f9; padding: 12px; text-align: center; border-radius: 4px; border-left: 3px solid #0078d4; }
+            .azure-sso-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
+            .azure-sso-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
+            .azure-sso-widget .stat-card.success { border-left-color: #00a32a; }
+            .azure-sso-widget .stat-card.warning { border-left-color: #dba617; }
+            .azure-sso-widget .last-sync { font-size: 12px; color: #666; margin-bottom: 10px; }
+        </style>
+        <div class="azure-sso-widget">
+            <div class="dashboard-widget-stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_users']); ?></div>
+                    <div class="stat-label"><?php _e('SSO Users', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card <?php echo $stats['logins_today'] > 0 ? 'success' : ''; ?>">
+                    <div class="stat-number"><?php echo number_format($stats['logins_today']); ?></div>
+                    <div class="stat-label"><?php _e('Logins Today', 'azure-plugin'); ?></div>
+                </div>
+            </div>
+            
+            <?php if ($stats['last_sync']): ?>
+            <p class="last-sync">
+                <?php _e('Last Sync:', 'azure-plugin'); ?> 
+                <?php echo date('M j, Y g:i A', strtotime($stats['last_sync'])); ?>
+                <?php if ($stats['last_sync_status'] === 'success'): ?>
+                <span style="color: #00a32a;">✓</span>
+                <?php endif; ?>
+            </p>
+            <?php endif; ?>
+            
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-sso'); ?>" class="button">
+                <?php _e('Manage SSO', 'azure-plugin'); ?>
+            </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render PTA Widget
+     */
+    public function render_pta_widget() {
+        global $wpdb;
+        
+        $stats = array(
+            'departments' => 0,
+            'total_roles' => 0,
+            'filled_roles' => 0,
+            'active_assignments' => 0
+        );
+        
+        // Get PTA statistics
+        $departments_table = Azure_Database::get_table_name('pta_departments');
+        $roles_table = Azure_Database::get_table_name('pta_roles');
+        $assignments_table = Azure_Database::get_table_name('pta_assignments');
+        
+        if ($departments_table && $wpdb->get_var("SHOW TABLES LIKE '{$departments_table}'") === $departments_table) {
+            $stats['departments'] = $wpdb->get_var("SELECT COUNT(*) FROM {$departments_table}") ?: 0;
+        }
+        
+        if ($roles_table && $wpdb->get_var("SHOW TABLES LIKE '{$roles_table}'") === $roles_table) {
+            $stats['total_roles'] = $wpdb->get_var("SELECT COUNT(*) FROM {$roles_table}") ?: 0;
+            $stats['filled_roles'] = $wpdb->get_var("SELECT COUNT(*) FROM {$roles_table} WHERE status = 'filled'") ?: 0;
+        }
+        
+        if ($assignments_table && $wpdb->get_var("SHOW TABLES LIKE '{$assignments_table}'") === $assignments_table) {
+            $stats['active_assignments'] = $wpdb->get_var("SELECT COUNT(*) FROM {$assignments_table} WHERE status = 'active'") ?: 0;
+        }
+        ?>
+        <style>
+            .azure-pta-widget .dashboard-widget-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+            .azure-pta-widget .stat-card { background: #f9f9f9; padding: 12px; text-align: center; border-radius: 4px; border-left: 3px solid #0078d4; }
+            .azure-pta-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
+            .azure-pta-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
+            .azure-pta-widget .stat-card.success { border-left-color: #00a32a; }
+        </style>
+        <div class="azure-pta-widget">
+            <div class="dashboard-widget-stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['departments']); ?></div>
+                    <div class="stat-label"><?php _e('Departments', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_roles']); ?></div>
+                    <div class="stat-label"><?php _e('Total Roles', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-number"><?php echo number_format($stats['filled_roles']); ?></div>
+                    <div class="stat-label"><?php _e('Filled Roles', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['active_assignments']); ?></div>
+                    <div class="stat-label"><?php _e('Assignments', 'azure-plugin'); ?></div>
+                </div>
+            </div>
+            
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-pta'); ?>" class="button">
+                <?php _e('Manage Roles', 'azure-plugin'); ?>
+            </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render Backup Widget
+     */
+    public function render_backup_widget() {
+        global $wpdb;
+        $activity_table = Azure_Database::get_table_name('activity_log');
+        
+        $stats = array(
+            'last_backup' => null,
+            'last_backup_status' => 'unknown',
+            'backups_this_month' => 0,
+            'total_size' => 0
+        );
+        
+        if ($activity_table) {
+            // Get last backup
+            $last_backup = $wpdb->get_row(
+                "SELECT created_at, status, details FROM {$activity_table} WHERE module = 'backup' AND action IN ('backup_complete', 'backup_started') ORDER BY created_at DESC LIMIT 1"
+            );
+            if ($last_backup) {
+                $stats['last_backup'] = $last_backup->created_at;
+                $stats['last_backup_status'] = $last_backup->status;
+            }
+            
+            // Get backups this month
+            $first_of_month = date('Y-m-01 00:00:00');
+            $stats['backups_this_month'] = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$activity_table} WHERE module = 'backup' AND action = 'backup_complete' AND created_at >= %s",
+                $first_of_month
+            )) ?: 0;
+        }
+        ?>
+        <style>
+            .azure-backup-widget .backup-status { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding: 12px; background: #f9f9f9; border-radius: 4px; }
+            .azure-backup-widget .backup-status.success { border-left: 3px solid #00a32a; }
+            .azure-backup-widget .backup-status.error { border-left: 3px solid #d63638; }
+            .azure-backup-widget .backup-status .dashicons { font-size: 24px; width: 24px; height: 24px; }
+            .azure-backup-widget .backup-status.success .dashicons { color: #00a32a; }
+            .azure-backup-widget .backup-status.error .dashicons { color: #d63638; }
+            .azure-backup-widget .backup-info { flex: 1; }
+            .azure-backup-widget .backup-info strong { display: block; }
+            .azure-backup-widget .backup-info span { font-size: 12px; color: #666; }
+            .azure-backup-widget .backup-actions { display: flex; gap: 10px; }
+        </style>
+        <div class="azure-backup-widget">
+            <div class="backup-status <?php echo $stats['last_backup_status']; ?>">
+                <span class="dashicons dashicons-<?php echo $stats['last_backup_status'] === 'success' ? 'yes-alt' : 'warning'; ?>"></span>
+                <div class="backup-info">
+                    <?php if ($stats['last_backup']): ?>
+                    <strong><?php _e('Last Backup', 'azure-plugin'); ?></strong>
+                    <span><?php echo date('M j, Y g:i A', strtotime($stats['last_backup'])); ?></span>
+                    <?php else: ?>
+                    <strong><?php _e('No backups yet', 'azure-plugin'); ?></strong>
+                    <span><?php _e('Run your first backup', 'azure-plugin'); ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <p style="margin-bottom: 15px;">
+                <strong><?php echo $stats['backups_this_month']; ?></strong> <?php _e('backups this month', 'azure-plugin'); ?>
+            </p>
+            
+            <div class="backup-actions">
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-backup'); ?>" class="button button-primary">
+                    <?php _e('Run Backup', 'azure-plugin'); ?>
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-backup'); ?>" class="button">
+                    <?php _e('Settings', 'azure-plugin'); ?>
+                </a>
+            </div>
+        </div>
+        <?php
     }
 }

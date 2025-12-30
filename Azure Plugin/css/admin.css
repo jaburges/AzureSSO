@@ -672,3 +672,119 @@ body.admin-color-midnight .module-description p {
     background: #f0f0f0 !important;
     color: #005a9e !important;
 }
+
+/* =============================================
+   GLOBAL STAT CARDS - Used across all modules
+   ============================================= */
+
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card .stat-number,
+.stat-card .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1d2327;
+    line-height: 1.2;
+    margin-bottom: 5px;
+}
+
+.stat-card .stat-label {
+    font-size: 13px;
+    color: #646970;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Stat card color variants */
+.stat-card.success {
+    border-left: 4px solid #00a32a;
+    background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%);
+}
+
+.stat-card.success .stat-number,
+.stat-card.success .stat-value {
+    color: #00a32a;
+}
+
+.stat-card.warning {
+    border-left: 4px solid #dba617;
+    background: linear-gradient(135deg, #fcf9e8 0%, #fff 100%);
+}
+
+.stat-card.warning .stat-number,
+.stat-card.warning .stat-value {
+    color: #996800;
+}
+
+.stat-card.error {
+    border-left: 4px solid #d63638;
+    background: linear-gradient(135deg, #fef7f7 0%, #fff 100%);
+}
+
+.stat-card.error .stat-number,
+.stat-card.error .stat-value {
+    color: #d63638;
+}
+
+.stat-card.info {
+    border-left: 4px solid #0078d4;
+    background: linear-gradient(135deg, #f0f6fc 0%, #fff 100%);
+}
+
+.stat-card.info .stat-number,
+.stat-card.info .stat-value {
+    color: #0078d4;
+}
+
+.stat-card.highlight {
+    border-color: #2271b1;
+    background: #f0f6fc;
+}
+
+/* Smaller stat cards variant */
+.stats-cards.compact .stat-card {
+    padding: 15px;
+}
+
+.stats-cards.compact .stat-number,
+.stats-cards.compact .stat-value {
+    font-size: 24px;
+}
+
+/* Dashboard widget stat cards */
+.dashboard-widget-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.dashboard-widget-stats .stat-card {
+    padding: 12px;
+}
+
+.dashboard-widget-stats .stat-number {
+    font-size: 22px;
+}
+
+.dashboard-widget-stats .stat-label {
+    font-size: 11px;
+}
