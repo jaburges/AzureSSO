@@ -204,6 +204,25 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
+            'Azure Plugin - Event Tickets',
+            'Event Tickets',
+            'manage_options',
+            'azure-plugin-tickets',
+            array($this, 'admin_page_tickets')
+        );
+        
+        // Tickets sub-pages (hidden from menu)
+        add_submenu_page(
+            null, // Hidden
+            'Check-in Scanner',
+            'Check-in Scanner',
+            'scan_tickets',
+            'azure-plugin-tickets-checkin',
+            array($this, 'admin_page_tickets_checkin')
+        );
+        
+        add_submenu_page(
+            'azure-plugin',
             'Azure Plugin - Logs',
             'System Logs',
             'manage_options',
@@ -681,6 +700,23 @@ class Azure_Admin {
         }
     }
     
+    public function admin_page_tickets() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/tickets-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Event Tickets', $e);
+        }
+    }
+    
+    public function admin_page_tickets_checkin() {
+        try {
+            include AZURE_PLUGIN_PATH . 'admin/tickets-checkin.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Check-in Scanner', $e);
+        }
+    }
+    
     public function admin_page_logs() {
         try {
             $logs = Azure_Logger::get_logs(200);
@@ -805,7 +841,7 @@ class Azure_Admin {
         $enabled = $_POST['enabled'] === 'true';
         
         // Validate module name
-        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter');
+        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter', 'tickets');
         if (!in_array($module, $valid_modules)) {
             wp_send_json_error('Invalid module name: ' . $module);
         }

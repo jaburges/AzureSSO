@@ -38,18 +38,47 @@ class Azure_Newsletter_Queue {
             $scheduled_at = current_time('mysql');
         }
         
+        // Normalize list_id - handle potential issues
+        $list_id = trim(strval($list_id));
+        
+        error_log("[Newsletter Queue] Processing list_id='{$list_id}' for newsletter #{$newsletter_id}");
+        
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info("Queue: Processing list_id='{$list_id}' (type: " . gettype($list_id) . ") for newsletter #{$newsletter_id}");
+        }
+        
         // Get recipients based on list
         $recipients = $this->get_recipients($list_id);
         
+        error_log("[Newsletter Queue] Found " . count($recipients) . " recipients for list '{$list_id}'");
+        
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info("Queue: Found " . count($recipients) . " recipients for list '{$list_id}'");
+        }
+        
         if (empty($recipients)) {
+            error_log("[Newsletter Queue] ERROR: No recipients found for list '{$list_id}'");
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::warning("Queue: No recipients found for list '{$list_id}'");
+            }
             return array(
                 'success' => false,
-                'error' => 'No recipients found for the selected list'
+                'error' => "No recipients found for list '{$list_id}'"
             );
         }
         
+        // Track original count before filtering
+        $original_count = count($recipients);
+        
         // Filter out blocked/bounced emails
-        $recipients = $this->filter_blocked_recipients($recipients);
+        $filter_result = $this->filter_blocked_recipients_with_stats($recipients);
+        $recipients = $filter_result['recipients'];
+        $blocked_count = $filter_result['blocked'];
+        $bounced_count = $filter_result['bounced'];
+        
+        if (class_exists('Azure_Logger') && ($blocked_count > 0 || $bounced_count > 0)) {
+            Azure_Logger::info("Queue: Filtered out {$blocked_count} blocked and {$bounced_count} bounced recipients");
+        }
         
         // Queue each recipient
         $queued = 0;
@@ -79,12 +108,18 @@ class Azure_Newsletter_Queue {
             array('id' => $newsletter_id)
         );
         
-        Azure_Logger::info("Newsletter #{$newsletter_id} queued: {$queued} emails, {$skipped} skipped");
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info("Newsletter #{$newsletter_id} queued: {$queued} emails, {$skipped} skipped, {$blocked_count} blocked, {$bounced_count} bounced");
+        }
         
         return array(
             'success' => true,
             'queued' => $queued,
-            'skipped' => $skipped
+            'skipped' => $skipped,
+            'original_count' => $original_count,
+            'blocked' => $blocked_count,
+            'bounced' => $bounced_count,
+            'filtered_total' => $blocked_count + $bounced_count
         );
     }
     
@@ -96,12 +131,17 @@ class Azure_Newsletter_Queue {
         
         $recipients = array();
         
-        if ($list_id === 'all') {
+        // Use case-insensitive comparison for 'all'
+        if (strtolower($list_id) === 'all') {
             // All WordPress users with email addresses
             $users = get_users(array(
                 'fields' => array('ID', 'user_email', 'display_name'),
                 'number' => -1
             ));
+            
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::info("Queue get_recipients: Fetching all users, found " . count($users) . " total users");
+            }
             
             foreach ($users as $user) {
                 if (!empty($user->user_email)) {
@@ -112,8 +152,14 @@ class Azure_Newsletter_Queue {
                     );
                 }
             }
+            
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::info("Queue get_recipients: After filtering for emails, have " . count($recipients) . " recipients");
+            }
         } else {
             // Custom list
+            error_log("[Newsletter Queue] Looking up custom list with id={$list_id}");
+            
             $lists_table = $wpdb->prefix . 'azure_newsletter_lists';
             $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
             
@@ -122,16 +168,21 @@ class Azure_Newsletter_Queue {
                 $list_id
             ));
             
+            error_log("[Newsletter Queue] List found: " . ($list ? "yes, type={$list->type}, name={$list->name}" : "NO"));
+            
             if ($list) {
                 switch ($list->type) {
                     case 'role':
+                        error_log("[Newsletter Queue] Processing role-based list");
                         $criteria = json_decode($list->criteria, true);
+                        error_log("[Newsletter Queue] Criteria: " . json_encode($criteria));
                         if (!empty($criteria['roles'])) {
                             foreach ($criteria['roles'] as $role) {
                                 $users = get_users(array(
                                     'role' => $role,
                                     'fields' => array('ID', 'user_email', 'display_name')
                                 ));
+                                error_log("[Newsletter Queue] Role '{$role}' has " . count($users) . " users");
                                 
                                 foreach ($users as $user) {
                                     if (!empty($user->user_email)) {
@@ -147,14 +198,17 @@ class Azure_Newsletter_Queue {
                         break;
                         
                     case 'custom':
+                        error_log("[Newsletter Queue] Processing custom list, querying members table");
                         $members = $wpdb->get_results($wpdb->prepare(
                             "SELECT user_id, email, first_name, last_name 
                              FROM {$members_table} 
                              WHERE list_id = %d AND unsubscribed_at IS NULL",
                             $list_id
                         ));
+                        error_log("[Newsletter Queue] Found " . count($members) . " members in custom list");
                         
                         foreach ($members as $member) {
+                            error_log("[Newsletter Queue] Member: " . $member->email);
                             $recipients[] = array(
                                 'user_id' => $member->user_id,
                                 'email' => $member->email,
@@ -162,7 +216,13 @@ class Azure_Newsletter_Queue {
                             );
                         }
                         break;
+                        
+                    default:
+                        error_log("[Newsletter Queue] Unknown list type: {$list->type}");
+                        break;
                 }
+            } else {
+                error_log("[Newsletter Queue] ERROR: List not found in database!");
             }
         }
         
@@ -183,19 +243,64 @@ class Azure_Newsletter_Queue {
     /**
      * Filter out blocked/bounced recipients
      */
+    /**
+     * Filter blocked recipients (legacy method for compatibility)
+     */
     private function filter_blocked_recipients($recipients) {
+        $result = $this->filter_blocked_recipients_with_stats($recipients);
+        return $result['recipients'];
+    }
+    
+    /**
+     * Filter blocked/bounced recipients and return statistics
+     */
+    private function filter_blocked_recipients_with_stats($recipients) {
         global $wpdb;
         
         $bounces_table = $wpdb->prefix . 'azure_newsletter_bounces';
         
-        // Get blocked emails
-        $blocked = $wpdb->get_col("SELECT email FROM {$bounces_table} WHERE is_blocked = 1");
-        $blocked_lower = array_map('strtolower', $blocked);
+        // Check if bounces table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$bounces_table}'") === $bounces_table;
         
-        // Filter out blocked
-        return array_filter($recipients, function($r) use ($blocked_lower) {
-            return !in_array(strtolower($r['email']), $blocked_lower);
+        if (!$table_exists) {
+            return array(
+                'recipients' => $recipients,
+                'blocked' => 0,
+                'bounced' => 0
+            );
+        }
+        
+        // Get blocked emails (manually blocked)
+        $blocked_emails = $wpdb->get_col("SELECT LOWER(email) FROM {$bounces_table} WHERE is_blocked = 1");
+        
+        // Get hard bounced emails (not manually blocked but bounced)
+        $bounced_emails = $wpdb->get_col("SELECT LOWER(email) FROM {$bounces_table} WHERE bounce_type = 'hard' AND is_blocked = 0");
+        
+        $blocked_count = 0;
+        $bounced_count = 0;
+        
+        // Filter out blocked and bounced
+        $filtered = array_filter($recipients, function($r) use ($blocked_emails, $bounced_emails, &$blocked_count, &$bounced_count) {
+            $email_lower = strtolower($r['email']);
+            
+            if (in_array($email_lower, $blocked_emails)) {
+                $blocked_count++;
+                return false;
+            }
+            
+            if (in_array($email_lower, $bounced_emails)) {
+                $bounced_count++;
+                return false;
+            }
+            
+            return true;
         });
+        
+        return array(
+            'recipients' => array_values($filtered), // Re-index array
+            'blocked' => $blocked_count,
+            'bounced' => $bounced_count
+        );
     }
     
     /**

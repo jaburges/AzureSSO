@@ -381,13 +381,60 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
         </p>
     </div>
     
-    <!-- Danger Zone -->
+    <!-- Queue Status Quick View -->
     <?php
-    // Check table status
+    // Check table status and queue
     global $wpdb;
     $newsletters_table = $wpdb->prefix . 'azure_newsletters';
+    $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
     $tables_exist = $wpdb->get_var("SHOW TABLES LIKE '{$newsletters_table}'") === $newsletters_table;
+    
+    // Get queue statistics
+    $pending_count = 0;
+    $failed_count = 0;
+    $next_cron = wp_next_scheduled('azure_newsletter_process_queue');
+    
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$queue_table}'") === $queue_table) {
+        $pending_count = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'pending'") ?: 0;
+        $failed_count = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'failed'") ?: 0;
+    }
     ?>
+    <div class="settings-section queue-status-section">
+        <h3><span class="dashicons dashicons-clock"></span> <?php _e('Queue Status', 'azure-plugin'); ?></h3>
+        
+        <div class="queue-quick-stats">
+            <span class="quick-stat">
+                <strong><?php echo number_format($pending_count); ?></strong> <?php _e('pending', 'azure-plugin'); ?>
+            </span>
+            <span class="quick-stat-sep">•</span>
+            <span class="quick-stat <?php echo $failed_count > 0 ? 'has-issues' : ''; ?>">
+                <strong><?php echo number_format($failed_count); ?></strong> <?php _e('failed', 'azure-plugin'); ?>
+            </span>
+            <span class="quick-stat-sep">•</span>
+            <span class="quick-stat">
+                <?php _e('Next run:', 'azure-plugin'); ?>
+                <?php if ($next_cron): ?>
+                    <strong><?php echo human_time_diff(time(), $next_cron); ?></strong>
+                <?php else: ?>
+                    <strong style="color:#d63638;"><?php _e('Not scheduled', 'azure-plugin'); ?></strong>
+                <?php endif; ?>
+            </span>
+        </div>
+        
+        <p style="margin-top: 15px;">
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=queue'); ?>" class="button">
+                <span class="dashicons dashicons-list-view" style="margin-top: 4px;"></span>
+                <?php _e('View Full Queue', 'azure-plugin'); ?>
+            </a>
+            <button type="button" class="button" id="process-queue-now" style="margin-left: 5px;">
+                <span class="dashicons dashicons-update" style="margin-top: 4px;"></span>
+                <?php _e('Process Now', 'azure-plugin'); ?>
+            </button>
+            <span id="process-queue-status" style="margin-left: 10px;"></span>
+        </p>
+    </div>
+    
+    <!-- Danger Zone -->
     <div class="danger-zone">
         <h3><?php _e('Database Management', 'azure-plugin'); ?></h3>
         
@@ -472,6 +519,29 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
     margin-top: 5px;
     padding: 8px;
     background: #f0f0f1;
+}
+
+/* Queue Status */
+.queue-status-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.queue-status-section h3 .dashicons {
+    color: #2271b1;
+}
+.queue-quick-stats {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: #1d2327;
+}
+.queue-quick-stats .quick-stat-sep {
+    color: #c3c4c7;
+}
+.queue-quick-stats .quick-stat.has-issues strong {
+    color: #d63638;
 }
 
 /* Danger Zone */
@@ -678,6 +748,37 @@ jQuery(document).ready(function($) {
             btn.prop('disabled', false);
             btn.find('.dashicons').removeClass('dashicons-update spin').addClass('dashicons-email-alt');
             statusSpan.html('<span style="color: #d63638;"><?php _e('Request failed. Please try again.', 'azure-plugin'); ?></span>');
+        });
+    });
+    
+    // Process queue manually
+    // Process queue now (quick action)
+    $('#process-queue-now').on('click', function() {
+        var btn = $(this);
+        var statusSpan = $('#process-queue-status');
+        
+        btn.prop('disabled', true);
+        btn.find('.dashicons').addClass('spin');
+        statusSpan.html('<span style="color: #2271b1;"><?php _e('Processing...', 'azure-plugin'); ?></span>');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_process_queue',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_process_queue'); ?>'
+        }, function(response) {
+            btn.prop('disabled', false);
+            btn.find('.dashicons').removeClass('spin');
+            
+            if (response.success) {
+                var data = response.data;
+                statusSpan.html('<span style="color: #00a32a;">✓ ' + data.sent + ' sent</span>');
+                setTimeout(function() { location.reload(); }, 1500);
+            } else {
+                statusSpan.html('<span style="color: #d63638;">✗ ' + response.data + '</span>');
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            btn.find('.dashicons').removeClass('spin');
+            statusSpan.html('<span style="color: #d63638;"><?php _e('Failed', 'azure-plugin'); ?></span>');
         });
     });
     

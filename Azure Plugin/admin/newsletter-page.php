@@ -12,7 +12,7 @@ $settings = Azure_Settings::get_all_settings();
 
 // Determine current tab
 $current_tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'campaigns';
-$valid_tabs = array('campaigns', 'templates', 'lists', 'statistics', 'settings');
+$valid_tabs = array('campaigns', 'templates', 'lists', 'queue', 'statistics', 'settings');
 if (!in_array($current_tab, $valid_tabs)) {
     $current_tab = 'campaigns';
 }
@@ -50,6 +50,10 @@ if (!in_array($current_tab, $valid_tabs)) {
            class="nav-tab <?php echo $current_tab === 'lists' ? 'nav-tab-active' : ''; ?>">
             <span class="dashicons dashicons-groups"></span> <?php _e('Lists', 'azure-plugin'); ?>
         </a>
+        <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=queue'); ?>" 
+           class="nav-tab <?php echo $current_tab === 'queue' ? 'nav-tab-active' : ''; ?>">
+            <span class="dashicons dashicons-list-view"></span> <?php _e('Queue', 'azure-plugin'); ?>
+        </a>
         <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=statistics'); ?>" 
            class="nav-tab <?php echo $current_tab === 'statistics' ? 'nav-tab-active' : ''; ?>">
             <span class="dashicons dashicons-chart-bar"></span> <?php _e('Statistics', 'azure-plugin'); ?>
@@ -76,6 +80,9 @@ if (!in_array($current_tab, $valid_tabs)) {
                     break;
                 case 'lists':
                     include AZURE_PLUGIN_PATH . 'admin/newsletter-lists.php';
+                    break;
+                case 'queue':
+                    include AZURE_PLUGIN_PATH . 'admin/newsletter-queue.php';
                     break;
                 case 'statistics':
                     include AZURE_PLUGIN_PATH . 'admin/newsletter-statistics.php';

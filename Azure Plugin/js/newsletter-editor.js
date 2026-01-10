@@ -1657,6 +1657,10 @@
             updateReviewSummary();
             updatePreview();
         }
+        
+        if (step === 4) {
+            updateFinalSummary();
+        }
 
         // Scroll to top
         $('html, body').animate({
@@ -1712,6 +1716,57 @@
         });
         $('#summary-recipients').text(selectedLists.join(', ') || 'None selected');
     }
+    
+    /**
+     * Update final summary (Step 4)
+     */
+    function updateFinalSummary() {
+        // Name
+        $('#summary-name-final').text($('#newsletter_name').val() || '-');
+        
+        // Subject
+        $('#summary-subject-final').text($('#newsletter_subject').val() || '-');
+        
+        // From
+        var fromText = $('#newsletter_from option:selected').text();
+        $('#summary-from-final').text(fromText || 'Not selected');
+        
+        // Recipients - show lists and count
+        var selectedLists = [];
+        var totalCount = 0;
+        $('input[name="newsletter_lists[]"]:checked').each(function() {
+            var listName = $(this).closest('label').find('strong').text();
+            var listCount = $(this).closest('label').find('.list-count').text();
+            selectedLists.push(listName + (listCount ? ' ' + listCount : ''));
+        });
+        
+        if (selectedLists.length > 0) {
+            var recipientHtml = '<ul style="margin: 0; padding-left: 18px; list-style: disc;">';
+            selectedLists.forEach(function(list) {
+                recipientHtml += '<li>' + list + '</li>';
+            });
+            recipientHtml += '</ul>';
+            $('#summary-recipients-final').html(recipientHtml);
+        } else {
+            $('#summary-recipients-final').html('<span style="color:#d63638;">⚠ No recipients selected</span>');
+        }
+        
+        // Check if spam score was calculated in step 3
+        var spamResult = $('#spam-score-result').html();
+        if (spamResult && $('#spam-score-result').is(':visible')) {
+            // Extract the score if available
+            var scoreMatch = spamResult.match(/Score:\s*([\d.]+)/);
+            if (scoreMatch) {
+                var score = parseFloat(scoreMatch[1]);
+                var scoreClass = score <= 2 ? 'spam-score-good' : (score <= 5 ? 'spam-score-warning' : 'spam-score-bad');
+                $('#summary-spam-final').html('<span class="' + scoreClass + '">' + score + '/10</span>');
+            } else if (spamResult.indexOf('Pass') !== -1 || spamResult.indexOf('Good') !== -1) {
+                $('#summary-spam-final').html('<span class="spam-score-good">✓ Passed</span>');
+            } else {
+                $('#summary-spam-final').html('<em>See Review step</em>');
+            }
+        }
+    }
 
     /**
      * Update preview iframe (Step 3)
@@ -1755,7 +1810,7 @@
     }
 
     /**
-     * Update recipient count
+     * Update recipient count based on selected lists
      */
     function updateRecipientCount() {
         var selectedLists = $('input[name="newsletter_lists[]"]:checked');
@@ -1765,18 +1820,14 @@
             return;
         }
 
-        // Simple count for now - in production, this would make AJAX calls
+        // Sum up counts from data-count attributes
         var count = 0;
         selectedLists.each(function() {
-            if ($(this).val() === 'all') {
-                // Rough estimate for all WordPress users
-                count += 100; // This should be replaced with actual AJAX call
-            } else {
-                count += 50; // Placeholder
-            }
+            var listCount = parseInt($(this).data('count')) || 0;
+            count += listCount;
         });
         
-        $('#total-recipient-count').text(count.toLocaleString() + '+');
+        $('#total-recipient-count').text(count.toLocaleString());
     }
 
     /**
@@ -2076,14 +2127,60 @@
             schedule_time: $('#schedule_time').val()
         };
         
+        // Debug logging
+        console.log('[Newsletter] Sending AJAX request:', {
+            action: formData.action,
+            send_option: formData.send_option,
+            newsletter_lists: formData.newsletter_lists,
+            newsletter_id: formData.newsletter_id
+        });
+        
         $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
+            console.log('[Newsletter] AJAX response:', response);
             btn.prop('disabled', false);
             btn.html(originalHtml);
             
             if (response.success) {
+                var data = response.data;
+                var queuedCount = data.queued || 0;
+                var originalCount = data.original_recipients || 0;
+                var blockedCount = data.blocked || 0;
+                var bouncedCount = data.bounced || 0;
+                var filteredTotal = data.filtered_total || 0;
+                
                 var msg = sendOption === 'now' 
-                    ? 'Newsletter queued for sending! ' + (response.data.queued || 0) + ' emails will be sent.'
-                    : 'Newsletter scheduled successfully! ' + (response.data.queued || 0) + ' emails queued.';
+                    ? '✓ Newsletter queued for sending!'
+                    : '✓ Newsletter scheduled successfully!';
+                
+                // Build detailed recipient summary
+                msg += '\n\n📊 Recipient Summary:';
+                msg += '\n• ' + queuedCount + ' email(s) will be sent';
+                
+                // Show filtering details if any were filtered
+                if (filteredTotal > 0) {
+                    msg += '\n\n⚠️ ' + filteredTotal + ' recipient(s) excluded:';
+                    if (blockedCount > 0) {
+                        msg += '\n  • ' + blockedCount + ' blocked (manually suppressed)';
+                    }
+                    if (bouncedCount > 0) {
+                        msg += '\n  • ' + bouncedCount + ' bounced (hard bounce)';
+                    }
+                }
+                
+                // Show warning if no emails were queued
+                if (queuedCount === 0 && (sendOption === 'now' || sendOption === 'schedule')) {
+                    msg += '\n\n❌ No emails will be sent!';
+                    
+                    if (filteredTotal > 0 && originalCount > 0 && filteredTotal >= originalCount) {
+                        msg += '\nAll recipients were filtered out.';
+                    } else if (originalCount === 0) {
+                        msg += '\nNo recipients found in selected list(s).';
+                    }
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        msg += '\n\nErrors:\n• ' + data.errors.join('\n• ');
+                    }
+                }
                 
                 alert(msg);
                 

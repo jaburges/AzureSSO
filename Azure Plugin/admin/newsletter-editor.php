@@ -89,11 +89,24 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                 </div>
             </a>
             
-            <?php foreach ($all_templates as $tpl): ?>
+            <?php foreach ($all_templates as $tpl): 
+                // Prepare HTML content for preview
+                $preview_html = '';
+                if (!empty($tpl->content_html)) {
+                    // Wrap the content in a basic HTML structure with reset styles for consistent preview
+                    $preview_html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+                        body { margin: 0; padding: 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+                        img { max-width: 100%; height: auto; }
+                        table { border-collapse: collapse; }
+                    </style></head><body>' . $tpl->content_html . '</body></html>';
+                }
+            ?>
             <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&action=new&template=' . $tpl->id); ?>" class="template-selection-card">
                 <div class="template-preview">
-                    <?php if (!empty($tpl->content_html)): ?>
-                    <iframe srcdoc="<?php echo esc_attr($tpl->content_html); ?>" sandbox="allow-same-origin" scrolling="no"></iframe>
+                    <?php if (!empty($preview_html)): ?>
+                    <div class="preview-wrapper">
+                        <iframe srcdoc="<?php echo esc_attr($preview_html); ?>" sandbox="allow-same-origin" scrolling="no"></iframe>
+                    </div>
                     <?php else: ?>
                     <div class="template-placeholder">
                         <span class="dashicons dashicons-email-alt"></span>
@@ -236,26 +249,47 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                         <th><label><?php _e('Recipients', 'azure-plugin'); ?> <span class="required">*</span></label></th>
                         <td>
                             <div class="recipient-checkboxes">
+                                <?php
+                                // Get count of all WordPress users
+                                $all_users_count = count_users()['total_users'];
+                                ?>
                                 <label class="recipient-checkbox">
-                                    <input type="checkbox" name="newsletter_lists[]" value="all" <?php checked(in_array('all', $saved_lists)); ?>>
+                                    <input type="checkbox" name="newsletter_lists[]" value="all" data-count="<?php echo esc_attr($all_users_count); ?>" <?php checked(in_array('all', $saved_lists)); ?>>
                                     <span class="checkbox-label">
                                         <strong><?php _e('All WordPress Subscribers', 'azure-plugin'); ?></strong>
-                                        <span class="list-count" data-list="all"></span>
+                                        <span class="list-count">(<?php echo number_format($all_users_count); ?>)</span>
                                     </span>
                                 </label>
                                 <?php
-                                // Load custom lists
+                                // Load custom lists with counts
                                 global $wpdb;
                                 $lists_table = $wpdb->prefix . 'azure_newsletter_lists';
+                                $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
                                 if ($wpdb->get_var("SHOW TABLES LIKE '{$lists_table}'") === $lists_table) {
-                                    $lists = $wpdb->get_results("SELECT id, name, type FROM {$lists_table} ORDER BY name");
-                                    foreach ($lists as $list): ?>
+                                    $lists = $wpdb->get_results("SELECT id, name, type, criteria FROM {$lists_table} ORDER BY name");
+                                    foreach ($lists as $list):
+                                        // Calculate count based on list type
+                                        $list_count = 0;
+                                        if ($list->type === 'custom') {
+                                            $list_count = $wpdb->get_var($wpdb->prepare(
+                                                "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d AND unsubscribed_at IS NULL",
+                                                $list->id
+                                            ));
+                                        } elseif ($list->type === 'role') {
+                                            $criteria = json_decode($list->criteria, true);
+                                            if (!empty($criteria['roles'])) {
+                                                foreach ($criteria['roles'] as $role) {
+                                                    $list_count += count(get_users(array('role' => $role, 'fields' => 'ID')));
+                                                }
+                                            }
+                                        }
+                                    ?>
                                 <label class="recipient-checkbox">
-                                    <input type="checkbox" name="newsletter_lists[]" value="<?php echo esc_attr($list->id); ?>" <?php checked(in_array((string)$list->id, $saved_lists) || in_array($list->id, $saved_lists)); ?>>
+                                    <input type="checkbox" name="newsletter_lists[]" value="<?php echo esc_attr($list->id); ?>" data-count="<?php echo esc_attr($list_count); ?>" <?php checked(in_array((string)$list->id, $saved_lists) || in_array($list->id, $saved_lists)); ?>>
                                     <span class="checkbox-label">
                                         <strong><?php echo esc_html($list->name); ?></strong>
                                         <span class="list-type"><?php echo esc_html(ucfirst($list->type)); ?></span>
-                                        <span class="list-count" data-list="<?php echo esc_attr($list->id); ?>"></span>
+                                        <span class="list-count">(<?php echo number_format($list_count); ?>)</span>
                                     </span>
                                 </label>
                                     <?php endforeach;
@@ -451,6 +485,76 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
         <div class="step-content" id="step-4-content" style="<?php echo $step !== 4 ? 'display:none;' : ''; ?>">
             <div class="step-panel">
                 <h2><?php _e('Schedule & Send', 'azure-plugin'); ?></h2>
+                
+                <!-- Campaign Summary -->
+                <div class="campaign-summary-panel">
+                    <h3><span class="dashicons dashicons-info-outline"></span> <?php _e('Campaign Summary', 'azure-plugin'); ?></h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <label><?php _e('Name', 'azure-plugin'); ?></label>
+                            <span id="summary-name-final">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <label><?php _e('Subject', 'azure-plugin'); ?></label>
+                            <span id="summary-subject-final">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <label><?php _e('From', 'azure-plugin'); ?></label>
+                            <span id="summary-from-final">-</span>
+                        </div>
+                        <div class="summary-item recipients-summary">
+                            <label><?php _e('Recipients', 'azure-plugin'); ?></label>
+                            <span id="summary-recipients-final">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <label><?php _e('Spam Score', 'azure-plugin'); ?></label>
+                            <span id="summary-spam-final">
+                                <em><?php _e('Check in Review step', 'azure-plugin'); ?></em>
+                            </span>
+                        </div>
+                        <div class="summary-item">
+                            <label><?php _e('Sending Service', 'azure-plugin'); ?></label>
+                            <span id="summary-service-final">
+                                <?php 
+                                $service = $settings['newsletter_sending_service'] ?? 'not configured';
+                                $service_names = array(
+                                    'mailgun' => 'Mailgun',
+                                    'sendgrid' => 'SendGrid',
+                                    'ses' => 'Amazon SES',
+                                    'smtp' => 'SMTP',
+                                    'office365' => 'Office 365'
+                                );
+                                echo esc_html($service_names[$service] ?? ucfirst($service));
+                                
+                                // Show connection status
+                                $configured = false;
+                                switch ($service) {
+                                    case 'mailgun':
+                                        $configured = !empty($settings['newsletter_mailgun_api_key']) && !empty($settings['newsletter_mailgun_domain']);
+                                        break;
+                                    case 'sendgrid':
+                                        $configured = !empty($settings['newsletter_sendgrid_api_key']);
+                                        break;
+                                    case 'ses':
+                                        $configured = !empty($settings['newsletter_ses_access_key']);
+                                        break;
+                                    case 'smtp':
+                                        $configured = !empty($settings['newsletter_smtp_host']);
+                                        break;
+                                    case 'office365':
+                                        $configured = !empty($settings['newsletter_office365_client_id']);
+                                        break;
+                                }
+                                if ($configured) {
+                                    echo ' <span class="status-configured">✓</span>';
+                                } else {
+                                    echo ' <span class="status-not-configured">⚠ ' . __('Not configured', 'azure-plugin') . '</span>';
+                                }
+                                ?>
+                            </span>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="send-options">
                     <div class="send-option">

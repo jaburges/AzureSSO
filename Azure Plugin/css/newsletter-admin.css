@@ -1618,6 +1618,87 @@ div.gjs-block[style] {
 }
 
 /* Step 4: Send Options */
+/* Campaign Summary Panel - Step 4 */
+.campaign-summary-panel {
+    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.campaign-summary-panel h3 {
+    margin: 0 0 15px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1d2327;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.campaign-summary-panel h3 .dashicons {
+    color: #2271b1;
+}
+
+.campaign-summary-panel .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.campaign-summary-panel .summary-item {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 12px 15px;
+}
+
+.campaign-summary-panel .summary-item label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #646970;
+    margin-bottom: 5px;
+}
+
+.campaign-summary-panel .summary-item span {
+    font-size: 14px;
+    color: #1d2327;
+    word-break: break-word;
+}
+
+.campaign-summary-panel .summary-item.recipients-summary {
+    grid-column: span 2;
+}
+
+.campaign-summary-panel .status-configured {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.campaign-summary-panel .status-not-configured {
+    color: #d63638;
+    font-size: 12px;
+}
+
+.campaign-summary-panel .spam-score-good {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.campaign-summary-panel .spam-score-warning {
+    color: #dba617;
+    font-weight: 600;
+}
+
+.campaign-summary-panel .spam-score-bad {
+    color: #d63638;
+    font-weight: 600;
+}
+
 .send-options {
     display: flex;
     gap: 20px;
@@ -2003,7 +2084,7 @@ div.gjs-block[style] {
     height: 200px;
     background: #f6f7f7;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     overflow: hidden;
     position: relative;
@@ -2011,6 +2092,7 @@ div.gjs-block[style] {
 
 .template-preview.blank {
     background: linear-gradient(135deg, #f0f6fc 0%, #fff 100%);
+    align-items: center;
 }
 
 .template-preview.blank .dashicons {
@@ -2020,12 +2102,36 @@ div.gjs-block[style] {
     color: #2271b1;
 }
 
+.template-preview .preview-wrapper {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
 .template-preview iframe {
     width: 600px;
-    height: 800px;
+    height: 900px;
     border: none;
-    transform: scale(0.25);
+    transform: scale(0.45);
     transform-origin: top center;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    margin-left: -300px;
+    background: #fff;
+}
+
+/* Fade effect at bottom for cropped preview */
+.template-preview .preview-wrapper::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, rgba(246,247,247,0.9));
     pointer-events: none;
 }
 

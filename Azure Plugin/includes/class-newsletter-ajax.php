@@ -12,7 +12,6 @@ class Azure_Newsletter_Ajax {
     public function __construct() {
         // Newsletter AJAX handlers
         add_action('wp_ajax_azure_newsletter_save', array($this, 'save_newsletter'));
-        add_action('wp_ajax_azure_newsletter_send', array($this, 'send_newsletter'));
         add_action('wp_ajax_azure_newsletter_send_test', array($this, 'send_test_email'));
         add_action('wp_ajax_azure_newsletter_spam_check', array($this, 'check_spam_score'));
         add_action('wp_ajax_azure_newsletter_accessibility_check', array($this, 'check_accessibility'));
@@ -28,6 +27,10 @@ class Azure_Newsletter_Ajax {
         
         // Settings page test email
         add_action('wp_ajax_azure_newsletter_send_test_email', array($this, 'send_test_email_from_settings'));
+        
+        // Queue management
+        add_action('wp_ajax_azure_newsletter_process_queue', array($this, 'process_queue_now'));
+        add_action('wp_ajax_azure_newsletter_schedule_cron', array($this, 'schedule_cron'));
         
         // Template management
         add_action('wp_ajax_azure_newsletter_get_template', array($this, 'get_template'));
@@ -424,9 +427,25 @@ class Azure_Newsletter_Ajax {
      * Save newsletter (draft or scheduled)
      */
     public function save_newsletter() {
+        // ALWAYS log to error_log for debugging (bypasses any Logger issues)
+        error_log('=== [Newsletter] save_newsletter AJAX START ===');
+        error_log('[Newsletter] send_option: ' . ($_POST['send_option'] ?? 'NOT SET'));
+        error_log('[Newsletter] newsletter_lists RAW: ' . ($_POST['newsletter_lists'] ?? 'NOT SET'));
+        error_log('[Newsletter] All POST keys: ' . implode(', ', array_keys($_POST)));
+        
+        // Also log via Azure_Logger if available
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info('Newsletter AJAX: save_newsletter called');
+            Azure_Logger::info('Newsletter AJAX: send_option=' . ($_POST['send_option'] ?? 'not set'));
+            Azure_Logger::info('Newsletter AJAX: newsletter_lists=' . ($_POST['newsletter_lists'] ?? 'not set'));
+        }
+        
         check_ajax_referer('azure_newsletter_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::warning('Newsletter AJAX: Permission denied for user');
+            }
             wp_send_json_error('Permission denied');
         }
         
@@ -515,10 +534,26 @@ class Azure_Newsletter_Ajax {
             $this->create_newsletter_page($newsletter_id, $data);
         }
         
+        // Log all the data we received for debugging
+        error_log('[Newsletter] After save: newsletter_id=' . $newsletter_id . ', send_option=' . $send_option . ', status=' . $data['status']);
+        error_log('[Newsletter] recipient_lists parsed: ' . json_encode($recipient_lists));
+        
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info('Newsletter Save: newsletter_id=' . $newsletter_id . ', send_option=' . $send_option . ', status=' . $data['status']);
+            Azure_Logger::info('Newsletter Save: recipient_lists received: ' . json_encode($recipient_lists));
+        }
+        
         // Queue for sending if scheduled for now
+        error_log('[Newsletter] Checking queue condition: send_option=' . $send_option . ' (should be "now" or "schedule")');
         if ($send_option === 'now' || $send_option === 'schedule') {
+            error_log('[Newsletter] ENTERING queue block');
             // Use the already-decoded recipient_lists
             $lists_to_queue = !empty($recipient_lists) ? $recipient_lists : array('all');
+            
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::info('Newsletter Send: Starting queue process for newsletter #' . $newsletter_id);
+                Azure_Logger::info('Newsletter Send: Lists to queue: ' . json_encode($lists_to_queue));
+            }
             
             // Ensure queue class is loaded
             if (!class_exists('Azure_Newsletter_Queue')) {
@@ -527,23 +562,69 @@ class Azure_Newsletter_Ajax {
             
             $queue = new Azure_Newsletter_Queue();
             $total_queued = 0;
+            $total_original = 0;
+            $total_blocked = 0;
+            $total_bounced = 0;
+            $total_skipped = 0;
+            $queue_errors = array();
             
             // Queue for each selected list
+            error_log('[Newsletter] lists_to_queue: ' . json_encode($lists_to_queue));
             foreach ($lists_to_queue as $list_id) {
+                error_log('[Newsletter] Queuing for list_id: ' . $list_id);
+                if (class_exists('Azure_Logger')) {
+                    Azure_Logger::info('Newsletter Send: Queuing for list: ' . $list_id);
+                }
+                
                 $queue_result = $queue->queue_newsletter($newsletter_id, $list_id, $data['scheduled_at']);
-                $total_queued += ($queue_result['queued'] ?? 0);
+                error_log('[Newsletter] queue_result: ' . json_encode($queue_result));
+                
+                if (isset($queue_result['error'])) {
+                    $queue_errors[] = $queue_result['error'];
+                    if (class_exists('Azure_Logger')) {
+                        Azure_Logger::warning('Newsletter Send: Queue error for list ' . $list_id . ': ' . $queue_result['error']);
+                    }
+                } else {
+                    $queued_count = $queue_result['queued'] ?? 0;
+                    $total_queued += $queued_count;
+                    $total_original += $queue_result['original_count'] ?? 0;
+                    $total_blocked += $queue_result['blocked'] ?? 0;
+                    $total_bounced += $queue_result['bounced'] ?? 0;
+                    $total_skipped += $queue_result['skipped'] ?? 0;
+                    
+                    if (class_exists('Azure_Logger')) {
+                        Azure_Logger::info('Newsletter Send: Queued ' . $queued_count . ' emails for list ' . $list_id);
+                    }
+                }
+            }
+            
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::info('Newsletter Send: Total queued: ' . $total_queued . ', blocked: ' . $total_blocked . ', bounced: ' . $total_bounced);
             }
             
             wp_send_json_success(array(
                 'newsletter_id' => $newsletter_id,
                 'status' => $data['status'],
-                'queued' => $total_queued
+                'queued' => $total_queued,
+                'original_recipients' => $total_original,
+                'blocked' => $total_blocked,
+                'bounced' => $total_bounced,
+                'skipped' => $total_skipped,
+                'filtered_total' => $total_blocked + $total_bounced,
+                'errors' => $queue_errors,
+                'debug' => 'path:queued'
             ));
+        }
+        
+        // This path is for draft saves only
+        if (class_exists('Azure_Logger')) {
+            Azure_Logger::info('Newsletter Save: Saved as draft (no queuing), send_option=' . $send_option);
         }
         
         wp_send_json_success(array(
             'newsletter_id' => $newsletter_id,
-            'status' => $data['status']
+            'status' => $data['status'],
+            'debug' => 'path:draft'
         ));
     }
     
@@ -1217,6 +1298,71 @@ class Azure_Newsletter_Ajax {
     }
     
     /**
+     * Manually process the email queue
+     */
+    public function process_queue_now() {
+        check_ajax_referer('azure_newsletter_process_queue', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Permission denied', 'azure-plugin'));
+        }
+        
+        // Ensure required classes are loaded
+        if (!class_exists('Azure_Newsletter_Queue')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-newsletter-queue.php';
+        }
+        
+        try {
+            $queue = new Azure_Newsletter_Queue();
+            $result = $queue->process_batch();
+            
+            wp_send_json_success(array(
+                'sent' => $result['sent'] ?? 0,
+                'failed' => $result['failed'] ?? 0,
+                'total' => $result['total'] ?? 0,
+                'rate_limited' => $result['rate_limited'] ?? false,
+                'message' => sprintf(
+                    __('Processed %d emails: %d sent, %d failed', 'azure-plugin'),
+                    $result['total'] ?? 0,
+                    $result['sent'] ?? 0,
+                    $result['failed'] ?? 0
+                )
+            ));
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+    }
+    
+    /**
+     * Schedule the queue cron job
+     */
+    public function schedule_cron() {
+        check_ajax_referer('azure_newsletter_schedule_cron', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Permission denied', 'azure-plugin'));
+        }
+        
+        // Clear existing schedule
+        wp_clear_scheduled_hook('azure_newsletter_process_queue');
+        
+        // Schedule new cron
+        if (!wp_next_scheduled('azure_newsletter_process_queue')) {
+            wp_schedule_event(time(), 'every_minute', 'azure_newsletter_process_queue');
+        }
+        
+        $next = wp_next_scheduled('azure_newsletter_process_queue');
+        if ($next) {
+            wp_send_json_success(array(
+                'next_run' => human_time_diff(time(), $next),
+                'next_timestamp' => $next
+            ));
+        } else {
+            wp_send_json_error(__('Failed to schedule cron', 'azure-plugin'));
+        }
+    }
+    
+    /**
      * Get recipients count for a list
      */
     public function get_recipients_count() {
@@ -1629,19 +1775,40 @@ class Azure_Newsletter_Ajax {
     
     /**
      * Clean HTML for preview display
-     * Removes CSS text that may have leaked into body content
+     * Removes CSS text that may have leaked into body content from GrapesJS
      */
     private function clean_html_for_preview($html) {
         if (empty($html)) {
             return '';
         }
         
-        // If it's a full HTML document, extract and clean the body
+        $original = $html;
+        $html = trim($html);
+        
+        // AGGRESSIVE FIX: If content starts with CSS comment or CSS-like text, strip it
+        // Pattern: /* ... */ or property: value; or selector { }
+        if (preg_match('/^\/\*|^[a-z\-]+\s*\{|^[a-z\-]+\s*:/i', $html)) {
+            // Find where actual HTML content starts
+            // Look for <!DOCTYPE, <html, <head, <body, <table, <div etc.
+            if (preg_match('/<(!DOCTYPE|html|head|body|table|div|tr|td|p|center|section)/i', $html, $matches, PREG_OFFSET_CAPTURE)) {
+                $html = substr($html, $matches[0][1]);
+            }
+        }
+        
+        // If content still starts with text (not a tag), find and strip to first tag
+        if (!empty($html) && $html[0] !== '<') {
+            // Find ANY HTML tag
+            if (preg_match('/<[a-z!]/i', $html, $matches, PREG_OFFSET_CAPTURE)) {
+                $html = substr($html, $matches[0][1]);
+            }
+        }
+        
+        // If it's a full HTML document, clean the body content
         if (preg_match('/<body[^>]*>([\s\S]*)<\/body>/i', $html, $matches)) {
             $body_content = $matches[1];
             $cleaned_body = $this->strip_css_text($body_content);
             
-            // Find body tag positions and rebuild manually (safer than preg_replace)
+            // Rebuild the document with cleaned body
             $body_start = strpos($html, '<body');
             $body_tag_end = strpos($html, '>', $body_start) + 1;
             $body_close = strpos($html, '</body>');
@@ -1650,8 +1817,26 @@ class Azure_Newsletter_Ajax {
                 $html = substr($html, 0, $body_tag_end) . $cleaned_body . substr($html, $body_close);
             }
         } else {
-            // Not a full document, just clean the content
+            // Not a full document, clean and wrap
             $html = $this->strip_css_text($html);
+        }
+        
+        // Ensure we have a complete HTML document
+        if (stripos($html, '<!DOCTYPE') === false && stripos($html, '<html') === false) {
+            // Check if it starts with table/div/etc (partial content)
+            $html = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #f4f4f4; }
+        img { max-width: 100%; height: auto; }
+        table { border-collapse: collapse; }
+    </style>
+</head>
+<body>' . $html . '</body>
+</html>';
         }
         
         return $html;
@@ -1661,33 +1846,59 @@ class Azure_Newsletter_Ajax {
      * Strip CSS text that appears before HTML content
      */
     private function strip_css_text($content) {
-        // Trim whitespace first
         $content = trim($content);
         
         if (empty($content)) {
             return '';
         }
         
-        // If content starts with a tag, it's clean
-        if (strpos($content, '<') === 0) {
+        // If content starts with a proper HTML tag, it's clean
+        if (preg_match('/^<(table|div|tr|td|p|img|a|span|h[1-6]|center|section|article|header|footer)/i', $content)) {
             return $content;
         }
         
-        // Find the position of the first HTML tag (like <table, <div, <p, etc.)
-        // Use regex to find first actual HTML element tag
-        if (preg_match('/<[a-z]/i', $content, $matches, PREG_OFFSET_CAPTURE)) {
-            $first_tag_pos = $matches[0][1];
-            
-            if ($first_tag_pos > 0) {
-                // There's text before the first tag - strip it
-                $before_tag = substr($content, 0, $first_tag_pos);
-                
-                // Check if it looks like CSS (contains { and }) or comments
-                if (strpos($before_tag, '{') !== false || 
-                    strpos($before_tag, '/*') !== false ||
-                    preg_match('/body\s*\{|table\s*\{|img\s*\{|\.\w+\s*\{|#\w+\s*\{/i', $before_tag)) {
-                    return substr($content, $first_tag_pos);
+        // If starts with < but something else (like <!-- or <style), handle it
+        if ($content[0] === '<') {
+            // Remove leading comments
+            $content = preg_replace('/^<!--[\s\S]*?-->\s*/s', '', $content);
+            // Remove style tags that might be rendering as text
+            $content = preg_replace('/^<style[^>]*>[\s\S]*?<\/style>\s*/is', '', $content);
+            return trim($content);
+        }
+        
+        // Content starts with text - find first real HTML element
+        // This handles CSS text like: "body { margin: 0; } table { ... } <table>..."
+        $patterns = array(
+            '/<table\b/i',
+            '/<div\b/i', 
+            '/<tr\b/i',
+            '/<td\b/i',
+            '/<p\b/i',
+            '/<center\b/i',
+            '/<img\b/i',
+            '/<a\b/i',
+            '/<h[1-6]\b/i',
+            '/<section\b/i',
+            '/<article\b/i',
+        );
+        
+        $earliest_pos = strlen($content);
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $content, $m, PREG_OFFSET_CAPTURE)) {
+                if ($m[0][1] < $earliest_pos) {
+                    $earliest_pos = $m[0][1];
                 }
+            }
+        }
+        
+        if ($earliest_pos > 0 && $earliest_pos < strlen($content)) {
+            return substr($content, $earliest_pos);
+        }
+        
+        // Fallback - find any HTML tag
+        if (preg_match('/<[a-z]/i', $content, $m, PREG_OFFSET_CAPTURE)) {
+            if ($m[0][1] > 0) {
+                return substr($content, $m[0][1]);
             }
         }
         

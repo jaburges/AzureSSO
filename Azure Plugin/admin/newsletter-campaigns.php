@@ -222,6 +222,21 @@ $status_counts = $wpdb->get_results("
                 
                 $open_rate = $sent_count > 0 ? round(($open_count / $sent_count) * 100, 1) : 0;
                 $click_rate = $sent_count > 0 ? round(($click_count / $sent_count) * 100, 1) : 0;
+                
+                // Get queue stats for scheduled campaigns
+                $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+                $queue_stats = null;
+                if ($campaign->status === 'scheduled' || $campaign->status === 'sending') {
+                    $queue_stats = $wpdb->get_row($wpdb->prepare(
+                        "SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+                            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+                         FROM {$queue_table} WHERE newsletter_id = %d",
+                        $campaign->id
+                    ));
+                }
                 ?>
                 <tr>
                     <th scope="row" class="check-column">
@@ -274,6 +289,30 @@ $status_counts = $wpdb->get_results("
                         </span>
                         <?php if ($campaign->status === 'scheduled' && $campaign->scheduled_at): ?>
                         <br><small><?php echo date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($campaign->scheduled_at)); ?></small>
+                        <?php endif; ?>
+                        <?php if ($queue_stats && $queue_stats->total > 0): ?>
+                        <div class="queue-stats-mini">
+                            <?php if ($queue_stats->pending > 0): ?>
+                            <span class="queue-pending" title="<?php esc_attr_e('Pending in queue', 'azure-plugin'); ?>">
+                                <span class="dashicons dashicons-clock"></span> <?php echo number_format($queue_stats->pending); ?>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($queue_stats->sent > 0): ?>
+                            <span class="queue-sent" title="<?php esc_attr_e('Sent', 'azure-plugin'); ?>">
+                                <span class="dashicons dashicons-yes"></span> <?php echo number_format($queue_stats->sent); ?>
+                            </span>
+                            <?php endif; ?>
+                            <?php if ($queue_stats->failed > 0): ?>
+                            <span class="queue-failed" title="<?php esc_attr_e('Failed', 'azure-plugin'); ?>">
+                                <span class="dashicons dashicons-no"></span> <?php echo number_format($queue_stats->failed); ?>
+                            </span>
+                            <?php endif; ?>
+                        </div>
+                        <?php elseif (($campaign->status === 'scheduled' || $campaign->status === 'sending') && (!$queue_stats || $queue_stats->total == 0)): ?>
+                        <div class="queue-stats-mini queue-empty">
+                            <span class="dashicons dashicons-warning"></span>
+                            <span><?php _e('No recipients queued', 'azure-plugin'); ?></span>
+                        </div>
                         <?php endif; ?>
                     </td>
                     <td class="column-sent"><?php echo number_format($sent_count); ?></td>
@@ -353,7 +392,41 @@ $status_counts = $wpdb->get_results("
     width: 30px;
 }
 .newsletter-campaigns-page .column-status {
-    width: 120px;
+    width: 140px;
+}
+
+/* Queue stats mini display */
+.queue-stats-mini {
+    display: flex;
+    gap: 8px;
+    margin-top: 5px;
+    font-size: 11px;
+}
+.queue-stats-mini span {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.queue-stats-mini .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+.queue-stats-mini .queue-pending {
+    color: #996800;
+}
+.queue-stats-mini .queue-sent {
+    color: #00a32a;
+}
+.queue-stats-mini .queue-failed {
+    color: #d63638;
+}
+.queue-stats-mini.queue-empty {
+    color: #d63638;
+    font-style: italic;
+}
+.queue-stats-mini.queue-empty .dashicons {
+    color: #d63638;
 }
 .newsletter-campaigns-page .column-sent,
 .newsletter-campaigns-page .column-opens,

@@ -175,6 +175,22 @@ if (!defined('ABSPATH')) {
                         <p>Create and send newsletters with drag-drop editor, tracking, and bounce handling.</p>
                     </div>
                 </div>
+                
+                <div class="module-card <?php echo ($settings['enable_tickets'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                    <div class="module-header">
+                        <h3><span class="dashicons dashicons-tickets-alt"></span> Event Tickets</h3>
+                        <div class="module-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="module-toggle" data-module="tickets" <?php checked($settings['enable_tickets'] ?? false); ?> />
+                                <span class="slider"></span>
+                            </label>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-tickets'); ?>" class="button button-configure">Configure</a>
+                        </div>
+                    </div>
+                    <div class="module-description">
+                        <p>Visual seating designer, QR code tickets, Apple Wallet, and event check-in.</p>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -192,6 +208,7 @@ if (!defined('ABSPATH')) {
                 <input type="hidden" name="enable_onedrive_media" id="hidden_enable_onedrive_media" value="<?php echo ($settings['enable_onedrive_media'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_classes" id="hidden_enable_classes" value="<?php echo ($settings['enable_classes'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_newsletter" id="hidden_enable_newsletter" value="<?php echo ($settings['enable_newsletter'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_tickets" id="hidden_enable_tickets" value="<?php echo ($settings['enable_tickets'] ?? false) ? '1' : '0'; ?>" />
                 
                 <div class="credentials-section">
                     <h2>Azure Credentials</h2>
