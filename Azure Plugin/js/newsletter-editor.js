@@ -1839,10 +1839,10 @@
             $('#schedule-options').toggle(option === 'schedule');
             
             if (option === 'draft') {
-                $('#final-send-btn').hide();
+                $('#final-send-btn, #final-send-btn-top').hide();
                 $('#save-draft-btn').show();
             } else {
-                $('#final-send-btn').show();
+                $('#final-send-btn, #final-send-btn-top').show();
                 $('#save-draft-btn').hide();
             }
         });
@@ -2060,9 +2060,9 @@
     });
     
     /**
-     * Send Newsletter functionality
+     * Send Newsletter functionality - handles both top and bottom send buttons
      */
-    $(document).on('click', '#final-send-btn', function(e) {
+    $(document).on('click', '#final-send-btn, #final-send-btn-top', function(e) {
         e.preventDefault();
         sendNewsletter($(this));
     });

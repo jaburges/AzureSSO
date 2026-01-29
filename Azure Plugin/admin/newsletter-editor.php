@@ -195,6 +195,20 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
         
         <!-- Step 1: Setup -->
         <div class="step-content" id="step-1-content" style="<?php echo $step !== 1 ? 'display:none;' : ''; ?>">
+            <!-- Top Navigation -->
+            <div class="step-nav step-nav-top">
+                <div class="nav-left">
+                    <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=campaigns'); ?>" class="button">
+                        &larr; <?php _e('Cancel', 'azure-plugin'); ?>
+                    </a>
+                </div>
+                <div class="nav-right">
+                    <button type="button" class="button button-primary next-step" data-next="2">
+                        <?php _e('Continue to Design', 'azure-plugin'); ?> &rarr;
+                    </button>
+                </div>
+            </div>
+            
             <div class="step-panel">
                 <h2><?php _e('Newsletter Setup', 'azure-plugin'); ?></h2>
                 
@@ -313,7 +327,16 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                     </tr>
                 </table>
                 
-                <div class="step-actions">
+            </div>
+            
+            <!-- Bottom Navigation -->
+            <div class="step-nav step-nav-bottom">
+                <div class="nav-left">
+                    <a href="<?php echo admin_url('admin.php?page=azure-plugin-newsletter&tab=campaigns'); ?>" class="button">
+                        &larr; <?php _e('Cancel', 'azure-plugin'); ?>
+                    </a>
+                </div>
+                <div class="nav-right">
                     <button type="button" class="button button-primary next-step" data-next="2">
                         <?php _e('Continue to Design', 'azure-plugin'); ?> &rarr;
                     </button>
@@ -397,10 +420,34 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
             
             <input type="hidden" id="newsletter_content_html" name="newsletter_content_html" value="">
             <input type="hidden" id="newsletter_content_json" name="newsletter_content_json" value="">
+            
+            <!-- Bottom Navigation for Design Step -->
+            <div class="step-nav step-nav-bottom design-bottom-nav">
+                <div class="nav-left">
+                    <button type="button" class="button prev-step" data-prev="1">&larr; <?php _e('Back to Setup', 'azure-plugin'); ?></button>
+                </div>
+                <div class="nav-right">
+                    <button type="button" class="button button-primary next-step" data-next="3">
+                        <?php _e('Review', 'azure-plugin'); ?> &rarr;
+                    </button>
+                </div>
+            </div>
         </div>
         
         <!-- Step 3: Review & Test -->
         <div class="step-content" id="step-3-content" style="<?php echo $step !== 3 ? 'display:none;' : ''; ?>">
+            <!-- Top Navigation -->
+            <div class="step-nav step-nav-top">
+                <div class="nav-left">
+                    <button type="button" class="button prev-step" data-prev="2">&larr; <?php _e('Back to Editor', 'azure-plugin'); ?></button>
+                </div>
+                <div class="nav-right">
+                    <button type="button" class="button button-primary next-step" data-next="4">
+                        <?php _e('Schedule / Send', 'azure-plugin'); ?> &rarr;
+                    </button>
+                </div>
+            </div>
+            
             <div class="step-panel">
                 <h2><?php _e('Review & Test', 'azure-plugin'); ?></h2>
                 
@@ -477,8 +524,14 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                     </div>
                 </div>
                 
-                <div class="step-actions">
+            </div>
+            
+            <!-- Bottom Navigation -->
+            <div class="step-nav step-nav-bottom">
+                <div class="nav-left">
                     <button type="button" class="button prev-step" data-prev="2">&larr; <?php _e('Back to Editor', 'azure-plugin'); ?></button>
+                </div>
+                <div class="nav-right">
                     <button type="button" class="button button-primary next-step" data-next="4">
                         <?php _e('Schedule / Send', 'azure-plugin'); ?> &rarr;
                     </button>
@@ -488,6 +541,19 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
         
         <!-- Step 4: Schedule & Send -->
         <div class="step-content" id="step-4-content" style="<?php echo $step !== 4 ? 'display:none;' : ''; ?>">
+            <!-- Top Navigation -->
+            <div class="step-nav step-nav-top">
+                <div class="nav-left">
+                    <button type="button" class="button prev-step" data-prev="3">&larr; <?php _e('Back to Review', 'azure-plugin'); ?></button>
+                </div>
+                <div class="nav-right">
+                    <button type="submit" name="send_newsletter" class="button button-primary" id="final-send-btn-top">
+                        <span class="dashicons dashicons-email"></span>
+                        <?php _e('Send Newsletter', 'azure-plugin'); ?>
+                    </button>
+                </div>
+            </div>
+            
             <div class="step-panel">
                 <h2><?php _e('Schedule & Send', 'azure-plugin'); ?></h2>
                 
@@ -631,11 +697,19 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                     </div>
                 </div>
                 
-                <div class="step-actions">
-                    <button type="button" class="button prev-step" data-prev="3">&larr; <?php _e('Back', 'azure-plugin'); ?></button>
+            </div>
+            
+            <!-- Bottom Navigation -->
+            <div class="step-nav step-nav-bottom">
+                <div class="nav-left">
+                    <button type="button" class="button prev-step" data-prev="3">&larr; <?php _e('Back to Review', 'azure-plugin'); ?></button>
+                </div>
+                <div class="nav-center">
                     <button type="submit" name="save_newsletter" class="button" id="save-draft-btn">
                         <?php _e('Save Draft', 'azure-plugin'); ?>
                     </button>
+                </div>
+                <div class="nav-right">
                     <button type="submit" name="send_newsletter" class="button button-primary button-hero" id="final-send-btn">
                         <span class="dashicons dashicons-email"></span>
                         <?php _e('Send Newsletter', 'azure-plugin'); ?>
