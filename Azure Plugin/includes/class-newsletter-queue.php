@@ -543,17 +543,19 @@ class Azure_Newsletter_Queue {
             ));
             
             if ($result['success']) {
-                // Mark as sent
+                // Mark as sent (increment attempts to show 1 attempt was made)
                 $wpdb->update(
                     $this->table,
                     array(
                         'status' => 'sent',
-                        'sent_at' => current_time('mysql')
+                        'sent_at' => current_time('mysql'),
+                        'attempts' => $item->attempts + 1
                     ),
                     array('id' => $item->id)
                 );
                 
                 // Record sent stat
+                error_log('[Newsletter Queue] Recording sent stat for newsletter ' . $item->newsletter_id . ', email: ' . $item->email);
                 $this->record_stat($item->newsletter_id, $item->email, $item->user_id, 'sent');
                 
                 $sent++;
@@ -652,7 +654,9 @@ class Azure_Newsletter_Queue {
     private function record_stat($newsletter_id, $email, $user_id, $event_type, $event_data = null) {
         global $wpdb;
         
-        $wpdb->insert($this->stats_table, array(
+        error_log('[Newsletter Queue] record_stat called: type=' . $event_type . ', newsletter=' . $newsletter_id . ', email=' . $email);
+        
+        $result = $wpdb->insert($this->stats_table, array(
             'newsletter_id' => $newsletter_id,
             'email' => $email,
             'user_id' => $user_id,
@@ -662,6 +666,12 @@ class Azure_Newsletter_Queue {
             'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
             'created_at' => current_time('mysql')
         ));
+        
+        if ($result === false) {
+            error_log('[Newsletter Queue] FAILED to insert stat: ' . $wpdb->last_error);
+        } else {
+            error_log('[Newsletter Queue] Stat recorded successfully, insert ID: ' . $wpdb->insert_id);
+        }
     }
     
     /**

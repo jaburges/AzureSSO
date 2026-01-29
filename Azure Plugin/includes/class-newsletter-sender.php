@@ -110,23 +110,32 @@ class Azure_Newsletter_Sender {
         }
         
         // Choose sending method based on service type
+        error_log('[Newsletter Sender] Service type: ' . $this->service_type);
+        error_log('[Newsletter Sender] Sending to: ' . $args['to']);
+        
         switch ($this->service_type) {
             case 'mailgun':
+                error_log('[Newsletter Sender] Routing to Mailgun...');
                 return $this->send_via_mailgun($args);
                 
             case 'sendgrid':
+                error_log('[Newsletter Sender] Routing to SendGrid...');
                 return $this->send_via_sendgrid($args);
                 
             case 'ses':
+                error_log('[Newsletter Sender] Routing to SES...');
                 return $this->send_via_ses($args);
                 
             case 'smtp':
+                error_log('[Newsletter Sender] Routing to SMTP...');
                 return $this->send_via_smtp($args);
                 
             case 'office365':
+                error_log('[Newsletter Sender] Routing to Office 365...');
                 return $this->send_via_office365($args);
                 
             default:
+                error_log('[Newsletter Sender] ERROR: Unknown service type: ' . $this->service_type);
                 return array(
                     'success' => false,
                     'error' => 'Unknown sending service: ' . $this->service_type
@@ -138,18 +147,25 @@ class Azure_Newsletter_Sender {
      * Send via Mailgun API
      */
     private function send_via_mailgun($args) {
+        error_log('[Mailgun] Starting send_via_mailgun');
+        error_log('[Mailgun] To: ' . $args['to'] . ', Subject: ' . $args['subject']);
+        
         if (empty($this->config['api_key']) || empty($this->config['domain'])) {
+            error_log('[Mailgun] ERROR: API key or domain not configured');
             return array(
                 'success' => false,
                 'error' => 'Mailgun API key or domain not configured'
             );
         }
         
+        error_log('[Mailgun] Config OK - Domain: ' . $this->config['domain'] . ', Region: ' . ($this->config['region'] ?? 'us'));
+        
         $api_base = $this->config['region'] === 'eu' 
             ? 'https://api.eu.mailgun.net/v3/' 
             : 'https://api.mailgun.net/v3/';
         
         $url = $api_base . $this->config['domain'] . '/messages';
+        error_log('[Mailgun] API URL: ' . $url);
         
         $data = array(
             'from' => $args['from_name'] ? $args['from_name'] . ' <' . $args['from'] . '>' : $args['from'],
@@ -171,6 +187,8 @@ class Azure_Newsletter_Sender {
             $data['v:newsletter_id'] = $args['newsletter_id'];
         }
         
+        error_log('[Mailgun] Making API call to Mailgun...');
+        
         $response = wp_remote_post($url, array(
             'headers' => array(
                 'Authorization' => 'Basic ' . base64_encode('api:' . $this->config['api_key'])
@@ -180,25 +198,35 @@ class Azure_Newsletter_Sender {
         ));
         
         if (is_wp_error($response)) {
+            $error_msg = $response->get_error_message();
+            error_log('[Mailgun] WP_Error: ' . $error_msg);
             return array(
                 'success' => false,
-                'error' => $response->get_error_message()
+                'error' => $error_msg
             );
         }
         
         $code = wp_remote_retrieve_response_code($response);
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+        $body_raw = wp_remote_retrieve_body($response);
+        $body = json_decode($body_raw, true);
+        
+        error_log('[Mailgun] Response code: ' . $code);
+        error_log('[Mailgun] Response body: ' . $body_raw);
         
         if ($code >= 200 && $code < 300) {
+            $message_id = $body['id'] ?? null;
+            error_log('[Mailgun] SUCCESS! Message ID: ' . $message_id);
             return array(
                 'success' => true,
-                'message_id' => $body['id'] ?? null
+                'message_id' => $message_id
             );
         }
         
+        $error_msg = $body['message'] ?? 'Mailgun error (HTTP ' . $code . ')';
+        error_log('[Mailgun] FAILED: ' . $error_msg);
         return array(
             'success' => false,
-            'error' => $body['message'] ?? 'Mailgun error (HTTP ' . $code . ')'
+            'error' => $error_msg
         );
     }
     

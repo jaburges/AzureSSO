@@ -31,6 +31,7 @@ class Azure_Newsletter_Ajax {
         // Queue management
         add_action('wp_ajax_azure_newsletter_process_queue', array($this, 'process_queue_now'));
         add_action('wp_ajax_azure_newsletter_schedule_cron', array($this, 'schedule_cron'));
+        add_action('wp_ajax_azure_newsletter_get_queue_details', array($this, 'get_queue_details'));
         
         // Template management
         add_action('wp_ajax_azure_newsletter_get_template', array($this, 'get_template'));
@@ -1394,6 +1395,91 @@ class Azure_Newsletter_Ajax {
         } else {
             wp_send_json_error(__('Failed to schedule cron', 'azure-plugin'));
         }
+    }
+    
+    /**
+     * Get queue details for a specific newsletter (for grouped view)
+     */
+    public function get_queue_details() {
+        check_ajax_referer('azure_newsletter_queue_details', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Permission denied', 'azure-plugin'));
+        }
+        
+        $newsletter_id = intval($_POST['newsletter_id'] ?? 0);
+        if (!$newsletter_id) {
+            wp_send_json_error(__('Invalid newsletter ID', 'azure-plugin'));
+        }
+        
+        global $wpdb;
+        $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+        
+        $items = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$queue_table} WHERE newsletter_id = %d ORDER BY scheduled_at DESC",
+            $newsletter_id
+        ));
+        
+        // Build HTML table
+        ob_start();
+        ?>
+        <table class="detail-table widefat striped">
+            <thead>
+                <tr>
+                    <th><?php _e('Status', 'azure-plugin'); ?></th>
+                    <th><?php _e('Recipient', 'azure-plugin'); ?></th>
+                    <th><?php _e('Scheduled', 'azure-plugin'); ?></th>
+                    <th><?php _e('Sent', 'azure-plugin'); ?></th>
+                    <th><?php _e('Attempts', 'azure-plugin'); ?></th>
+                    <th><?php _e('Error', 'azure-plugin'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($items as $item): ?>
+                <tr>
+                    <td>
+                        <span class="status-badge status-<?php echo esc_attr($item->status); ?>">
+                            <?php echo esc_html(ucfirst($item->status)); ?>
+                        </span>
+                    </td>
+                    <td>
+                        <strong><?php echo esc_html($item->email); ?></strong>
+                        <?php if ($item->user_id): ?>
+                        <br><small>User #<?php echo esc_html($item->user_id); ?></small>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php 
+                        if ($item->scheduled_at) {
+                            echo esc_html(date_i18n('M j, g:i a', strtotime($item->scheduled_at)));
+                        }
+                        ?>
+                    </td>
+                    <td>
+                        <?php 
+                        if ($item->sent_at) {
+                            echo esc_html(date_i18n('M j, g:i a', strtotime($item->sent_at)));
+                        } else {
+                            echo '—';
+                        }
+                        ?>
+                    </td>
+                    <td><?php echo esc_html($item->attempts); ?>/3</td>
+                    <td>
+                        <?php if ($item->error_message): ?>
+                        <span class="error-text"><?php echo esc_html($item->error_message); ?></span>
+                        <?php else: ?>
+                        —
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+        $html = ob_get_clean();
+        
+        wp_send_json_success(array('html' => $html));
     }
     
     /**

@@ -62,6 +62,7 @@ if (isset($_POST['clear_action']) && wp_verify_nonce($_POST['_wpnonce'], 'newsle
 
 // Get current filter
 $status_filter = isset($_GET['status']) ? sanitize_key($_GET['status']) : 'all';
+$view_mode = isset($_GET['view']) ? sanitize_key($_GET['view']) : 'grouped';
 
 // Get queue statistics
 $stats = array(
@@ -72,12 +73,38 @@ $stats = array(
 );
 $stats['total'] = array_sum($stats);
 
-// Pagination
+// Build status condition
+$status_condition = "";
+if ($status_filter !== 'all') {
+    $status_condition = $wpdb->prepare("AND q.status = %s", $status_filter);
+}
+
+// Get grouped newsletter data
+$grouped_newsletters = $wpdb->get_results("
+    SELECT 
+        q.newsletter_id,
+        n.name as newsletter_name,
+        n.subject as newsletter_subject,
+        COUNT(*) as total_count,
+        SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+        SUM(CASE WHEN q.status = 'processing' THEN 1 ELSE 0 END) as processing_count,
+        SUM(CASE WHEN q.status = 'sent' THEN 1 ELSE 0 END) as sent_count,
+        SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+        MIN(q.scheduled_at) as first_scheduled,
+        MAX(q.sent_at) as last_sent
+    FROM {$queue_table} q
+    LEFT JOIN {$newsletters_table} n ON q.newsletter_id = n.id
+    WHERE 1=1 {$status_condition}
+    GROUP BY q.newsletter_id, n.name, n.subject
+    ORDER BY first_scheduled DESC
+");
+
+// Pagination for flat view
 $per_page = 50;
 $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
 $offset = ($current_page - 1) * $per_page;
 
-// Build query
+// Build query for flat view
 $where = "1=1";
 if ($status_filter !== 'all') {
     $where = $wpdb->prepare("q.status = %s", $status_filter);
@@ -86,13 +113,15 @@ if ($status_filter !== 'all') {
 $total_items = $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} q WHERE {$where}");
 $total_pages = ceil($total_items / $per_page);
 
-// Get queue items
+// Get queue items for flat view or expanded newsletter
+$expanded_newsletter = isset($_GET['expand']) ? intval($_GET['expand']) : 0;
+
 $queue_items = $wpdb->get_results($wpdb->prepare(
     "SELECT q.*, n.name as newsletter_name, n.subject as newsletter_subject
      FROM {$queue_table} q
      LEFT JOIN {$newsletters_table} n ON q.newsletter_id = n.id
      WHERE {$where}
-     ORDER BY q.scheduled_at DESC, q.id DESC
+     ORDER BY q.newsletter_id DESC, q.scheduled_at DESC, q.id DESC
      LIMIT %d OFFSET %d",
     $per_page,
     $offset
@@ -229,6 +258,193 @@ $next_cron = wp_next_scheduled('azure_newsletter_process_queue');
             <?php endif; ?>
         </div>
         
+        <!-- View Toggle -->
+        <div class="view-toggle" style="margin-bottom: 10px;">
+            <a href="<?php echo add_query_arg('view', 'grouped'); ?>" 
+               class="button <?php echo $view_mode === 'grouped' ? 'button-primary' : ''; ?>">
+                <span class="dashicons dashicons-category" style="vertical-align: middle;"></span>
+                <?php _e('Grouped View', 'azure-plugin'); ?>
+            </a>
+            <a href="<?php echo add_query_arg('view', 'flat'); ?>" 
+               class="button <?php echo $view_mode === 'flat' ? 'button-primary' : ''; ?>">
+                <span class="dashicons dashicons-list-view" style="vertical-align: middle;"></span>
+                <?php _e('Flat View', 'azure-plugin'); ?>
+            </a>
+        </div>
+        
+        <?php if ($view_mode === 'grouped'): ?>
+        <!-- Grouped View -->
+        <table class="wp-list-table widefat fixed queue-table grouped-queue">
+            <thead>
+                <tr>
+                    <th class="column-expand" style="width: 40px;"></th>
+                    <th class="column-newsletter"><?php _e('Newsletter', 'azure-plugin'); ?></th>
+                    <th class="column-total" style="width: 80px;"><?php _e('Total', 'azure-plugin'); ?></th>
+                    <th class="column-pending" style="width: 80px;"><?php _e('Pending', 'azure-plugin'); ?></th>
+                    <th class="column-sent" style="width: 80px;"><?php _e('Sent', 'azure-plugin'); ?></th>
+                    <th class="column-failed" style="width: 80px;"><?php _e('Failed', 'azure-plugin'); ?></th>
+                    <th class="column-scheduled"><?php _e('Scheduled', 'azure-plugin'); ?></th>
+                    <th class="column-progress" style="width: 150px;"><?php _e('Progress', 'azure-plugin'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($grouped_newsletters)): ?>
+                <tr>
+                    <td colspan="8" class="no-items">
+                        <?php 
+                        if ($status_filter !== 'all') {
+                            printf(__('No %s items in the queue.', 'azure-plugin'), $status_filter);
+                        } else {
+                            _e('The queue is empty.', 'azure-plugin');
+                        }
+                        ?>
+                    </td>
+                </tr>
+                <?php else: ?>
+                <?php foreach ($grouped_newsletters as $group): 
+                    $is_expanded = ($expanded_newsletter == $group->newsletter_id);
+                    $progress_pct = $group->total_count > 0 ? round(($group->sent_count / $group->total_count) * 100) : 0;
+                ?>
+                <tr class="newsletter-group-row <?php echo $is_expanded ? 'expanded' : ''; ?>" 
+                    data-newsletter-id="<?php echo esc_attr($group->newsletter_id); ?>">
+                    <td class="column-expand">
+                        <button type="button" class="toggle-expand button-link" 
+                                onclick="toggleNewsletterGroup(<?php echo esc_attr($group->newsletter_id); ?>)">
+                            <span class="dashicons <?php echo $is_expanded ? 'dashicons-arrow-down-alt2' : 'dashicons-arrow-right-alt2'; ?>"></span>
+                        </button>
+                    </td>
+                    <td class="column-newsletter">
+                        <strong>
+                            <?php echo esc_html($group->newsletter_name ?: 'Newsletter #' . $group->newsletter_id); ?>
+                        </strong>
+                        <?php if ($group->newsletter_subject): ?>
+                        <br><small class="subject-line"><?php echo esc_html($group->newsletter_subject); ?></small>
+                        <?php endif; ?>
+                    </td>
+                    <td class="column-total">
+                        <span class="count-badge"><?php echo number_format($group->total_count); ?></span>
+                    </td>
+                    <td class="column-pending">
+                        <?php if ($group->pending_count > 0): ?>
+                        <span class="count-badge pending"><?php echo number_format($group->pending_count); ?></span>
+                        <?php else: ?>
+                        <span class="na">0</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="column-sent">
+                        <?php if ($group->sent_count > 0): ?>
+                        <span class="count-badge sent"><?php echo number_format($group->sent_count); ?></span>
+                        <?php else: ?>
+                        <span class="na">0</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="column-failed">
+                        <?php if ($group->failed_count > 0): ?>
+                        <span class="count-badge failed"><?php echo number_format($group->failed_count); ?></span>
+                        <?php else: ?>
+                        <span class="na">0</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="column-scheduled">
+                        <?php 
+                        if ($group->first_scheduled) {
+                            $scheduled = strtotime($group->first_scheduled);
+                            echo esc_html(date_i18n('M j, Y', $scheduled));
+                            echo '<br><small>' . esc_html(date_i18n('g:i a', $scheduled)) . '</small>';
+                        }
+                        ?>
+                    </td>
+                    <td class="column-progress">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: <?php echo $progress_pct; ?>%;">
+                                <?php if ($group->failed_count > 0): ?>
+                                <div class="progress-failed" style="width: <?php echo round(($group->failed_count / $group->total_count) * 100); ?>%;"></div>
+                                <?php endif; ?>
+                            </div>
+                            <span class="progress-text"><?php echo $progress_pct; ?>%</span>
+                        </div>
+                    </td>
+                </tr>
+                <!-- Expandable Detail Rows -->
+                <tr class="newsletter-detail-container" id="details-<?php echo esc_attr($group->newsletter_id); ?>" 
+                    style="<?php echo $is_expanded ? '' : 'display: none;'; ?>">
+                    <td colspan="8" class="detail-cell">
+                        <div class="detail-loading" style="<?php echo $is_expanded ? 'display: none;' : ''; ?>">
+                            <span class="spinner is-active"></span> <?php _e('Loading...', 'azure-plugin'); ?>
+                        </div>
+                        <div class="detail-content">
+                            <?php if ($is_expanded): ?>
+                            <?php 
+                            // Load details for expanded newsletter
+                            $detail_items = $wpdb->get_results($wpdb->prepare(
+                                "SELECT * FROM {$queue_table} WHERE newsletter_id = %d ORDER BY scheduled_at DESC",
+                                $group->newsletter_id
+                            ));
+                            ?>
+                            <table class="detail-table widefat striped">
+                                <thead>
+                                    <tr>
+                                        <th><?php _e('Status', 'azure-plugin'); ?></th>
+                                        <th><?php _e('Recipient', 'azure-plugin'); ?></th>
+                                        <th><?php _e('Scheduled', 'azure-plugin'); ?></th>
+                                        <th><?php _e('Sent', 'azure-plugin'); ?></th>
+                                        <th><?php _e('Attempts', 'azure-plugin'); ?></th>
+                                        <th><?php _e('Error', 'azure-plugin'); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($detail_items as $item): ?>
+                                    <tr>
+                                        <td>
+                                            <span class="status-badge status-<?php echo esc_attr($item->status); ?>">
+                                                <?php echo esc_html(ucfirst($item->status)); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <strong><?php echo esc_html($item->email); ?></strong>
+                                            <?php if ($item->user_id): ?>
+                                            <br><small>User #<?php echo esc_html($item->user_id); ?></small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php 
+                                            if ($item->scheduled_at) {
+                                                echo esc_html(date_i18n('M j, g:i a', strtotime($item->scheduled_at)));
+                                            }
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <?php 
+                                            if ($item->sent_at) {
+                                                echo esc_html(date_i18n('M j, g:i a', strtotime($item->sent_at)));
+                                            } else {
+                                                echo '—';
+                                            }
+                                            ?>
+                                        </td>
+                                        <td><?php echo esc_html($item->attempts); ?>/3</td>
+                                        <td>
+                                            <?php if ($item->error_message): ?>
+                                            <span class="error-text"><?php echo esc_html($item->error_message); ?></span>
+                                            <?php else: ?>
+                                            —
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+        
+        <?php else: ?>
+        <!-- Flat View -->
         <table class="wp-list-table widefat fixed striped queue-table">
             <thead>
                 <tr>
@@ -325,6 +541,7 @@ $next_cron = wp_next_scheduled('azure_newsletter_process_queue');
                 <?php endif; ?>
             </tbody>
         </table>
+        <?php endif; ?>
     </form>
 </div>
 
@@ -515,6 +732,156 @@ $next_cron = wp_next_scheduled('azure_newsletter_process_queue');
     cursor: help;
 }
 
+/* Grouped View */
+.grouped-queue .newsletter-group-row {
+    background: #f6f7f7;
+    cursor: pointer;
+}
+
+.grouped-queue .newsletter-group-row:hover {
+    background: #f0f0f1;
+}
+
+.grouped-queue .newsletter-group-row.expanded {
+    background: #e9f0f5;
+    border-bottom: none;
+}
+
+.grouped-queue .column-expand {
+    text-align: center;
+}
+
+.grouped-queue .toggle-expand {
+    padding: 0;
+    color: #2271b1;
+}
+
+.grouped-queue .toggle-expand:hover {
+    color: #135e96;
+}
+
+.grouped-queue .toggle-expand .dashicons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+}
+
+.grouped-queue .subject-line {
+    color: #646970;
+    font-style: italic;
+}
+
+/* Count Badges */
+.count-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f0f0f1;
+    color: #1d2327;
+}
+
+.count-badge.pending {
+    background: #fcf0c3;
+    color: #8a6d00;
+}
+
+.count-badge.sent {
+    background: #d7f4e3;
+    color: #006028;
+}
+
+.count-badge.failed {
+    background: #fce3e3;
+    color: #8a0000;
+}
+
+/* Progress Bar */
+.progress-bar-container {
+    position: relative;
+    background: #f0f0f1;
+    border-radius: 4px;
+    height: 20px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, #00a32a, #46b450);
+    height: 100%;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.progress-bar .progress-failed {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    background: #d63638;
+}
+
+.progress-text {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+/* Detail Container */
+.newsletter-detail-container {
+    background: #fff;
+}
+
+.newsletter-detail-container .detail-cell {
+    padding: 0 !important;
+    border-left: 3px solid #2271b1;
+}
+
+.newsletter-detail-container .detail-loading {
+    padding: 20px;
+    text-align: center;
+    color: #646970;
+}
+
+.newsletter-detail-container .detail-content {
+    padding: 15px 20px;
+}
+
+.newsletter-detail-container .detail-table {
+    margin: 0;
+    border: none;
+    box-shadow: none;
+}
+
+.newsletter-detail-container .detail-table th {
+    background: #f6f7f7;
+    font-size: 12px;
+}
+
+.newsletter-detail-container .detail-table td {
+    font-size: 13px;
+    padding: 8px 10px;
+}
+
+.newsletter-detail-container .error-text {
+    color: #d63638;
+    font-size: 12px;
+}
+
+/* View Toggle */
+.view-toggle {
+    display: flex;
+    gap: 5px;
+}
+
+.view-toggle .button .dashicons {
+    margin-right: 3px;
+}
+
 /* Responsive */
 @media screen and (max-width: 782px) {
     .queue-stats-cards {
@@ -592,6 +959,60 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    // Click on group row to toggle
+    $('.newsletter-group-row').on('click', function(e) {
+        if (!$(e.target).closest('.toggle-expand').length) {
+            var newsletterId = $(this).data('newsletter-id');
+            toggleNewsletterGroup(newsletterId);
+        }
+    });
 });
+
+// Toggle newsletter group expand/collapse
+function toggleNewsletterGroup(newsletterId) {
+    var $row = $('tr[data-newsletter-id="' + newsletterId + '"]');
+    var $details = $('#details-' + newsletterId);
+    var $icon = $row.find('.toggle-expand .dashicons');
+    
+    if ($details.is(':visible')) {
+        // Collapse
+        $details.slideUp(200);
+        $row.removeClass('expanded');
+        $icon.removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-right-alt2');
+    } else {
+        // Expand
+        $row.addClass('expanded');
+        $icon.removeClass('dashicons-arrow-right-alt2').addClass('dashicons-arrow-down-alt2');
+        
+        // Check if details are already loaded
+        var $content = $details.find('.detail-content');
+        var $loading = $details.find('.detail-loading');
+        
+        if ($content.children().length === 0) {
+            // Load details via AJAX
+            $loading.show();
+            $details.slideDown(200);
+            
+            $.post(ajaxurl, {
+                action: 'azure_newsletter_get_queue_details',
+                newsletter_id: newsletterId,
+                nonce: '<?php echo wp_create_nonce('azure_newsletter_queue_details'); ?>'
+            }, function(response) {
+                $loading.hide();
+                if (response.success) {
+                    $content.html(response.data.html);
+                } else {
+                    $content.html('<p style="color: #d63638;">' + response.data + '</p>');
+                }
+            }).fail(function() {
+                $loading.hide();
+                $content.html('<p style="color: #d63638;">Failed to load details</p>');
+            });
+        } else {
+            $details.slideDown(200);
+        }
+    }
+}
 </script>
 
