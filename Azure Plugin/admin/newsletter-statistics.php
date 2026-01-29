@@ -37,6 +37,11 @@ if ($campaign_filter > 0) {
     $campaign_condition = $wpdb->prepare("AND newsletter_id = %d", $campaign_filter);
 }
 
+// Debug: Check what's in the stats table
+$debug_total = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table}");
+$debug_sent = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'sent'");
+$debug_recent = $wpdb->get_results("SELECT * FROM {$stats_table} ORDER BY created_at DESC LIMIT 5");
+
 // Get aggregate stats
 $total_sent = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'sent' {$date_condition} {$campaign_condition}");
 $total_delivered = $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'delivered' {$date_condition} {$campaign_condition}");
@@ -110,6 +115,36 @@ if ($campaign_filter > 0) {
             <button type="submit" class="button"><?php _e('Filter', 'azure-plugin'); ?></button>
         </form>
     </div>
+    
+    <?php if (isset($_GET['debug']) || $debug_total == 0): ?>
+    <!-- Debug Info -->
+    <div class="notice notice-info" style="padding: 10px; margin: 10px 0;">
+        <strong>📊 Stats Debug:</strong>
+        Total records in stats table: <strong><?php echo $debug_total; ?></strong> |
+        Total 'sent' events (all time): <strong><?php echo $debug_sent; ?></strong> |
+        Filter: <?php echo esc_html($date_from); ?> to <?php echo esc_html($date_to); ?> |
+        Filtered 'sent': <strong><?php echo $total_sent; ?></strong>
+        <?php if (!empty($debug_recent)): ?>
+        <br><br><strong>Recent stats entries:</strong>
+        <table class="widefat" style="margin-top: 10px;">
+            <thead><tr><th>ID</th><th>Newsletter</th><th>Email</th><th>Event</th><th>Created</th></tr></thead>
+            <tbody>
+            <?php foreach ($debug_recent as $r): ?>
+            <tr>
+                <td><?php echo $r->id ?? '-'; ?></td>
+                <td><?php echo $r->newsletter_id ?? '-'; ?></td>
+                <td><?php echo esc_html($r->email ?? '-'); ?></td>
+                <td><?php echo esc_html($r->event_type ?? '-'); ?></td>
+                <td><?php echo esc_html($r->created_at ?? '-'); ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php else: ?>
+        <br><em>No stats recorded yet.</em>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
     
     <!-- Overview Stats -->
     <div class="stats-overview">
