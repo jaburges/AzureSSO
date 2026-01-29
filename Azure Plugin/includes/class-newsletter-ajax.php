@@ -2039,62 +2039,39 @@ class Azure_Newsletter_Ajax {
     }
     
     /**
-     * Sanitize email HTML while preserving necessary tags like <style>
-     * wp_kses_post strips <style> tags which breaks email formatting
+     * Sanitize email HTML while preserving styles and structure
+     * 
+     * Note: We don't use wp_kses for email HTML because:
+     * 1. Only admins can create newsletters (trusted source)
+     * 2. wp_kses strips CSS content inside <style> tags
+     * 3. Email HTML requires full styling preservation
+     * 
+     * Instead, we do minimal sanitization focused on security.
      */
     private function sanitize_email_html($html) {
         if (empty($html)) {
             return '';
         }
         
-        // Define allowed HTML tags for email
-        $allowed_tags = array(
-            'html' => array('lang' => true, 'xmlns' => true),
-            'head' => array(),
-            'meta' => array('charset' => true, 'name' => true, 'content' => true, 'http-equiv' => true),
-            'title' => array(),
-            'style' => array('type' => true),
-            'body' => array('style' => true, 'bgcolor' => true),
-            'div' => array('style' => true, 'class' => true, 'id' => true, 'align' => true),
-            'span' => array('style' => true, 'class' => true, 'id' => true),
-            'p' => array('style' => true, 'class' => true, 'align' => true),
-            'br' => array(),
-            'hr' => array('style' => true),
-            'h1' => array('style' => true, 'class' => true, 'align' => true),
-            'h2' => array('style' => true, 'class' => true, 'align' => true),
-            'h3' => array('style' => true, 'class' => true, 'align' => true),
-            'h4' => array('style' => true, 'class' => true, 'align' => true),
-            'h5' => array('style' => true, 'class' => true, 'align' => true),
-            'h6' => array('style' => true, 'class' => true, 'align' => true),
-            'strong' => array('style' => true),
-            'b' => array('style' => true),
-            'em' => array('style' => true),
-            'i' => array('style' => true),
-            'u' => array('style' => true),
-            'a' => array('href' => true, 'style' => true, 'class' => true, 'target' => true, 'title' => true),
-            'img' => array('src' => true, 'alt' => true, 'style' => true, 'width' => true, 'height' => true, 'border' => true, 'class' => true),
-            'table' => array('style' => true, 'class' => true, 'width' => true, 'cellpadding' => true, 'cellspacing' => true, 'border' => true, 'bgcolor' => true, 'align' => true),
-            'thead' => array('style' => true),
-            'tbody' => array('style' => true),
-            'tfoot' => array('style' => true),
-            'tr' => array('style' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
-            'td' => array('style' => true, 'class' => true, 'width' => true, 'height' => true, 'colspan' => true, 'rowspan' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
-            'th' => array('style' => true, 'class' => true, 'width' => true, 'colspan' => true, 'rowspan' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
-            'ul' => array('style' => true, 'class' => true),
-            'ol' => array('style' => true, 'class' => true),
-            'li' => array('style' => true, 'class' => true),
-            'blockquote' => array('style' => true, 'class' => true),
-            'center' => array(),
-            'font' => array('color' => true, 'face' => true, 'size' => true),
-            'sup' => array(),
-            'sub' => array(),
-            '!doctype' => array('html' => true),
-        );
+        // Unslash the content (WordPress adds slashes)
+        $html = wp_unslash($html);
         
-        // Use wp_kses with our custom allowed tags
-        $sanitized = wp_kses(wp_unslash($html), $allowed_tags);
+        // Remove any PHP tags (security)
+        $html = preg_replace('/<\?php.*?\?>/is', '', $html);
+        $html = preg_replace('/<\?=.*?\?>/is', '', $html);
+        $html = preg_replace('/<\?.*?\?>/is', '', $html);
         
-        return $sanitized;
+        // Remove script tags (security) - but preserve style tags
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+        
+        // Remove event handlers (onclick, onerror, etc.)
+        $html = preg_replace('/\s+on\w+\s*=\s*["\'][^"\']*["\']/i', '', $html);
+        $html = preg_replace('/\s+on\w+\s*=\s*[^\s>]*/i', '', $html);
+        
+        // Remove javascript: URLs
+        $html = preg_replace('/href\s*=\s*["\']?\s*javascript:[^"\'>\s]*/i', 'href="#"', $html);
+        
+        return $html;
     }
 }
 
