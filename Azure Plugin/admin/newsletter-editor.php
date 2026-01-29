@@ -282,7 +282,12 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                                                     $list_count += count(get_users(array('role' => $role, 'fields' => 'ID')));
                                                 }
                                             }
+                                        } elseif ($list->type === 'all_users') {
+                                            // For all_users type lists, count all WordPress users
+                                            $list_count = count_users()['total_users'];
                                         }
+                                        // Debug output (hidden)
+                                        // error_log("Newsletter list {$list->name} (ID:{$list->id}): type={$list->type}, count={$list_count}");
                                     ?>
                                 <label class="recipient-checkbox">
                                     <input type="checkbox" name="newsletter_lists[]" value="<?php echo esc_attr($list->id); ?>" data-count="<?php echo esc_attr($list_count); ?>" <?php checked(in_array((string)$list->id, $saved_lists) || in_array($list->id, $saved_lists)); ?>>

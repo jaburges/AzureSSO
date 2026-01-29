@@ -11,6 +11,11 @@
      * Initialize when document is ready
      */
     $(document).ready(function() {
+        // Skip initialization on the editor page - newsletter-editor.js handles it
+        if ($('#gjs-editor').length > 0) {
+            return;
+        }
+        
         initStepNavigation();
         initRecipientCheckboxes();
         initSubjectCharCount();

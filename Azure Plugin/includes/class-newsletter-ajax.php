@@ -367,30 +367,36 @@ class Azure_Newsletter_Ajax {
         global $wpdb;
         $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
         
-        // Check if already a member
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$members_table} WHERE list_id = %d AND user_id = %d",
-            $list_id, $user_id
+        // Check if already a member (using composite key: list_id + email)
+        $existing = $wpdb->get_row($wpdb->prepare(
+            "SELECT list_id, email, unsubscribed_at FROM {$members_table} WHERE list_id = %d AND email = %s",
+            $list_id, $user->user_email
         ));
         
         if ($existing) {
             // Reactivate if unsubscribed
             $wpdb->update(
                 $members_table,
-                array('unsubscribed_at' => null),
-                array('id' => $existing)
+                array('unsubscribed_at' => null, 'user_id' => $user_id),
+                array('list_id' => $list_id, 'email' => $user->user_email)
             );
+            wp_send_json_success(array('message' => 'Member reactivated'));
         } else {
             // Insert new member
-            $wpdb->insert($members_table, array(
+            $result = $wpdb->insert($members_table, array(
                 'list_id' => $list_id,
                 'user_id' => $user_id,
                 'email' => $user->user_email,
                 'subscribed_at' => current_time('mysql')
             ));
+            
+            if ($result === false) {
+                error_log("[Newsletter] Failed to add member: " . $wpdb->last_error);
+                wp_send_json_error('Failed to add member: ' . $wpdb->last_error);
+            }
+            
+            wp_send_json_success(array('message' => 'Member added'));
         }
-        
-        wp_send_json_success(array('message' => 'Member added'));
     }
     
     /**
@@ -580,7 +586,17 @@ class Azure_Newsletter_Ajax {
                 error_log('[Newsletter] queue_result: ' . json_encode($queue_result));
                 
                 if (isset($queue_result['error'])) {
-                    $queue_errors[] = $queue_result['error'];
+                    // Include debug info if available
+                    $error_msg = $queue_result['error'];
+                    if (!empty($queue_result['debug'])) {
+                        $debug = $queue_result['debug'];
+                        $error_msg .= " [DEBUG: type={$debug['list_type']}, total={$debug['members_in_db']}, active={$debug['active_members']}";
+                        if (!empty($debug['sample_data'])) {
+                            $error_msg .= ", sample: " . implode(' | ', array_slice($debug['sample_data'], 0, 2));
+                        }
+                        $error_msg .= "]";
+                    }
+                    $queue_errors[] = $error_msg;
                     if (class_exists('Azure_Logger')) {
                         Azure_Logger::warning('Newsletter Send: Queue error for list ' . $list_id . ': ' . $queue_result['error']);
                     }
@@ -602,6 +618,23 @@ class Azure_Newsletter_Ajax {
                 Azure_Logger::info('Newsletter Send: Total queued: ' . $total_queued . ', blocked: ' . $total_blocked . ', bounced: ' . $total_bounced);
             }
             
+            // If "Send Now", immediately process the queue
+            $process_result = null;
+            if ($send_option === 'now' && $total_queued > 0) {
+                error_log('[Newsletter] Send Now selected - immediately processing queue');
+                if (class_exists('Azure_Logger')) {
+                    Azure_Logger::info('Newsletter Send: Processing queue immediately (Send Now)');
+                }
+                
+                try {
+                    $process_result = $queue->process_batch();
+                    error_log('[Newsletter] Immediate process result: ' . json_encode($process_result));
+                } catch (Exception $e) {
+                    error_log('[Newsletter] Error processing queue immediately: ' . $e->getMessage());
+                    $process_result = array('error' => $e->getMessage());
+                }
+            }
+            
             wp_send_json_success(array(
                 'newsletter_id' => $newsletter_id,
                 'status' => $data['status'],
@@ -612,6 +645,7 @@ class Azure_Newsletter_Ajax {
                 'skipped' => $total_skipped,
                 'filtered_total' => $total_blocked + $total_bounced,
                 'errors' => $queue_errors,
+                'sent_immediately' => $process_result,
                 'debug' => 'path:queued'
             ));
         }
@@ -1373,9 +1407,12 @@ class Azure_Newsletter_Ajax {
         }
         
         $list_id = sanitize_text_field($_POST['list_id'] ?? 'all');
+        $count = 0;
+        $type = 'unknown';
         
         if ($list_id === 'all') {
             $count = count_users()['total_users'];
+            $type = 'all_wordpress_users';
         } else {
             global $wpdb;
             $lists_table = $wpdb->prefix . 'azure_newsletter_lists';
@@ -1386,23 +1423,33 @@ class Azure_Newsletter_Ajax {
                 intval($list_id)
             ));
             
-            if ($list && $list->type === 'role') {
+            if (!$list) {
+                wp_send_json_error(array('message' => 'List not found', 'list_id' => $list_id));
+                return;
+            }
+            
+            $type = $list->type;
+            
+            if ($list->type === 'role') {
                 $criteria = json_decode($list->criteria, true);
-                $count = 0;
                 foreach ($criteria['roles'] ?? array() as $role) {
                     $count += count(get_users(array('role' => $role)));
                 }
-            } elseif ($list && $list->type === 'custom') {
+            } elseif ($list->type === 'custom') {
                 $count = $wpdb->get_var($wpdb->prepare(
                     "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d AND unsubscribed_at IS NULL",
                     intval($list_id)
                 ));
-            } else {
-                $count = 0;
+            } elseif ($list->type === 'all_users') {
+                $count = count_users()['total_users'];
             }
         }
         
-        wp_send_json_success(array('count' => intval($count)));
+        wp_send_json_success(array(
+            'count' => intval($count),
+            'type' => $type,
+            'list_id' => $list_id
+        ));
     }
     
     /**

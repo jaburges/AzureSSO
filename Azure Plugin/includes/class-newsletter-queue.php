@@ -47,24 +47,110 @@ class Azure_Newsletter_Queue {
             Azure_Logger::info("Queue: Processing list_id='{$list_id}' (type: " . gettype($list_id) . ") for newsletter #{$newsletter_id}");
         }
         
+        // Get list info for better error messages
+        $list_name = $list_id;
+        $list_type = 'unknown';
+        $members_table = $wpdb->prefix . 'azure_newsletter_list_members';
+        $member_count_in_db = 0;
+        
+        if (strtolower($list_id) !== 'all') {
+            $lists_table = $wpdb->prefix . 'azure_newsletter_lists';
+            $list_info = $wpdb->get_row($wpdb->prepare(
+                "SELECT name, type FROM {$lists_table} WHERE id = %d",
+                intval($list_id)
+            ));
+            if ($list_info) {
+                $list_name = $list_info->name;
+                $list_type = $list_info->type ?? 'NULL';
+                error_log("[Newsletter Queue] List found: name='{$list_name}', type='{$list_type}'");
+                
+                // Get direct member count from database for debugging
+                $member_count_in_db = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d",
+                    intval($list_id)
+                ));
+                
+                // Count active (not unsubscribed) members
+                $active_member_count = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d AND unsubscribed_at IS NULL",
+                    intval($list_id)
+                ));
+                
+                // Get sample of actual data to see what's stored
+                $sample_members = $wpdb->get_results($wpdb->prepare(
+                    "SELECT user_id, email, unsubscribed_at FROM {$members_table} WHERE list_id = %d LIMIT 5",
+                    intval($list_id)
+                ));
+                $sample_data = array();
+                foreach ($sample_members as $sm) {
+                    $sample_data[] = "user_id={$sm->user_id}, email=" . ($sm->email ?: 'EMPTY') . ", unsub=" . ($sm->unsubscribed_at ?: 'NULL');
+                }
+                
+                error_log("[Newsletter Queue] Direct member count in DB for list {$list_id}: {$member_count_in_db} total, {$active_member_count} active");
+                error_log("[Newsletter Queue] Sample member data: " . implode(' | ', $sample_data));
+            } else {
+                error_log("[Newsletter Queue] ERROR: List ID {$list_id} not found in database!");
+            }
+        }
+        
         // Get recipients based on list
         $recipients = $this->get_recipients($list_id);
         
-        error_log("[Newsletter Queue] Found " . count($recipients) . " recipients for list '{$list_id}'");
+        error_log("[Newsletter Queue] Found " . count($recipients) . " recipients for list '{$list_name}' (ID: {$list_id})");
         
         if (class_exists('Azure_Logger')) {
-            Azure_Logger::info("Queue: Found " . count($recipients) . " recipients for list '{$list_id}'");
+            Azure_Logger::info("Queue: Found " . count($recipients) . " recipients for list '{$list_name}'");
         }
         
         if (empty($recipients)) {
-            error_log("[Newsletter Queue] ERROR: No recipients found for list '{$list_id}'");
-            if (class_exists('Azure_Logger')) {
-                Azure_Logger::warning("Queue: No recipients found for list '{$list_id}'");
+            error_log("[Newsletter Queue] ERROR: No recipients found for list '{$list_name}' (ID: {$list_id})");
+            
+            // DIRECT BYPASS: Try to get recipients directly here for debugging
+            $bypass_members = $wpdb->get_results($wpdb->prepare(
+                "SELECT m.user_id, m.email, u.user_email, u.display_name 
+                 FROM {$wpdb->prefix}azure_newsletter_list_members m
+                 LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                 WHERE m.list_id = %d AND m.unsubscribed_at IS NULL",
+                intval($list_id)
+            ));
+            error_log("[Newsletter Queue] BYPASS query found: " . count($bypass_members) . " members");
+            error_log("[Newsletter Queue] BYPASS SQL error: " . ($wpdb->last_error ?: 'none'));
+            
+            // If bypass works, use those recipients!
+            if (!empty($bypass_members)) {
+                error_log("[Newsletter Queue] BYPASS working! Using direct query results.");
+                foreach ($bypass_members as $member) {
+                    $email = !empty($member->email) ? $member->email : $member->user_email;
+                    if (!empty($email)) {
+                        $recipients[] = array(
+                            'user_id' => $member->user_id ?? null,
+                            'email' => $email,
+                            'name' => $member->display_name ?? ''
+                        );
+                    }
+                }
             }
-            return array(
-                'success' => false,
-                'error' => "No recipients found for list '{$list_id}'"
-            );
+            
+            // If still empty after bypass, return error
+            if (empty($recipients)) {
+                if (class_exists('Azure_Logger')) {
+                    Azure_Logger::warning("Queue: No recipients found for list '{$list_name}'");
+                }
+                return array(
+                    'success' => false,
+                    'error' => "No recipients found for list '{$list_name}'",
+                    'debug' => array(
+                        'list_id' => $list_id,
+                        'list_name' => $list_name,
+                        'list_type' => $list_type,
+                        'members_in_db' => $member_count_in_db,
+                        'active_members' => $active_member_count ?? 0,
+                        'sample_data' => $sample_data ?? array(),
+                        'bypass_count' => count($bypass_members),
+                        'bypass_error' => $wpdb->last_error ?: 'none'
+                    )
+                );
+            }
         }
         
         // Track original count before filtering
@@ -168,10 +254,14 @@ class Azure_Newsletter_Queue {
                 $list_id
             ));
             
-            error_log("[Newsletter Queue] List found: " . ($list ? "yes, type={$list->type}, name={$list->name}" : "NO"));
+            error_log("[Newsletter Queue] List found: " . ($list ? "yes, type='" . ($list->type ?? 'NULL') . "', name={$list->name}" : "NO"));
             
             if ($list) {
-                switch ($list->type) {
+                // Normalize list type - treat NULL/empty as 'custom'
+                $list_type = !empty($list->type) ? strtolower(trim($list->type)) : 'custom';
+                error_log("[Newsletter Queue] Normalized list type: '{$list_type}'");
+                
+                switch ($list_type) {
                     case 'role':
                         error_log("[Newsletter Queue] Processing role-based list");
                         $criteria = json_decode($list->criteria, true);
@@ -198,27 +288,90 @@ class Azure_Newsletter_Queue {
                         break;
                         
                     case 'custom':
-                        error_log("[Newsletter Queue] Processing custom list, querying members table");
-                        $members = $wpdb->get_results($wpdb->prepare(
-                            "SELECT user_id, email, first_name, last_name 
-                             FROM {$members_table} 
-                             WHERE list_id = %d AND unsubscribed_at IS NULL",
-                            $list_id
+                        error_log("[Newsletter Queue] Processing custom list ID {$list_id}, querying members table: {$members_table}");
+                        
+                        // First check if the members table exists
+                        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$members_table}'");
+                        error_log("[Newsletter Queue] Members table exists: " . ($table_exists ? 'yes' : 'NO!'));
+                        
+                        // Count all members first (ignore unsubscribed check for debugging)
+                        $total_count = $wpdb->get_var($wpdb->prepare(
+                            "SELECT COUNT(*) FROM {$members_table} WHERE list_id = %d",
+                            intval($list_id)
                         ));
-                        error_log("[Newsletter Queue] Found " . count($members) . " members in custom list");
+                        error_log("[Newsletter Queue] Total members in list (including unsubscribed): " . $total_count);
+                        
+                        // Use JOIN with users table to get email reliably (same as get_list_members)
+                        $members = $wpdb->get_results($wpdb->prepare(
+                            "SELECT m.user_id, m.email, m.first_name, m.last_name, 
+                                    u.user_email, u.display_name 
+                             FROM {$members_table} m
+                             LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                             WHERE m.list_id = %d AND m.unsubscribed_at IS NULL",
+                            intval($list_id)
+                        ));
+                        
+                        // Log any SQL errors
+                        if ($wpdb->last_error) {
+                            error_log("[Newsletter Queue] SQL Error: " . $wpdb->last_error);
+                        }
+                        
+                        error_log("[Newsletter Queue] Found " . count($members) . " active members in custom list");
                         
                         foreach ($members as $member) {
-                            error_log("[Newsletter Queue] Member: " . $member->email);
-                            $recipients[] = array(
-                                'user_id' => $member->user_id,
-                                'email' => $member->email,
-                                'name' => trim($member->first_name . ' ' . $member->last_name)
-                            );
+                            // Prefer m.email, fallback to u.user_email from WordPress
+                            $email = !empty($member->email) ? $member->email : $member->user_email;
+                            
+                            if (!empty($email)) {
+                                // Prefer display_name from WP user, fallback to first_name + last_name
+                                $name = !empty($member->display_name) ? $member->display_name : trim(($member->first_name ?? '') . ' ' . ($member->last_name ?? ''));
+                                
+                                error_log("[Newsletter Queue] Member: " . $email . " (" . $name . ")");
+                                $recipients[] = array(
+                                    'user_id' => $member->user_id ?? null,
+                                    'email' => $email,
+                                    'name' => $name
+                                );
+                            } else {
+                                error_log("[Newsletter Queue] WARNING: Member has no email (user_id: " . ($member->user_id ?? 'null') . "), skipping");
+                            }
                         }
                         break;
-                        
+                    
+                    case 'manual':
                     default:
-                        error_log("[Newsletter Queue] Unknown list type: {$list->type}");
+                        // Treat 'manual' and any other unknown type as custom list with members
+                        error_log("[Newsletter Queue] Processing as manual/custom list (type was: {$list_type})");
+                        
+                        // Query members table with JOIN to WordPress users
+                        $members = $wpdb->get_results($wpdb->prepare(
+                            "SELECT m.user_id, m.email, m.first_name, m.last_name, 
+                                    u.user_email, u.display_name 
+                             FROM {$members_table} m
+                             LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                             WHERE m.list_id = %d AND m.unsubscribed_at IS NULL",
+                            intval($list_id)
+                        ));
+                        
+                        if ($wpdb->last_error) {
+                            error_log("[Newsletter Queue] SQL Error in default case: " . $wpdb->last_error);
+                        }
+                        
+                        error_log("[Newsletter Queue] Found " . count($members) . " members in default case");
+                        
+                        foreach ($members as $member) {
+                            $email = !empty($member->email) ? $member->email : $member->user_email;
+                            
+                            if (!empty($email)) {
+                                $name = !empty($member->display_name) ? $member->display_name : trim(($member->first_name ?? '') . ' ' . ($member->last_name ?? ''));
+                                error_log("[Newsletter Queue] Default case member: " . $email);
+                                $recipients[] = array(
+                                    'user_id' => $member->user_id ?? null,
+                                    'email' => $email,
+                                    'name' => $name
+                                );
+                            }
+                        }
                         break;
                 }
             } else {
@@ -342,6 +495,17 @@ class Azure_Newsletter_Queue {
         
         if (empty($pending)) {
             return array('sent' => 0, 'failed' => 0, 'total' => 0);
+        }
+        
+        // Ensure sender class is loaded
+        if (!class_exists('Azure_Newsletter_Sender')) {
+            $sender_file = AZURE_PLUGIN_PATH . 'includes/class-newsletter-sender.php';
+            if (file_exists($sender_file)) {
+                require_once $sender_file;
+            } else {
+                error_log("[Newsletter Queue] FATAL: Sender class file not found at: " . $sender_file);
+                return array('sent' => 0, 'failed' => count($pending), 'total' => count($pending), 'error' => 'Sender class not found');
+            }
         }
         
         $sender = new Azure_Newsletter_Sender();
