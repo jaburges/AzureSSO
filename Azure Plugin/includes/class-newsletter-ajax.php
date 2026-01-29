@@ -491,7 +491,7 @@ class Azure_Newsletter_Ajax {
             'subject' => sanitize_text_field($_POST['newsletter_subject'] ?? ''),
             'from_email' => $from_email,
             'from_name' => $from_name,
-            'content_html' => wp_kses_post($_POST['newsletter_content_html'] ?? ''),
+            'content_html' => $this->sanitize_email_html($_POST['newsletter_content_html'] ?? ''),
             'content_json' => wp_unslash($_POST['newsletter_content_json'] ?? ''),
             'recipient_lists' => json_encode($recipient_lists),
             'updated_at' => current_time('mysql')
@@ -674,7 +674,7 @@ class Azure_Newsletter_Ajax {
         }
         
         $email = sanitize_email($_POST['email'] ?? '');
-        $html = wp_kses_post($_POST['html'] ?? '');
+        $html = $this->sanitize_email_html($_POST['html'] ?? '');
         $subject = sanitize_text_field($_POST['subject'] ?? 'Test Newsletter');
         
         // Parse from field
@@ -783,7 +783,7 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Permission denied');
         }
         
-        $html = wp_kses_post($_POST['html'] ?? '');
+        $html = $this->sanitize_email_html($_POST['html'] ?? '');
         $subject = sanitize_text_field($_POST['subject'] ?? '');
         $from_email = sanitize_email($_POST['from_email'] ?? 'test@example.com');
         $use_external = isset($_POST['use_external']) && $_POST['use_external'] === 'true';
@@ -1065,7 +1065,7 @@ class Azure_Newsletter_Ajax {
             wp_send_json_error('Permission denied');
         }
         
-        $html = wp_kses_post($_POST['html'] ?? '');
+        $html = $this->sanitize_email_html($_POST['html'] ?? '');
         
         $checks = array();
         
@@ -2036,6 +2036,65 @@ class Azure_Newsletter_Ajax {
         }
         
         return $content;
+    }
+    
+    /**
+     * Sanitize email HTML while preserving necessary tags like <style>
+     * wp_kses_post strips <style> tags which breaks email formatting
+     */
+    private function sanitize_email_html($html) {
+        if (empty($html)) {
+            return '';
+        }
+        
+        // Define allowed HTML tags for email
+        $allowed_tags = array(
+            'html' => array('lang' => true, 'xmlns' => true),
+            'head' => array(),
+            'meta' => array('charset' => true, 'name' => true, 'content' => true, 'http-equiv' => true),
+            'title' => array(),
+            'style' => array('type' => true),
+            'body' => array('style' => true, 'bgcolor' => true),
+            'div' => array('style' => true, 'class' => true, 'id' => true, 'align' => true),
+            'span' => array('style' => true, 'class' => true, 'id' => true),
+            'p' => array('style' => true, 'class' => true, 'align' => true),
+            'br' => array(),
+            'hr' => array('style' => true),
+            'h1' => array('style' => true, 'class' => true, 'align' => true),
+            'h2' => array('style' => true, 'class' => true, 'align' => true),
+            'h3' => array('style' => true, 'class' => true, 'align' => true),
+            'h4' => array('style' => true, 'class' => true, 'align' => true),
+            'h5' => array('style' => true, 'class' => true, 'align' => true),
+            'h6' => array('style' => true, 'class' => true, 'align' => true),
+            'strong' => array('style' => true),
+            'b' => array('style' => true),
+            'em' => array('style' => true),
+            'i' => array('style' => true),
+            'u' => array('style' => true),
+            'a' => array('href' => true, 'style' => true, 'class' => true, 'target' => true, 'title' => true),
+            'img' => array('src' => true, 'alt' => true, 'style' => true, 'width' => true, 'height' => true, 'border' => true, 'class' => true),
+            'table' => array('style' => true, 'class' => true, 'width' => true, 'cellpadding' => true, 'cellspacing' => true, 'border' => true, 'bgcolor' => true, 'align' => true),
+            'thead' => array('style' => true),
+            'tbody' => array('style' => true),
+            'tfoot' => array('style' => true),
+            'tr' => array('style' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
+            'td' => array('style' => true, 'class' => true, 'width' => true, 'height' => true, 'colspan' => true, 'rowspan' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
+            'th' => array('style' => true, 'class' => true, 'width' => true, 'colspan' => true, 'rowspan' => true, 'bgcolor' => true, 'align' => true, 'valign' => true),
+            'ul' => array('style' => true, 'class' => true),
+            'ol' => array('style' => true, 'class' => true),
+            'li' => array('style' => true, 'class' => true),
+            'blockquote' => array('style' => true, 'class' => true),
+            'center' => array(),
+            'font' => array('color' => true, 'face' => true, 'size' => true),
+            'sup' => array(),
+            'sub' => array(),
+            '!doctype' => array('html' => true),
+        );
+        
+        // Use wp_kses with our custom allowed tags
+        $sanitized = wp_kses(wp_unslash($html), $allowed_tags);
+        
+        return $sanitized;
     }
 }
 
