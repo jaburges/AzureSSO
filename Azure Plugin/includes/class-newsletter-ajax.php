@@ -45,6 +45,9 @@ class Azure_Newsletter_Ajax {
         add_action('wp_ajax_azure_newsletter_search_users', array($this, 'search_users'));
         add_action('wp_ajax_azure_newsletter_add_list_member', array($this, 'add_list_member'));
         add_action('wp_ajax_azure_newsletter_remove_list_member', array($this, 'remove_list_member'));
+        
+        // Stats sync
+        add_action('wp_ajax_azure_newsletter_sync_stats', array($this, 'sync_stats'));
     }
     
     /**
@@ -2094,6 +2097,166 @@ class Azure_Newsletter_Ajax {
         $html = preg_replace('/href\s*=\s*["\']?\s*javascript:[^"\'>\s]*/i', 'href="#"', $html);
         
         return $html;
+    }
+    
+    /**
+     * Sync statistics from queue and Mailgun
+     */
+    public function sync_stats() {
+        check_ajax_referer('azure_newsletter_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        global $wpdb;
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+        
+        $results = array(
+            'sent_synced' => 0,
+            'mailgun_events' => 0,
+            'errors' => array()
+        );
+        
+        // Step 1: Sync "sent" events from queue table
+        // Get all sent queue items that don't have a corresponding stats entry
+        $sent_items = $wpdb->get_results("
+            SELECT q.newsletter_id, q.email, q.user_id, q.sent_at
+            FROM {$queue_table} q
+            LEFT JOIN {$stats_table} s ON q.newsletter_id = s.newsletter_id AND q.email = s.email AND s.event_type = 'sent'
+            WHERE q.status = 'sent' AND s.id IS NULL
+        ");
+        
+        foreach ($sent_items as $item) {
+            $inserted = $wpdb->insert($stats_table, array(
+                'newsletter_id' => $item->newsletter_id,
+                'email' => $item->email,
+                'user_id' => $item->user_id,
+                'event_type' => 'sent',
+                'created_at' => $item->sent_at ?: current_time('mysql')
+            ));
+            
+            if ($inserted) {
+                $results['sent_synced']++;
+            }
+        }
+        
+        // Step 2: Try to pull events from Mailgun API
+        $settings = Azure_Settings::get_all_settings();
+        $api_key = $settings['newsletter_mailgun_api_key'] ?? '';
+        $domain = $settings['newsletter_mailgun_domain'] ?? '';
+        $region = $settings['newsletter_mailgun_region'] ?? 'us';
+        
+        if (!empty($api_key) && !empty($domain)) {
+            $mailgun_results = $this->fetch_mailgun_events($api_key, $domain, $region);
+            $results['mailgun_events'] = $mailgun_results['count'] ?? 0;
+            if (!empty($mailgun_results['error'])) {
+                $results['errors'][] = $mailgun_results['error'];
+            }
+        } else {
+            $results['errors'][] = 'Mailgun API not configured - cannot fetch opens/clicks';
+        }
+        
+        wp_send_json_success($results);
+    }
+    
+    /**
+     * Fetch events from Mailgun API and store in stats table
+     */
+    private function fetch_mailgun_events($api_key, $domain, $region = 'us') {
+        global $wpdb;
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        
+        $api_base = $region === 'eu' 
+            ? 'https://api.eu.mailgun.net/v3/' 
+            : 'https://api.mailgun.net/v3/';
+        
+        // Fetch last 7 days of events
+        $begin = date('r', strtotime('-7 days'));
+        $end = date('r');
+        
+        $url = $api_base . $domain . '/events?' . http_build_query(array(
+            'begin' => $begin,
+            'end' => $end,
+            'limit' => 300,
+            'event' => 'delivered OR opened OR clicked OR failed OR complained'
+        ));
+        
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'Authorization' => 'Basic ' . base64_encode('api:' . $api_key)
+            ),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            return array('count' => 0, 'error' => $response->get_error_message());
+        }
+        
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            $body = wp_remote_retrieve_body($response);
+            return array('count' => 0, 'error' => "Mailgun API error: HTTP {$code} - {$body}");
+        }
+        
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $events = $data['items'] ?? array();
+        $count = 0;
+        
+        // Event type mapping
+        $event_map = array(
+            'delivered' => 'delivered',
+            'opened' => 'opened',
+            'clicked' => 'clicked',
+            'failed' => 'bounced',
+            'complained' => 'complained'
+        );
+        
+        foreach ($events as $event) {
+            $event_type = $event['event'] ?? '';
+            $mapped_type = $event_map[$event_type] ?? null;
+            
+            if (!$mapped_type) {
+                continue;
+            }
+            
+            $email = $event['recipient'] ?? '';
+            $newsletter_id = $event['user-variables']['newsletter_id'] ?? null;
+            $timestamp = $event['timestamp'] ?? time();
+            $created_at = date('Y-m-d H:i:s', $timestamp);
+            
+            // Check if this exact event already exists (prevent duplicates)
+            $message_id = $event['message']['headers']['message-id'] ?? '';
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$stats_table} 
+                 WHERE email = %s AND event_type = %s AND created_at = %s
+                 LIMIT 1",
+                $email, $mapped_type, $created_at
+            ));
+            
+            if (!$existing && $email) {
+                $insert_data = array(
+                    'newsletter_id' => $newsletter_id,
+                    'email' => $email,
+                    'event_type' => $mapped_type,
+                    'created_at' => $created_at,
+                    'event_data' => json_encode($event)
+                );
+                
+                // Add link URL for click events
+                if ($mapped_type === 'clicked' && isset($event['url'])) {
+                    $insert_data['link_url'] = $event['url'];
+                }
+                
+                $inserted = $wpdb->insert($stats_table, $insert_data);
+                if ($inserted) {
+                    $count++;
+                }
+            }
+        }
+        
+        return array('count' => $count);
     }
 }
 

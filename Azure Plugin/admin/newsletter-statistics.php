@@ -113,6 +113,12 @@ if ($campaign_filter > 0) {
             <input type="date" name="to" value="<?php echo esc_attr($date_to); ?>">
             
             <button type="submit" class="button"><?php _e('Filter', 'azure-plugin'); ?></button>
+            
+            <button type="button" id="sync-stats-btn" class="button" style="margin-left: 20px;">
+                <span class="dashicons dashicons-update" style="line-height: 1.3;"></span>
+                <?php _e('Sync Stats from Mailgun', 'azure-plugin'); ?>
+            </button>
+            <span id="sync-status" style="margin-left: 10px;"></span>
         </form>
     </div>
     
@@ -412,6 +418,45 @@ if ($campaign_filter > 0) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 jQuery(document).ready(function($) {
+    // Sync Stats Button
+    $('#sync-stats-btn').on('click', function() {
+        var btn = $(this);
+        var status = $('#sync-status');
+        
+        btn.prop('disabled', true);
+        status.html('<span class="spinner is-active" style="float:none;margin:0;vertical-align:middle;"></span> <?php _e('Syncing...', 'azure-plugin'); ?>');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_sync_stats',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_nonce'); ?>'
+        }).done(function(response) {
+            btn.prop('disabled', false);
+            if (response.success) {
+                var d = response.data;
+                var msg = '✓ Synced: ' + d.sent_synced + ' sent events';
+                if (d.mailgun_events > 0) {
+                    msg += ', ' + d.mailgun_events + ' Mailgun events';
+                }
+                if (d.errors && d.errors.length > 0) {
+                    msg += ' (Note: ' + d.errors.join(', ') + ')';
+                }
+                status.html('<span style="color:#00a32a;">' + msg + '</span>');
+                
+                // Reload after 2 seconds to show updated stats
+                if (d.sent_synced > 0 || d.mailgun_events > 0) {
+                    setTimeout(function() {
+                        location.reload();
+                    }, 2000);
+                }
+            } else {
+                status.html('<span style="color:#d63638;">✗ ' + (response.data || 'Sync failed') + '</span>');
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            status.html('<span style="color:#d63638;">✗ Request failed</span>');
+        });
+    });
+    
     var ctx = document.getElementById('stats-chart').getContext('2d');
     
     var chartData = {
