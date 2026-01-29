@@ -206,11 +206,22 @@ $status_counts = $wpdb->get_results("
             <tbody>
                 <?php foreach ($campaigns as $campaign): ?>
                 <?php
-                // Get stats for this campaign
-                $sent_count = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'sent'",
+                // Get queue stats - this is the reliable source for sent count
+                $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+                $queue_stats = $wpdb->get_row($wpdb->prepare(
+                    "SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                        SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+                     FROM {$queue_table} WHERE newsletter_id = %d",
                     $campaign->id
                 ));
+                
+                // Use queue sent count as primary (most reliable)
+                $sent_count = intval($queue_stats->sent ?? 0);
+                
+                // Get engagement stats (opens/clicks from stats table - populated by webhooks)
                 $open_count = $wpdb->get_var($wpdb->prepare(
                     "SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'opened'",
                     $campaign->id
@@ -220,23 +231,16 @@ $status_counts = $wpdb->get_results("
                     $campaign->id
                 ));
                 
-                $open_rate = $sent_count > 0 ? round(($open_count / $sent_count) * 100, 1) : 0;
-                $click_rate = $sent_count > 0 ? round(($click_count / $sent_count) * 100, 1) : 0;
-                
-                // Get queue stats for scheduled campaigns
-                $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
-                $queue_stats = null;
-                if ($campaign->status === 'scheduled' || $campaign->status === 'sending') {
-                    $queue_stats = $wpdb->get_row($wpdb->prepare(
-                        "SELECT 
-                            COUNT(*) as total,
-                            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
-                            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-                         FROM {$queue_table} WHERE newsletter_id = %d",
+                // If no stats from webhooks yet, fall back to local stats
+                if ($open_count == 0) {
+                    $open_count = $wpdb->get_var($wpdb->prepare(
+                        "SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = %d AND event_type IN ('opened', 'open')",
                         $campaign->id
                     ));
                 }
+                
+                $open_rate = $sent_count > 0 ? round(($open_count / $sent_count) * 100, 1) : 0;
+                $click_rate = $sent_count > 0 ? round(($click_count / $sent_count) * 100, 1) : 0;
                 ?>
                 <tr>
                     <th scope="row" class="check-column">
@@ -290,7 +294,7 @@ $status_counts = $wpdb->get_results("
                         <?php if ($campaign->status === 'scheduled' && $campaign->scheduled_at): ?>
                         <br><small><?php echo date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($campaign->scheduled_at)); ?></small>
                         <?php endif; ?>
-                        <?php if ($queue_stats && $queue_stats->total > 0): ?>
+                        <?php if ($queue_stats && $queue_stats->total > 0 && ($campaign->status === 'scheduled' || $campaign->status === 'sending')): ?>
                         <div class="queue-stats-mini">
                             <?php if ($queue_stats->pending > 0): ?>
                             <span class="queue-pending" title="<?php esc_attr_e('Pending in queue', 'azure-plugin'); ?>">

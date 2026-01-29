@@ -502,6 +502,18 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
         $stats_exists = $wpdb->get_var("SHOW TABLES LIKE '{$stats_table}'") === $stats_table;
         $queue_exists = $wpdb->get_var("SHOW TABLES LIKE '{$queue_table}'") === $queue_table;
         
+        // Check for required columns in stats table
+        $missing_columns = array();
+        $required_columns = array('user_id', 'link_url', 'link_text');
+        if ($stats_exists) {
+            $existing_columns = $wpdb->get_col("SHOW COLUMNS FROM {$stats_table}");
+            foreach ($required_columns as $col) {
+                if (!in_array($col, $existing_columns)) {
+                    $missing_columns[] = $col;
+                }
+            }
+        }
+        
         // Get counts
         $stats_count = $stats_exists ? $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table}") : 0;
         $queue_count = $queue_exists ? $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table}") : 0;
@@ -514,25 +526,54 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
         $webhook_url = rest_url('azure-plugin/v1/newsletter/webhook/mailgun');
         ?>
         
-        <table class="widefat" style="max-width: 600px;">
+        <table class="widefat" style="max-width: 700px;">
             <tbody>
                 <tr>
                     <th style="width: 200px;">Stats Table</th>
                     <td>
                         <?php if ($stats_exists): ?>
-                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo $stats_count; ?> records)
+                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo number_format($stats_count); ?> records)
+                        <?php else: ?>
+                        <span style="color: #d63638;">✗ Does not exist</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php if (!empty($missing_columns)): ?>
+                <tr>
+                    <th>Schema Status</th>
+                    <td>
+                        <span style="color: #996800;">⚠ Missing columns: <?php echo implode(', ', $missing_columns); ?></span>
+                        <br><small>Click "Repair Tables" below to fix.</small>
+                    </td>
+                </tr>
+                <?php elseif ($stats_exists): ?>
+                <tr>
+                    <th>Schema Status</th>
+                    <td><span style="color: #00a32a;">✓ All columns present</span></td>
+                </tr>
+                <?php endif; ?>
+                <tr>
+                    <th>Queue Table</th>
+                    <td>
+                        <?php if ($queue_exists): ?>
+                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo number_format($queue_count); ?> total, <strong><?php echo number_format($queue_sent); ?> sent</strong>)
                         <?php else: ?>
                         <span style="color: #d63638;">✗ Does not exist</span>
                         <?php endif; ?>
                     </td>
                 </tr>
                 <tr>
-                    <th>Queue Table</th>
+                    <th>Stats vs Queue</th>
                     <td>
-                        <?php if ($queue_exists): ?>
-                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo $queue_count; ?> total, <?php echo $queue_sent; ?> sent)
+                        <?php 
+                        $stats_sent = $stats_exists ? intval($wpdb->get_var("SELECT COUNT(*) FROM {$stats_table} WHERE event_type = 'sent'")) : 0;
+                        if ($queue_sent > 0 && $stats_sent == 0): ?>
+                        <span style="color: #996800;">⚠ Queue shows <?php echo $queue_sent; ?> sent, but stats table has 0 'sent' records.</span>
+                        <br><small>This may be due to missing columns. Click "Repair Tables" then resend or the stats will track going forward.</small>
+                        <?php elseif ($queue_sent > 0): ?>
+                        <span style="color: #00a32a;">✓ <?php echo $stats_sent; ?> sent events recorded</span>
                         <?php else: ?>
-                        <span style="color: #d63638;">✗ Does not exist</span>
+                        <span style="color: #646970;">No emails sent yet</span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -540,11 +581,18 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
                     <th>Mailgun Webhook URL</th>
                     <td>
                         <code style="word-break: break-all; font-size: 11px;"><?php echo esc_html($webhook_url); ?></code>
-                        <br><small>Add this URL to Mailgun Dashboard → Sending → Webhooks</small>
+                        <br><small>Add this URL to Mailgun Dashboard → Sending → Webhooks (for opens/clicks tracking)</small>
                     </td>
                 </tr>
             </tbody>
         </table>
+        
+        <p style="margin-top: 15px;">
+            <button type="button" class="button" id="repair-newsletter-tables">
+                🔧 <?php _e('Repair Tables', 'azure-plugin'); ?>
+            </button>
+            <span id="repair-status" style="margin-left: 10px;"></span>
+        </p>
         
         <?php if (!empty($recent_stats)): ?>
         <h4 style="margin-top: 20px;">Recent Stats Records</h4>
@@ -574,13 +622,14 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
         <p style="margin-top: 15px; color: #646970;"><em>No statistics recorded yet. Send a newsletter to start tracking.</em></p>
         <?php endif; ?>
         
-        <p style="margin-top: 20px;">
-            <strong>How Statistics Work:</strong><br>
-            • <strong>Sent</strong>: Recorded locally when email is queued and sent<br>
-            • <strong>Delivered/Opened/Clicked/Bounced</strong>: Received via Mailgun webhooks<br>
+        <div style="margin-top: 20px; padding: 15px; background: #f0f6fc; border-left: 4px solid #2271b1; border-radius: 4px;">
+            <strong>📈 How Statistics Work:</strong><br><br>
+            • <strong>Sent Count</strong>: Based on the queue table (emails successfully sent to your email provider)<br>
+            • <strong>Opens/Clicks</strong>: Tracked via Mailgun webhooks (requires webhook configuration)<br>
+            • <strong>Bounces</strong>: Received via Mailgun webhooks when emails fail to deliver<br>
             <br>
-            <em>To enable full tracking, add the webhook URL above to your Mailgun dashboard.</em>
-        </p>
+            <strong>Note:</strong> The "Sent" column on the Campaigns page uses queue data. Opens/Clicks require Mailgun webhooks to be configured in your Mailgun dashboard pointing to the URL above.
+        </div>
     </div>
 </div>
 
@@ -953,6 +1002,33 @@ jQuery(document).ready(function($) {
         }).fail(function() {
             btn.prop('disabled', false).text('<?php _e('Reset All Data', 'azure-plugin'); ?>');
             alert('<?php _e('Request failed. Please try again.', 'azure-plugin'); ?>');
+        });
+    });
+    
+    // Repair Tables button
+    $('#repair-newsletter-tables').on('click', function() {
+        var btn = $(this);
+        var statusSpan = $('#repair-status');
+        
+        btn.prop('disabled', true);
+        statusSpan.html('<span class="spinner is-active" style="float:none;margin:0;vertical-align:middle;"></span> Repairing...');
+        
+        $.post(ajaxurl, {
+            action: 'azure_newsletter_create_tables',
+            nonce: '<?php echo wp_create_nonce('azure_newsletter_nonce'); ?>'
+        }).done(function(response) {
+            btn.prop('disabled', false);
+            if (response.success) {
+                statusSpan.html('<span style="color:#00a32a;">✓ Tables repaired successfully!</span>');
+                setTimeout(function() {
+                    location.reload();
+                }, 1500);
+            } else {
+                statusSpan.html('<span style="color:#d63638;">✗ ' + (response.data || 'Failed to repair') + '</span>');
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            statusSpan.html('<span style="color:#d63638;">✗ Request failed</span>');
         });
     });
 });

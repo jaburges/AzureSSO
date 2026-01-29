@@ -224,10 +224,13 @@ class Azure_Newsletter_Ajax {
         // Get stats if sent
         $stats = null;
         if ($newsletter->status === 'sent') {
+            // Get sent count from queue (more reliable than stats table)
             $sent_count = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'sent'",
+                "SELECT COUNT(*) FROM {$queue_table} WHERE newsletter_id = %d AND status = 'sent'",
                 $newsletter_id
             ));
+            
+            // Get engagement stats from stats table (populated by webhooks)
             $open_count = $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(DISTINCT email) FROM {$stats_table} WHERE newsletter_id = %d AND event_type = 'opened'",
                 $newsletter_id
@@ -1751,23 +1754,42 @@ class Azure_Newsletter_Ajax {
             ) {$charset_collate};";
             dbDelta($sql);
             
-            // Stats table
+            // Stats table (includes user_id for tracking)
             $table_stats = $wpdb->prefix . 'azure_newsletter_stats';
             $sql = "CREATE TABLE IF NOT EXISTS {$table_stats} (
                 id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 newsletter_id bigint(20) UNSIGNED NOT NULL,
+                user_id bigint(20) UNSIGNED DEFAULT NULL,
                 email varchar(255) NOT NULL,
-                event_type varchar(20) NOT NULL,
+                event_type varchar(50) NOT NULL,
                 event_data text,
+                link_url varchar(2048) DEFAULT NULL,
+                link_text varchar(255) DEFAULT NULL,
                 ip_address varchar(45) DEFAULT NULL,
                 user_agent text,
-                created_at datetime NOT NULL,
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 KEY newsletter_id (newsletter_id),
                 KEY event_type (event_type),
-                KEY email (email)
+                KEY email (email),
+                KEY newsletter_event (newsletter_id, event_type)
             ) {$charset_collate};";
             dbDelta($sql);
+            
+            // Add missing columns for existing installations (schema migration)
+            $columns_to_add = array(
+                'user_id' => "ALTER TABLE {$table_stats} ADD COLUMN user_id bigint(20) UNSIGNED DEFAULT NULL AFTER newsletter_id",
+                'link_url' => "ALTER TABLE {$table_stats} ADD COLUMN link_url varchar(2048) DEFAULT NULL AFTER event_data",
+                'link_text' => "ALTER TABLE {$table_stats} ADD COLUMN link_text varchar(255) DEFAULT NULL AFTER link_url"
+            );
+            
+            foreach ($columns_to_add as $column => $alter_sql) {
+                $column_exists = $wpdb->get_results("SHOW COLUMNS FROM {$table_stats} LIKE '{$column}'");
+                if (empty($column_exists)) {
+                    $wpdb->query($alter_sql);
+                    error_log("[Newsletter] Added missing column '{$column}' to stats table");
+                }
+            }
             
             // Lists table
             $table_lists = $wpdb->prefix . 'azure_newsletter_lists';
