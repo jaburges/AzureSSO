@@ -38,6 +38,7 @@ class Azure_Newsletter_Module {
         add_action('azure_newsletter_process_queue', array($this, 'process_queue'));
         add_action('azure_newsletter_check_bounces', array($this, 'check_bounces'));
         add_action('azure_newsletter_weekly_validation', array($this, 'weekly_email_validation'));
+        add_action('azure_newsletter_sync_mailgun_stats', array($this, 'sync_mailgun_stats'));
         
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
@@ -149,6 +150,11 @@ class Azure_Newsletter_Module {
         if (!wp_next_scheduled('azure_newsletter_weekly_validation')) {
             wp_schedule_event(time(), 'weekly', 'azure_newsletter_weekly_validation');
         }
+        
+        // Sync Mailgun stats hourly (for opens/clicks/bounces)
+        if (!wp_next_scheduled('azure_newsletter_sync_mailgun_stats')) {
+            wp_schedule_event(time(), 'hourly', 'azure_newsletter_sync_mailgun_stats');
+        }
     }
     
     /**
@@ -203,6 +209,108 @@ class Azure_Newsletter_Module {
         if (class_exists('Azure_Newsletter_Bounce')) {
             $bounce_handler = new Azure_Newsletter_Bounce();
             $bounce_handler->validate_email_list();
+        }
+    }
+    
+    /**
+     * Sync Mailgun stats (hourly cron)
+     * Pulls delivered/opened/clicked/bounced events from Mailgun API
+     */
+    public function sync_mailgun_stats() {
+        $settings = Azure_Settings::get_all_settings();
+        $api_key = $settings['newsletter_mailgun_api_key'] ?? '';
+        $domain = $settings['newsletter_mailgun_domain'] ?? '';
+        $region = $settings['newsletter_mailgun_region'] ?? 'us';
+        
+        if (empty($api_key) || empty($domain)) {
+            return; // Mailgun not configured
+        }
+        
+        global $wpdb;
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        
+        $api_base = $region === 'eu' 
+            ? 'https://api.eu.mailgun.net/v3/' 
+            : 'https://api.mailgun.net/v3/';
+        
+        // Fetch last 2 hours of events (for hourly cron with some overlap)
+        $begin = date('r', strtotime('-2 hours'));
+        $end = date('r');
+        
+        $url = $api_base . $domain . '/events?' . http_build_query(array(
+            'begin' => $begin,
+            'end' => $end,
+            'limit' => 300,
+            'event' => 'delivered OR opened OR clicked OR failed OR complained'
+        ));
+        
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'Authorization' => 'Basic ' . base64_encode('api:' . $api_key)
+            ),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            Azure_Logger::warning('Mailgun stats sync failed', array(
+                'error' => is_wp_error($response) ? $response->get_error_message() : wp_remote_retrieve_body($response)
+            ));
+            return;
+        }
+        
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $events = $data['items'] ?? array();
+        $count = 0;
+        
+        // Event type mapping
+        $event_map = array(
+            'delivered' => 'delivered',
+            'opened' => 'opened',
+            'clicked' => 'clicked',
+            'failed' => 'bounced',
+            'complained' => 'complained'
+        );
+        
+        foreach ($events as $event) {
+            $event_type = $event['event'] ?? '';
+            $mapped_type = $event_map[$event_type] ?? null;
+            
+            if (!$mapped_type) continue;
+            
+            $email = $event['recipient'] ?? '';
+            $newsletter_id = $event['user-variables']['newsletter_id'] ?? null;
+            $timestamp = $event['timestamp'] ?? time();
+            $created_at = date('Y-m-d H:i:s', $timestamp);
+            
+            // Check for duplicates
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$stats_table} 
+                 WHERE email = %s AND event_type = %s AND created_at = %s
+                 LIMIT 1",
+                $email, $mapped_type, $created_at
+            ));
+            
+            if (!$existing && $email) {
+                $insert_data = array(
+                    'newsletter_id' => $newsletter_id,
+                    'email' => $email,
+                    'event_type' => $mapped_type,
+                    'created_at' => $created_at,
+                    'event_data' => json_encode($event)
+                );
+                
+                if ($mapped_type === 'clicked' && isset($event['url'])) {
+                    $insert_data['link_url'] = $event['url'];
+                }
+                
+                if ($wpdb->insert($stats_table, $insert_data)) {
+                    $count++;
+                }
+            }
+        }
+        
+        if ($count > 0) {
+            Azure_Logger::info("Mailgun stats sync: imported {$count} events");
         }
     }
     
