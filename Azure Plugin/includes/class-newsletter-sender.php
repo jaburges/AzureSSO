@@ -522,11 +522,21 @@ class Azure_Newsletter_Sender {
         
         // Add view in browser link variable replacement
         $view_url = rest_url('azure-plugin/v1/newsletter/view/' . $this->get_newsletter_archive_token($newsletter_id));
-        $html = str_replace('{{view_in_browser_url}}', $view_url, $html);
+        // Replace both regular and URL-encoded versions of the placeholder
+        $html = str_replace(
+            array('{{view_in_browser_url}}', '%7B%7Bview_in_browser_url%7D%7D', urlencode('{{view_in_browser_url}}')),
+            $view_url,
+            $html
+        );
         
         // Add unsubscribe link variable replacement
         $unsubscribe_url = rest_url('azure-plugin/v1/newsletter/unsubscribe/' . $token);
-        $html = str_replace('{{unsubscribe_url}}', $unsubscribe_url, $html);
+        // Replace both regular and URL-encoded versions of the placeholder
+        $html = str_replace(
+            array('{{unsubscribe_url}}', '%7B%7Bunsubscribe_url%7D%7D', urlencode('{{unsubscribe_url}}')),
+            $unsubscribe_url,
+            $html
+        );
         
         return $html;
     }

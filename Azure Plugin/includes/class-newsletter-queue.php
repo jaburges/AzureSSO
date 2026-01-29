@@ -617,13 +617,22 @@ class Azure_Newsletter_Queue {
      * Personalize email content with merge tags
      */
     private function personalize_content($html, $data) {
-        $replacements = array(
-            '{{first_name}}' => $data['first_name'] ?? '',
-            '{{email}}' => $data['email'] ?? '',
-            '{{user_id}}' => $data['user_id'] ?? ''
-        );
+        // Replace both regular and URL-encoded versions of placeholders
+        $first_name = $data['first_name'] ?? '';
+        $email = $data['email'] ?? '';
+        $user_id = $data['user_id'] ?? '';
         
-        return str_replace(array_keys($replacements), array_values($replacements), $html);
+        // Regular placeholders
+        $html = str_replace('{{first_name}}', $first_name, $html);
+        $html = str_replace('{{email}}', $email, $html);
+        $html = str_replace('{{user_id}}', $user_id, $html);
+        
+        // URL-encoded placeholders (in case they appear in href attributes)
+        $html = str_replace('%7B%7Bfirst_name%7D%7D', $first_name, $html);
+        $html = str_replace('%7B%7Bemail%7D%7D', $email, $html);
+        $html = str_replace('%7B%7Buser_id%7D%7D', $user_id, $html);
+        
+        return $html;
     }
     
     /**
