@@ -655,6 +655,15 @@ class Azure_Newsletter_Queue {
         global $wpdb;
         
         error_log('[Newsletter Queue] record_stat called: type=' . $event_type . ', newsletter=' . $newsletter_id . ', email=' . $email);
+        error_log('[Newsletter Queue] Stats table: ' . $this->stats_table);
+        
+        // Check if table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->stats_table}'");
+        if (!$table_exists) {
+            error_log('[Newsletter Queue] ERROR: Stats table does not exist! Creating it now...');
+            // Try to create the table
+            $this->create_stats_table();
+        }
         
         $result = $wpdb->insert($this->stats_table, array(
             'newsletter_id' => $newsletter_id,
@@ -672,6 +681,39 @@ class Azure_Newsletter_Queue {
         } else {
             error_log('[Newsletter Queue] Stat recorded successfully, insert ID: ' . $wpdb->insert_id);
         }
+    }
+    
+    /**
+     * Create stats table if it doesn't exist
+     */
+    private function create_stats_table() {
+        global $wpdb;
+        
+        $charset_collate = $wpdb->get_charset_collate();
+        
+        $sql = "CREATE TABLE IF NOT EXISTS {$this->stats_table} (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            newsletter_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NULL,
+            email varchar(255) NOT NULL,
+            event_type varchar(50) NOT NULL,
+            event_data text NULL,
+            link_url varchar(2048) NULL,
+            link_text varchar(255) NULL,
+            link_position int NULL,
+            ip_address varchar(45) NULL,
+            user_agent varchar(512) NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_newsletter_event (newsletter_id, event_type),
+            KEY idx_email (email),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+        
+        error_log('[Newsletter Queue] Stats table creation attempted');
     }
     
     /**

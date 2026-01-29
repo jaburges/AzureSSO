@@ -969,8 +969,9 @@ jQuery(document).ready(function($) {
     });
 });
 
-// Toggle newsletter group expand/collapse
+// Toggle newsletter group expand/collapse (using jQuery instead of $ for global scope)
 function toggleNewsletterGroup(newsletterId) {
+    var $ = jQuery;
     var $row = $('tr[data-newsletter-id="' + newsletterId + '"]');
     var $details = $('#details-' + newsletterId);
     var $icon = $row.find('.toggle-expand .dashicons');
