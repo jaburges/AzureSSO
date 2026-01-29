@@ -488,6 +488,100 @@ $from_addresses = $settings['newsletter_from_addresses'] ?? array();
             </div>
         </div>
     </div>
+    
+    <!-- Diagnostics -->
+    <div class="settings-section diagnostics-section">
+        <h3><?php _e('📊 Statistics Diagnostics', 'azure-plugin'); ?></h3>
+        
+        <?php
+        global $wpdb;
+        $stats_table = $wpdb->prefix . 'azure_newsletter_stats';
+        $queue_table = $wpdb->prefix . 'azure_newsletter_queue';
+        
+        // Check if stats table exists
+        $stats_exists = $wpdb->get_var("SHOW TABLES LIKE '{$stats_table}'") === $stats_table;
+        $queue_exists = $wpdb->get_var("SHOW TABLES LIKE '{$queue_table}'") === $queue_table;
+        
+        // Get counts
+        $stats_count = $stats_exists ? $wpdb->get_var("SELECT COUNT(*) FROM {$stats_table}") : 0;
+        $queue_count = $queue_exists ? $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table}") : 0;
+        $queue_sent = $queue_exists ? $wpdb->get_var("SELECT COUNT(*) FROM {$queue_table} WHERE status = 'sent'") : 0;
+        
+        // Get recent stats
+        $recent_stats = $stats_exists ? $wpdb->get_results("SELECT * FROM {$stats_table} ORDER BY id DESC LIMIT 5") : array();
+        
+        // Mailgun webhook URL
+        $webhook_url = rest_url('azure-plugin/v1/newsletter/webhook/mailgun');
+        ?>
+        
+        <table class="widefat" style="max-width: 600px;">
+            <tbody>
+                <tr>
+                    <th style="width: 200px;">Stats Table</th>
+                    <td>
+                        <?php if ($stats_exists): ?>
+                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo $stats_count; ?> records)
+                        <?php else: ?>
+                        <span style="color: #d63638;">✗ Does not exist</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Queue Table</th>
+                    <td>
+                        <?php if ($queue_exists): ?>
+                        <span style="color: #00a32a;">✓ Exists</span> (<?php echo $queue_count; ?> total, <?php echo $queue_sent; ?> sent)
+                        <?php else: ?>
+                        <span style="color: #d63638;">✗ Does not exist</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Mailgun Webhook URL</th>
+                    <td>
+                        <code style="word-break: break-all; font-size: 11px;"><?php echo esc_html($webhook_url); ?></code>
+                        <br><small>Add this URL to Mailgun Dashboard → Sending → Webhooks</small>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <?php if (!empty($recent_stats)): ?>
+        <h4 style="margin-top: 20px;">Recent Stats Records</h4>
+        <table class="widefat striped" style="max-width: 800px;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Newsletter</th>
+                    <th>Email</th>
+                    <th>Event</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($recent_stats as $stat): ?>
+                <tr>
+                    <td><?php echo $stat->id; ?></td>
+                    <td>#<?php echo $stat->newsletter_id; ?></td>
+                    <td><?php echo esc_html($stat->email); ?></td>
+                    <td><span class="status-badge status-<?php echo esc_attr($stat->event_type); ?>"><?php echo esc_html($stat->event_type); ?></span></td>
+                    <td><?php echo esc_html($stat->created_at); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php elseif ($stats_exists): ?>
+        <p style="margin-top: 15px; color: #646970;"><em>No statistics recorded yet. Send a newsletter to start tracking.</em></p>
+        <?php endif; ?>
+        
+        <p style="margin-top: 20px;">
+            <strong>How Statistics Work:</strong><br>
+            • <strong>Sent</strong>: Recorded locally when email is queued and sent<br>
+            • <strong>Delivered/Opened/Clicked/Bounced</strong>: Received via Mailgun webhooks<br>
+            <br>
+            <em>To enable full tracking, add the webhook URL above to your Mailgun dashboard.</em>
+        </p>
+    </div>
 </div>
 
 <style>
