@@ -2177,6 +2177,33 @@ class Azure_Admin {
                 array($this, 'render_backup_widget')
             );
         }
+        
+        // Calendar Sync widget (if enabled)
+        if (Azure_Settings::is_module_enabled('calendar')) {
+            wp_add_dashboard_widget(
+                'azure_calendar_sync_stats',
+                __('Calendar Sync', 'azure-plugin'),
+                array($this, 'render_calendar_sync_widget')
+            );
+        }
+        
+        // TEC Events widget (if The Events Calendar is active)
+        if (class_exists('Tribe__Events__Main')) {
+            wp_add_dashboard_widget(
+                'azure_tec_events_stats',
+                __('Upcoming Events', 'azure-plugin'),
+                array($this, 'render_tec_events_widget')
+            );
+        }
+        
+        // OneDrive Media widget (if enabled)
+        if (Azure_Settings::is_module_enabled('onedrive_media')) {
+            wp_add_dashboard_widget(
+                'azure_onedrive_media_stats',
+                __('OneDrive Media', 'azure-plugin'),
+                array($this, 'render_onedrive_media_widget')
+            );
+        }
     }
     
     /**
@@ -2315,25 +2342,34 @@ class Azure_Admin {
             'departments' => 0,
             'total_roles' => 0,
             'filled_roles' => 0,
-            'active_assignments' => 0
+            'open_positions' => 0
         );
         
-        // Get PTA statistics
-        $departments_table = Azure_Database::get_table_name('pta_departments');
-        $roles_table = Azure_Database::get_table_name('pta_roles');
-        $assignments_table = Azure_Database::get_table_name('pta_assignments');
+        // Use direct table names (PTA tables use 'pta_' prefix not 'azure_')
+        $departments_table = $wpdb->prefix . 'pta_departments';
+        $roles_table = $wpdb->prefix . 'pta_roles';
+        $assignments_table = $wpdb->prefix . 'pta_role_assignments';
         
-        if ($departments_table && $wpdb->get_var("SHOW TABLES LIKE '{$departments_table}'") === $departments_table) {
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$departments_table}'") === $departments_table) {
             $stats['departments'] = $wpdb->get_var("SELECT COUNT(*) FROM {$departments_table}") ?: 0;
         }
         
-        if ($roles_table && $wpdb->get_var("SHOW TABLES LIKE '{$roles_table}'") === $roles_table) {
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$roles_table}'") === $roles_table) {
             $stats['total_roles'] = $wpdb->get_var("SELECT COUNT(*) FROM {$roles_table}") ?: 0;
-            $stats['filled_roles'] = $wpdb->get_var("SELECT COUNT(*) FROM {$roles_table} WHERE status = 'filled'") ?: 0;
-        }
-        
-        if ($assignments_table && $wpdb->get_var("SHOW TABLES LIKE '{$assignments_table}'") === $assignments_table) {
-            $stats['active_assignments'] = $wpdb->get_var("SELECT COUNT(*) FROM {$assignments_table} WHERE status = 'active'") ?: 0;
+            
+            // Get filled count and calculate open positions
+            $active_assignments = $wpdb->get_var("SELECT COUNT(*) FROM {$assignments_table} WHERE status = 'active'") ?: 0;
+            
+            // Calculate total capacity and open positions
+            $total_capacity = $wpdb->get_var("SELECT COALESCE(SUM(max_assignees), 0) FROM {$roles_table}") ?: 0;
+            $stats['open_positions'] = max(0, $total_capacity - $active_assignments);
+            
+            // Count roles that have at least one filled position
+            $stats['filled_roles'] = $wpdb->get_var(
+                "SELECT COUNT(DISTINCT r.id) FROM {$roles_table} r 
+                 INNER JOIN {$assignments_table} a ON r.id = a.role_id 
+                 WHERE a.status = 'active'"
+            ) ?: 0;
         }
         ?>
         <style>
@@ -2342,6 +2378,7 @@ class Azure_Admin {
             .azure-pta-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
             .azure-pta-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
             .azure-pta-widget .stat-card.success { border-left-color: #00a32a; }
+            .azure-pta-widget .stat-card.warning { border-left-color: #dba617; }
         </style>
         <div class="azure-pta-widget">
             <div class="dashboard-widget-stats">
@@ -2357,9 +2394,9 @@ class Azure_Admin {
                     <div class="stat-number"><?php echo number_format($stats['filled_roles']); ?></div>
                     <div class="stat-label"><?php _e('Filled Roles', 'azure-plugin'); ?></div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-number"><?php echo number_format($stats['active_assignments']); ?></div>
-                    <div class="stat-label"><?php _e('Assignments', 'azure-plugin'); ?></div>
+                <div class="stat-card <?php echo $stats['open_positions'] > 0 ? 'warning' : 'success'; ?>">
+                    <div class="stat-number"><?php echo number_format($stats['open_positions']); ?></div>
+                    <div class="stat-label"><?php _e('Open Positions', 'azure-plugin'); ?></div>
                 </div>
             </div>
             
@@ -2440,6 +2477,223 @@ class Azure_Admin {
                     <?php _e('Settings', 'azure-plugin'); ?>
                 </a>
             </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render Calendar Sync Widget
+     */
+    public function render_calendar_sync_widget() {
+        global $wpdb;
+        
+        $stats = array(
+            'mappings_count' => 0,
+            'events_synced' => 0,
+            'last_sync' => null,
+            'sync_errors' => 0
+        );
+        
+        // Get calendar mappings
+        $mappings_table = Azure_Database::get_table_name('tec_calendar_mappings');
+        if ($mappings_table && $wpdb->get_var("SHOW TABLES LIKE '{$mappings_table}'") === $mappings_table) {
+            $stats['mappings_count'] = $wpdb->get_var("SELECT COUNT(*) FROM {$mappings_table} WHERE sync_enabled = 1") ?: 0;
+            
+            // Get last sync time
+            $last_sync = $wpdb->get_var("SELECT MAX(last_sync) FROM {$mappings_table} WHERE sync_enabled = 1");
+            $stats['last_sync'] = $last_sync;
+        }
+        
+        // Count events with Outlook sync
+        if (class_exists('Tribe__Events__Main')) {
+            $stats['events_synced'] = $wpdb->get_var(
+                "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+                 WHERE p.post_type = 'tribe_events' 
+                 AND p.post_status = 'publish'
+                 AND pm.meta_key = '_outlook_event_id'
+                 AND pm.meta_value IS NOT NULL 
+                 AND pm.meta_value != ''"
+            ) ?: 0;
+        }
+        ?>
+        <style>
+            .azure-calendar-sync-widget .dashboard-widget-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+            .azure-calendar-sync-widget .stat-card { background: #f9f9f9; padding: 12px; text-align: center; border-radius: 4px; border-left: 3px solid #0078d4; }
+            .azure-calendar-sync-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
+            .azure-calendar-sync-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
+            .azure-calendar-sync-widget .stat-card.success { border-left-color: #00a32a; }
+            .azure-calendar-sync-widget .last-sync { font-size: 12px; color: #666; margin-bottom: 10px; }
+        </style>
+        <div class="azure-calendar-sync-widget">
+            <div class="dashboard-widget-stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['mappings_count']); ?></div>
+                    <div class="stat-label"><?php _e('Active Mappings', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-number"><?php echo number_format($stats['events_synced']); ?></div>
+                    <div class="stat-label"><?php _e('Events Synced', 'azure-plugin'); ?></div>
+                </div>
+            </div>
+            
+            <?php if ($stats['last_sync']): ?>
+            <p class="last-sync">
+                <?php _e('Last Sync:', 'azure-plugin'); ?> 
+                <?php echo date('M j, Y g:i A', strtotime($stats['last_sync'])); ?>
+            </p>
+            <?php endif; ?>
+            
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-tec-integration'); ?>" class="button">
+                <?php _e('Manage Calendar Sync', 'azure-plugin'); ?>
+            </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render TEC Events Widget
+     */
+    public function render_tec_events_widget() {
+        $stats = array(
+            'this_week' => 0,
+            'next_week' => 0,
+            'total_upcoming' => 0
+        );
+        
+        if (class_exists('Tribe__Events__Main')) {
+            // Events this week
+            $this_week_start = date('Y-m-d');
+            $this_week_end = date('Y-m-d', strtotime('next Sunday'));
+            
+            $this_week_events = tribe_get_events(array(
+                'start_date' => $this_week_start,
+                'end_date' => $this_week_end,
+                'posts_per_page' => -1,
+                'fields' => 'ids'
+            ));
+            $stats['this_week'] = count($this_week_events);
+            
+            // Events next week
+            $next_week_start = date('Y-m-d', strtotime('next Monday'));
+            $next_week_end = date('Y-m-d', strtotime('next Monday +6 days'));
+            
+            $next_week_events = tribe_get_events(array(
+                'start_date' => $next_week_start,
+                'end_date' => $next_week_end,
+                'posts_per_page' => -1,
+                'fields' => 'ids'
+            ));
+            $stats['next_week'] = count($next_week_events);
+            
+            // Total upcoming (next 30 days)
+            $upcoming_events = tribe_get_events(array(
+                'start_date' => 'now',
+                'end_date' => date('Y-m-d', strtotime('+30 days')),
+                'posts_per_page' => -1,
+                'fields' => 'ids'
+            ));
+            $stats['total_upcoming'] = count($upcoming_events);
+        }
+        ?>
+        <style>
+            .azure-tec-events-widget .dashboard-widget-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+            .azure-tec-events-widget .stat-card { background: #f9f9f9; padding: 12px; text-align: center; border-radius: 4px; border-left: 3px solid #0078d4; }
+            .azure-tec-events-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
+            .azure-tec-events-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
+            .azure-tec-events-widget .stat-card.primary { border-left-color: #0078d4; }
+            .azure-tec-events-widget .stat-card.info { border-left-color: #72aee6; }
+        </style>
+        <div class="azure-tec-events-widget">
+            <div class="dashboard-widget-stats">
+                <div class="stat-card primary">
+                    <div class="stat-number"><?php echo number_format($stats['this_week']); ?></div>
+                    <div class="stat-label"><?php _e('This Week', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card info">
+                    <div class="stat-number"><?php echo number_format($stats['next_week']); ?></div>
+                    <div class="stat-label"><?php _e('Next Week', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_upcoming']); ?></div>
+                    <div class="stat-label"><?php _e('Next 30 Days', 'azure-plugin'); ?></div>
+                </div>
+            </div>
+            
+            <a href="<?php echo admin_url('edit.php?post_type=tribe_events'); ?>" class="button">
+                <?php _e('View Events', 'azure-plugin'); ?>
+            </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render OneDrive Media Widget
+     */
+    public function render_onedrive_media_widget() {
+        global $wpdb;
+        
+        $stats = array(
+            'total_files' => 0,
+            'synced_today' => 0,
+            'last_sync' => null,
+            'total_size' => 0
+        );
+        
+        $files_table = Azure_Database::get_table_name('onedrive_files');
+        if ($files_table && $wpdb->get_var("SHOW TABLES LIKE '{$files_table}'") === $files_table) {
+            $stats['total_files'] = $wpdb->get_var("SELECT COUNT(*) FROM {$files_table}") ?: 0;
+            
+            // Get files synced today
+            $today = date('Y-m-d 00:00:00');
+            $stats['synced_today'] = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$files_table} WHERE created_at >= %s",
+                $today
+            )) ?: 0;
+            
+            // Get last sync (most recent file)
+            $stats['last_sync'] = $wpdb->get_var("SELECT MAX(created_at) FROM {$files_table}");
+            
+            // Get total size
+            $total_bytes = $wpdb->get_var("SELECT SUM(file_size) FROM {$files_table}") ?: 0;
+            $stats['total_size'] = size_format($total_bytes);
+        }
+        ?>
+        <style>
+            .azure-onedrive-media-widget .dashboard-widget-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+            .azure-onedrive-media-widget .stat-card { background: #f9f9f9; padding: 12px; text-align: center; border-radius: 4px; border-left: 3px solid #0078d4; }
+            .azure-onedrive-media-widget .stat-card .stat-number { font-size: 22px; font-weight: 700; color: #1d2327; }
+            .azure-onedrive-media-widget .stat-card .stat-label { font-size: 11px; color: #646970; text-transform: uppercase; }
+            .azure-onedrive-media-widget .stat-card.success { border-left-color: #00a32a; }
+            .azure-onedrive-media-widget .last-sync { font-size: 12px; color: #666; margin-bottom: 10px; }
+        </style>
+        <div class="azure-onedrive-media-widget">
+            <div class="dashboard-widget-stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_files']); ?></div>
+                    <div class="stat-label"><?php _e('Total Files', 'azure-plugin'); ?></div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-number"><?php echo number_format($stats['synced_today']); ?></div>
+                    <div class="stat-label"><?php _e('Synced Today', 'azure-plugin'); ?></div>
+                </div>
+            </div>
+            
+            <?php if ($stats['last_sync']): ?>
+            <p class="last-sync">
+                <?php _e('Last Sync:', 'azure-plugin'); ?> 
+                <?php echo date('M j, Y g:i A', strtotime($stats['last_sync'])); ?>
+                <?php if ($stats['total_size']): ?>
+                <br><?php _e('Total Size:', 'azure-plugin'); ?> <?php echo $stats['total_size']; ?>
+                <?php endif; ?>
+            </p>
+            <?php else: ?>
+            <p class="last-sync"><?php _e('No files synced yet', 'azure-plugin'); ?></p>
+            <?php endif; ?>
+            
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-onedrive-media'); ?>" class="button">
+                <?php _e('Manage OneDrive Media', 'azure-plugin'); ?>
+            </a>
         </div>
         <?php
     }
