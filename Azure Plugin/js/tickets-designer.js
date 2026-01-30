@@ -84,90 +84,94 @@
                 }, true);
             });
             
-            // Drag from palette (secondary method)
-            $('.block-item').on('dragstart', function(e) {
-                console.log('[VenueDesigner] Drag started:', $(this).data('type'));
-                e.originalEvent.dataTransfer.setData('text/plain', $(this).data('type'));
-                e.originalEvent.dataTransfer.effectAllowed = 'copy';
-                $(this).addClass('dragging');
-            });
+            // Store the block type being dragged
+            var draggedBlockType = null;
             
-            $('.block-item').on('dragend', function() {
-                console.log('[VenueDesigner] Drag ended');
-                $(this).removeClass('dragging');
-                self.canvas.removeClass('drag-over');
-            });
-            
-            // Drop on canvas - bind to both canvas and container for reliability
-            var $canvasContainer = $('.designer-canvas-container');
-            var $dropTargets = this.canvas.add($canvasContainer);
-            
-            $dropTargets.on('dragenter', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                self.canvas.addClass('drag-over');
-            });
-            
-            $dropTargets.on('dragover', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.originalEvent.dataTransfer) {
-                    e.originalEvent.dataTransfer.dropEffect = 'copy';
-                }
-                return false; // Important for allowing drop
-            });
-            
-            $dropTargets.on('dragleave', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                // Only remove class if we're leaving to outside the container
-                var relatedTarget = e.relatedTarget || e.originalEvent.relatedTarget;
-                if (!$canvasContainer[0].contains(relatedTarget)) {
+            // Drag from palette - use native events for reliability
+            document.querySelectorAll('.block-item').forEach(function(item) {
+                item.addEventListener('dragstart', function(e) {
+                    draggedBlockType = this.getAttribute('data-type');
+                    console.log('[VenueDesigner] Drag started:', draggedBlockType);
+                    e.dataTransfer.setData('text/plain', draggedBlockType);
+                    e.dataTransfer.effectAllowed = 'copyMove';
+                    this.classList.add('dragging');
+                });
+                
+                item.addEventListener('dragend', function(e) {
+                    console.log('[VenueDesigner] Drag ended');
+                    this.classList.remove('dragging');
                     self.canvas.removeClass('drag-over');
-                }
+                    draggedBlockType = null;
+                });
             });
             
-            $dropTargets.on('drop', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                self.canvas.removeClass('drag-over');
+            // Drop on canvas - use native events
+            var canvasEl = document.getElementById('venue-canvas');
+            var containerEl = document.querySelector('.designer-canvas-container');
+            
+            if (canvasEl && containerEl) {
+                // Dragover on container - MUST prevent default to allow drop
+                containerEl.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    self.canvas.addClass('drag-over');
+                }, false);
                 
-                var blockType = '';
-                if (e.originalEvent.dataTransfer) {
-                    blockType = e.originalEvent.dataTransfer.getData('text/plain') || 
-                                e.originalEvent.dataTransfer.getData('text');
-                }
-                console.log('[VenueDesigner] Drop received, blockType:', blockType);
+                containerEl.addEventListener('dragenter', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    self.canvas.addClass('drag-over');
+                }, false);
                 
-                if (!blockType) {
-                    console.log('[VenueDesigner] No block type in drop data');
-                    return false;
-                }
+                containerEl.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    // Only remove if leaving container entirely
+                    if (!containerEl.contains(e.relatedTarget)) {
+                        self.canvas.removeClass('drag-over');
+                    }
+                }, false);
                 
-                var canvasOffset = self.canvas.offset();
-                var x = (e.pageX - canvasOffset.left) / self.zoom;
-                var y = (e.pageY - canvasOffset.top) / self.zoom;
+                containerEl.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    self.canvas.removeClass('drag-over');
+                    
+                    var blockType = e.dataTransfer.getData('text/plain') || draggedBlockType;
+                    console.log('[VenueDesigner] Drop received, blockType:', blockType);
+                    
+                    if (!blockType) {
+                        console.log('[VenueDesigner] No block type in drop data');
+                        return;
+                    }
+                    
+                    var canvasRect = canvasEl.getBoundingClientRect();
+                    var x = (e.clientX - canvasRect.left) / self.zoom;
+                    var y = (e.clientY - canvasRect.top) / self.zoom;
+                    
+                    // Snap to grid (20px)
+                    x = Math.round(x / 20) * 20;
+                    y = Math.round(y / 20) * 20;
+                    
+                    // Ensure block is within canvas bounds
+                    var canvasWidth = parseInt($('#canvas-width').val()) || 800;
+                    var canvasHeight = parseInt($('#canvas-height').val()) || 600;
+                    x = Math.max(0, Math.min(x - 75, canvasWidth - 150));
+                    y = Math.max(0, Math.min(y - 30, canvasHeight - 60));
+                    
+                    console.log('[VenueDesigner] Adding block at:', x, y);
+                    
+                    self.addBlock({
+                        type: blockType,
+                        x: x,
+                        y: y
+                    }, true);
+                }, false);
                 
-                // Snap to grid (20px)
-                x = Math.round(x / 20) * 20;
-                y = Math.round(y / 20) * 20;
-                
-                // Ensure block is within canvas bounds
-                var canvasWidth = parseInt($('#canvas-width').val()) || 800;
-                var canvasHeight = parseInt($('#canvas-height').val()) || 600;
-                x = Math.max(0, Math.min(x - 75, canvasWidth - 150));
-                y = Math.max(0, Math.min(y - 30, canvasHeight - 60));
-                
-                console.log('[VenueDesigner] Adding block at:', x, y);
-                
-                self.addBlock({
-                    type: blockType,
-                    x: x,
-                    y: y
-                }, true);
-                
-                return false;
-            });
+                console.log('[VenueDesigner] Native drop events bound to container');
+            } else {
+                console.error('[VenueDesigner] Canvas or container not found!');
+            }
             
             // Select block
             this.canvas.on('click', '.venue-block', function(e) {

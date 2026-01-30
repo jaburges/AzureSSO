@@ -595,23 +595,6 @@ if ($tec_active) {
     background: #f0f6fc;
 }
 
-/* Ensure canvas receives drag events */
-.designer-canvas,
-.designer-canvas-container {
-    -webkit-user-drag: none;
-}
-
-.designer-canvas * {
-    pointer-events: none;
-}
-
-.designer-canvas .venue-block {
-    pointer-events: auto;
-}
-
-.designer-canvas .venue-block .resize-handle {
-    pointer-events: auto;
-}
 
 /* Block settings */
 .settings-group {
