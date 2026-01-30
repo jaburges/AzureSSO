@@ -343,8 +343,9 @@ class Azure_Newsletter_Module {
             return;
         }
         
-        // Get total subscribers
-        $total_subscribers = $wpdb->get_var("SELECT COUNT(DISTINCT email) FROM {$lists_table} WHERE unsubscribed_at IS NULL");
+        // Get total subscribers (WordPress users with 'subscriber' role)
+        $subscriber_count = count_users();
+        $total_subscribers = isset($subscriber_count['avail_roles']['subscriber']) ? $subscriber_count['avail_roles']['subscriber'] : 0;
         
         // Get emails sent this month
         $first_of_month = date('Y-m-01 00:00:00');
