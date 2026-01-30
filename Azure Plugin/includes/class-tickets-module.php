@@ -150,9 +150,9 @@ class Azure_Tickets_Module {
         );
         
         // Tickets designer JS (for venue designer page)
+        // Always load on tickets page when venues tab is active
         $tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : '';
-        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : '';
-        if ($tab === 'venues' && ($action === 'new' || $action === 'edit')) {
+        if ($tab === 'venues') {
             wp_enqueue_script(
                 'azure-tickets-designer',
                 AZURE_PLUGIN_URL . 'js/tickets-designer.js',

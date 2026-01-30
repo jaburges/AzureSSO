@@ -65,8 +65,26 @@
             var self = this;
             
             console.log('[VenueDesigner] Binding events, canvas found:', this.canvas.length > 0);
+            console.log('[VenueDesigner] Block items found:', $('.block-item').length);
             
-            // Drag from palette
+            // Click to add block (primary method - always works)
+            $('.block-item').on('click', function(e) {
+                e.preventDefault();
+                var blockType = $(this).data('type');
+                console.log('[VenueDesigner] Click to add:', blockType);
+                
+                // Add block at center of canvas
+                var canvasWidth = parseInt($('#canvas-width').val()) || 800;
+                var canvasHeight = parseInt($('#canvas-height').val()) || 600;
+                
+                self.addBlock({
+                    type: blockType,
+                    x: Math.round((canvasWidth / 2 - 100) / 20) * 20,
+                    y: Math.round((canvasHeight / 2 - 40) / 20) * 20
+                }, true);
+            });
+            
+            // Drag from palette (secondary method)
             $('.block-item').on('dragstart', function(e) {
                 console.log('[VenueDesigner] Drag started:', $(this).data('type'));
                 e.originalEvent.dataTransfer.setData('text/plain', $(this).data('type'));
