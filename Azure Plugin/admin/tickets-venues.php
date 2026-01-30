@@ -394,7 +394,305 @@ if ($tec_active) {
 <?php endif; ?>
 
 <style>
-/* Additional styles for venue list (supplements tickets-designer.css) */
+/* Critical layout styles (ensure they load) */
+.venue-designer-wrap {
+    background: #f0f0f1;
+}
+
+.venue-designer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: #1d2327;
+    color: #fff;
+}
+
+.venue-designer-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: #fff;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.venue-info-bar {
+    display: flex;
+    gap: 20px;
+    padding: 15px 20px;
+    background: #fff;
+    border-bottom: 1px solid #dcdcde;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.venue-name-input {
+    flex: 2;
+    min-width: 200px;
+}
+
+.venue-address-input,
+.venue-city-input {
+    flex: 1;
+    min-width: 150px;
+}
+
+.venue-info-bar label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #666;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.venue-info-bar input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.venue-capacity {
+    text-align: right;
+    min-width: 100px;
+}
+
+.venue-capacity span#total-capacity {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2271b1;
+}
+
+/* Main designer grid - CRITICAL */
+.venue-designer {
+    display: grid !important;
+    grid-template-columns: 220px 1fr 280px !important;
+    min-height: 550px;
+    background: #f0f0f1;
+}
+
+.designer-sidebar {
+    background: #fff;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.designer-sidebar h3 {
+    margin: 0 0 15px;
+    font-size: 13px;
+    text-transform: uppercase;
+    color: #646970;
+}
+
+.designer-blocks {
+    border-right: 1px solid #dcdcde;
+}
+
+.designer-settings {
+    border-left: 1px solid #dcdcde;
+}
+
+.block-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.block-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    cursor: grab;
+    transition: all 0.2s;
+}
+
+.block-item:hover {
+    border-color: #2271b1;
+    background: #f0f6fc;
+}
+
+.block-item .dashicons {
+    color: #2271b1;
+}
+
+.canvas-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.canvas-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.canvas-controls input {
+    padding: 6px 8px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.zoom-controls .button {
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-controls .button .dashicons {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+}
+
+#zoom-level {
+    min-width: 50px;
+    text-align: center;
+}
+
+/* Canvas container - CRITICAL */
+.designer-canvas-container {
+    background: #e5e5e5;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    position: relative;
+}
+
+.designer-canvas {
+    background: #fff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    position: relative;
+    min-width: 800px;
+    min-height: 600px;
+}
+
+.designer-canvas.drag-over {
+    outline: 3px dashed #2271b1;
+    outline-offset: -3px;
+    background: #f0f6fc;
+}
+
+/* Block settings */
+.settings-group {
+    margin-bottom: 15px;
+}
+
+.settings-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.settings-group input,
+.settings-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.settings-group input[type="color"] {
+    height: 36px;
+    padding: 2px;
+}
+
+.no-selection {
+    color: #646970;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+
+/* Venue blocks on canvas */
+.venue-block {
+    position: absolute;
+    border-radius: 4px;
+    cursor: move;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    text-align: center;
+    border: 2px solid transparent;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.venue-block.selected {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.3);
+}
+
+.venue-block .block-label {
+    padding: 5px;
+}
+
+.venue-block .block-seats {
+    font-size: 10px;
+    opacity: 0.9;
+}
+
+.venue-block.type-label {
+    background: transparent !important;
+    border: 1px dashed #ccc;
+    color: #333;
+    text-shadow: none;
+}
+
+.venue-block.type-aisle {
+    background: repeating-linear-gradient(45deg, #f5f5f5, #f5f5f5 5px, #e0e0e0 5px, #e0e0e0 10px);
+}
+
+.resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 2px solid #2271b1;
+    border-radius: 2px;
+    opacity: 0;
+}
+
+.venue-block:hover .resize-handle,
+.venue-block.selected .resize-handle {
+    opacity: 1;
+}
+
+.resize-handle.se {
+    bottom: -6px;
+    right: -6px;
+    cursor: se-resize;
+}
+
+.required {
+    color: #d63638;
+}
+
+/* Venues list styles */
 .venues-list-wrap {
     margin-top: 20px;
 }
@@ -451,24 +749,10 @@ if ($tec_active) {
     height: 32px;
 }
 
-.venue-location {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: #646970;
-    font-size: 13px;
-    margin: 0 0 8px;
-}
-
 .venue-location .dashicons {
     font-size: 14px;
     width: 14px;
     height: 14px;
-}
-
-.venue-address-input,
-.venue-city-input {
-    flex: 1;
 }
 
 .venue-info-display .venue-location {
@@ -483,8 +767,27 @@ if ($tec_active) {
     font-size: 12px;
 }
 
-.required {
-    color: #d63638;
+/* Responsive */
+@media screen and (max-width: 1100px) {
+    .venue-designer {
+        grid-template-columns: 180px 1fr 240px !important;
+    }
+}
+
+@media screen and (max-width: 900px) {
+    .venue-designer {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .designer-sidebar {
+        border-right: none !important;
+        border-left: none !important;
+        border-bottom: 1px solid #dcdcde;
+    }
+    
+    .designer-canvas-container {
+        min-height: 400px;
+    }
 }
 </style>
 
