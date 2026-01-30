@@ -150,8 +150,9 @@ class Azure_Tickets_Module {
         );
         
         // Tickets designer JS (for venue designer page)
-        $tab = isset($_GET['tab']) ? $_GET['tab'] : '';
-        if (strpos($hook, 'tickets') !== false && $tab === 'venues') {
+        $tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : '';
+        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : '';
+        if ($tab === 'venues' && ($action === 'new' || $action === 'edit')) {
             wp_enqueue_script(
                 'azure-tickets-designer',
                 AZURE_PLUGIN_URL . 'js/tickets-designer.js',
@@ -159,6 +160,12 @@ class Azure_Tickets_Module {
                 AZURE_PLUGIN_VERSION,
                 true
             );
+            
+            // Localize designer-specific data
+            wp_localize_script('azure-tickets-designer', 'azureTicketsDesigner', array(
+                'nonce' => wp_create_nonce('azure_tickets_nonce'),
+                'ajaxUrl' => admin_url('admin-ajax.php')
+            ));
         }
         
         // Check-in page assets

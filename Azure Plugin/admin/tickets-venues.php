@@ -394,17 +394,9 @@ if ($tec_active) {
 <?php endif; ?>
 
 <style>
-/* Venues List */
+/* Additional styles for venue list (supplements tickets-designer.css) */
 .venues-list-wrap {
     margin-top: 20px;
-}
-
-.venues-header {
-    margin-bottom: 20px;
-}
-
-.venues-header h2 {
-    margin-bottom: 5px;
 }
 
 .venues-header .description {
@@ -441,43 +433,8 @@ if ($tec_active) {
     justify-content: center;
 }
 
-.venues-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 20px;
-}
-
-.venue-card {
-    background: #fff;
-    border: 1px solid #dcdcde;
-    border-radius: 8px;
-    overflow: hidden;
-    transition: box-shadow 0.2s;
-}
-
-.venue-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
 .venue-card.no-layout {
     border-style: dashed;
-}
-
-.venue-preview {
-    height: 150px;
-    background: #f0f0f1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-.venue-preview .mini-layout {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    transform: scale(0.2);
-    transform-origin: center center;
 }
 
 .no-layout-preview {
@@ -492,15 +449,6 @@ if ($tec_active) {
     font-size: 32px;
     width: 32px;
     height: 32px;
-}
-
-.venue-info {
-    padding: 15px;
-}
-
-.venue-info h3 {
-    margin: 0 0 8px;
-    font-size: 16px;
 }
 
 .venue-location {
@@ -518,91 +466,9 @@ if ($tec_active) {
     height: 14px;
 }
 
-.venue-meta {
-    display: flex;
-    gap: 15px;
-    margin: 0;
-    font-size: 13px;
-    color: #646970;
-}
-
-.venue-actions {
-    padding: 15px;
-    border-top: 1px solid #f0f0f1;
-    display: flex;
-    gap: 8px;
-}
-
-.venue-actions .button {
-    flex: 1;
-    text-align: center;
-}
-
-/* Venue Designer */
-.venue-designer-wrap {
-    background: #fff;
-    border: 1px solid #dcdcde;
-    border-radius: 4px;
-}
-
-.venue-designer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 20px;
-    border-bottom: 1px solid #dcdcde;
-    background: #f6f7f7;
-}
-
-.venue-designer-header h2 {
-    margin: 0;
-    font-size: 18px;
-}
-
-.header-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.venue-info-bar {
-    display: flex;
-    gap: 20px;
-    padding: 15px 20px;
-    border-bottom: 1px solid #dcdcde;
-    background: #fff;
-    align-items: flex-end;
-}
-
-.venue-name-input,
 .venue-address-input,
 .venue-city-input {
     flex: 1;
-}
-
-.venue-name-input label,
-.venue-address-input label,
-.venue-city-input label {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: #646970;
-    margin-bottom: 5px;
-}
-
-.venue-name-input input,
-.venue-address-input input,
-.venue-city-input input {
-    width: 100%;
-    padding: 8px 12px;
-}
-
-.venue-info-display {
-    flex: 1;
-}
-
-.venue-info-display strong {
-    font-size: 16px;
 }
 
 .venue-info-display .venue-location {
@@ -617,282 +483,12 @@ if ($tec_active) {
     font-size: 12px;
 }
 
-.venue-capacity {
-    text-align: right;
-}
-
-.venue-capacity label {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: #646970;
-}
-
-.venue-capacity span {
-    font-size: 32px;
-    font-weight: 600;
-    color: #2271b1;
-}
-
-.venue-designer {
-    display: grid;
-    grid-template-columns: 200px 1fr 280px;
-    min-height: 600px;
-}
-
-.designer-sidebar {
-    padding: 15px;
-    background: #f6f7f7;
-    border-right: 1px solid #dcdcde;
-}
-
-.designer-sidebar:last-child {
-    border-right: none;
-    border-left: 1px solid #dcdcde;
-}
-
-.designer-sidebar h3 {
-    margin: 0 0 15px;
-    font-size: 13px;
-    text-transform: uppercase;
-    color: #646970;
-}
-
-.block-palette {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 20px;
-}
-
-.block-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    background: #fff;
-    border: 1px solid #dcdcde;
-    border-radius: 4px;
-    cursor: grab;
-    transition: all 0.2s;
-}
-
-.block-item:hover {
-    border-color: #2271b1;
-    background: #f0f6fc;
-}
-
-.block-item:active {
-    cursor: grabbing;
-}
-
-.block-item .dashicons {
-    color: #666;
-}
-
-.block-item.dragging {
-    opacity: 0.5;
-}
-
-.designer-canvas-container {
-    background: #e5e5e5;
-    overflow: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-
-.designer-canvas {
-    background: #fff;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    position: relative;
-    min-width: 800px;
-    min-height: 600px;
-    user-select: none;
-}
-
-.designer-canvas.drag-over {
-    outline: 3px dashed #2271b1;
-    outline-offset: -3px;
-    background: #f0f6fc;
-}
-
-.canvas-controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.canvas-controls label {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    font-size: 12px;
-}
-
-.canvas-controls input {
-    width: 80px;
-    padding: 5px;
-}
-
-.zoom-controls {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-top: 10px;
-}
-
-.zoom-controls button {
-    padding: 0;
-    width: 30px;
-    height: 30px;
-}
-
-#zoom-level {
-    min-width: 50px;
-    text-align: center;
-}
-
-.settings-group {
-    margin-bottom: 15px;
-}
-
-.settings-group label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 5px;
-    color: #1d2327;
-}
-
-.settings-group input,
-.settings-group select {
-    width: 100%;
-    padding: 8px;
-}
-
-.settings-group input[type="color"] {
-    height: 36px;
-    padding: 2px;
-}
-
-.no-selection {
-    color: #646970;
-    font-style: italic;
-    text-align: center;
-    padding: 20px;
-}
-
-/* Venue blocks on canvas */
-.venue-block {
-    position: absolute;
-    border-radius: 4px;
-    cursor: move;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 12px;
-    text-align: center;
-    box-sizing: border-box;
-    border: 2px solid transparent;
-}
-
-.venue-block.selected {
-    border-color: #2271b1;
-    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.3);
-}
-
-.venue-block .block-label {
-    padding: 5px;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
-
-.venue-block .block-seats {
-    font-size: 10px;
-    opacity: 0.9;
-}
-
-.venue-block.type-stage {
-    color: #fff;
-}
-
-.venue-block.type-label {
-    background: transparent !important;
-    border: 1px dashed #ccc;
-    color: inherit;
-}
-
-.venue-block.type-label .block-label {
-    text-shadow: none;
-}
-
-.venue-block.type-aisle {
-    background: repeating-linear-gradient(
-        45deg,
-        #f5f5f5,
-        #f5f5f5 5px,
-        #e0e0e0 5px,
-        #e0e0e0 10px
-    );
-}
-
-.resize-handle {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    background: #fff;
-    border: 2px solid #2271b1;
-    border-radius: 2px;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.venue-block:hover .resize-handle,
-.venue-block.selected .resize-handle {
-    opacity: 1;
-}
-
-.resize-handle.se {
-    bottom: -6px;
-    right: -6px;
-    cursor: se-resize;
-}
-
 .required {
     color: #d63638;
-}
-
-@media screen and (max-width: 1200px) {
-    .venue-designer {
-        grid-template-columns: 180px 1fr 240px;
-    }
-}
-
-@media screen and (max-width: 900px) {
-    .venue-designer {
-        grid-template-columns: 1fr;
-    }
-    
-    .designer-sidebar {
-        border-right: none;
-        border-bottom: 1px solid #dcdcde;
-    }
-    
-    .designer-sidebar:last-child {
-        border-left: none;
-        border-top: 1px solid #dcdcde;
-    }
 }
 </style>
 
 <script>
-var azureTickets = {
-    nonce: '<?php echo wp_create_nonce('azure_tickets_nonce'); ?>'
-};
-
 // Render mini-layout previews in the venue list
 jQuery(document).ready(function($) {
     $('.mini-layout').each(function() {

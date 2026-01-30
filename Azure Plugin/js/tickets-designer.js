@@ -619,9 +619,12 @@
             
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Saving...');
             
+            // Use azureTicketsDesigner if available, fall back to azureTickets
+            var ticketsData = (typeof azureTicketsDesigner !== 'undefined') ? azureTicketsDesigner : azureTickets;
+            
             var data = {
                 action: 'azure_tickets_save_venue',
-                nonce: azureTickets.nonce,
+                nonce: ticketsData.nonce,
                 venue_id: venueId,
                 layout_json: this.getLayoutJSON()
             };
