@@ -1,9 +1,10 @@
 <?php
 /**
- * Plugin Name: Microsoft PTA
- * Plugin URI: https://github.com/jaburges/AzureSSO
+ * Plugin Name: PTA Tools
+ * Plugin URI: https://github.com/jaburges/PTATools
+ * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.26
+ * Version: 3.27
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -19,9 +20,46 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.26');
+define('AZURE_PLUGIN_VERSION', '3.27');
 
-// Main plugin class for Microsoft PTA
+// Auto-update from GitHub Releases
+add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
+    if ($plugin_file !== plugin_basename(__FILE__)) {
+        return $update;
+    }
+
+    $response = wp_remote_get(
+        'https://api.github.com/repos/jaburges/PTATools/releases/latest',
+        [
+            'user-agent' => 'PTATools-Updater',
+            'timeout'    => 10,
+        ]
+    );
+
+    if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+        return $update;
+    }
+
+    $release = json_decode(wp_remote_retrieve_body($response), true);
+    if (empty($release['tag_name']) || empty($release['assets'][0]['browser_download_url'])) {
+        return $update;
+    }
+
+    $new_version = ltrim($release['tag_name'], 'v');
+
+    if (!version_compare($plugin_data['Version'], $new_version, '<')) {
+        return false;
+    }
+
+    return [
+        'slug'    => $plugin_data['TextDomain'],
+        'version' => $new_version,
+        'url'     => $release['html_url'],
+        'package' => $release['assets'][0]['browser_download_url'],
+    ];
+}, 10, 4);
+
+// Main plugin class
 class AzurePlugin {
     
     private static $instance = null;

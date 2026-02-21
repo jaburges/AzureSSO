@@ -31,7 +31,7 @@ if ($activity_table) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Logs & Activity</h1>
+    <h1>PTA Tools - Logs & Activity</h1>
     
     <div class="azure-logs-dashboard">
         <!-- Activity Statistics -->
@@ -264,7 +264,7 @@ if ($activity_table) {
                 </div>
                 
                 <div class="info-card">
-                    <h4>Azure Plugin</h4>
+                    <h4>PTA Tools</h4>
                     <ul>
                         <li><strong>Version:</strong> <?php echo AZURE_PLUGIN_VERSION; ?></li>
                         <li><strong>Path:</strong> <code><?php echo AZURE_PLUGIN_PATH; ?></code></li>

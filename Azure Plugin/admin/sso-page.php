@@ -135,7 +135,7 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
 
 <?php sso_debug_log('Starting HTML output'); ?>
 <div class="wrap">
-    <h1>Azure Plugin - SSO Settings</h1>
+    <h1>PTA Tools - SSO Settings</h1>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">
@@ -313,7 +313,7 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
                                     <input type="checkbox" name="use_common_credentials" id="use_common_credentials" <?php checked($settings['use_common_credentials'] ?? true); ?> />
                                     Use shared Azure AD credentials from main settings
                                 </label>
-                                <p class="description">When enabled, this module will use the common Azure AD credentials configured on the main Azure Plugin page. When disabled, you can configure module-specific credentials below.</p>
+                                <p class="description">When enabled, this module will use the common Azure AD credentials configured on the main PTA Tools page. When disabled, you can configure module-specific credentials below.</p>
                             </td>
                         </tr>
                     </table>

@@ -373,6 +373,9 @@ if ($newsletter && !empty($newsletter->recipient_lists)) {
                     <button type="button" class="button" id="btn-code" title="<?php _e('View Code', 'azure-plugin'); ?>">
                         <span class="dashicons dashicons-editor-code"></span>
                     </button>
+                    <button type="button" class="button" id="btn-update-design" title="<?php _e('Update design and save changes', 'azure-plugin'); ?>">
+                        <span class="dashicons dashicons-update"></span> <?php _e('Update', 'azure-plugin'); ?>
+                    </button>
                     <button type="button" class="button button-primary next-step" data-next="3">
                         <?php _e('Review', 'azure-plugin'); ?> &rarr;
                     </button>

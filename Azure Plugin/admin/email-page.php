@@ -33,7 +33,7 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Email Settings</h1>
+    <h1>PTA Tools - Email Settings</h1>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">

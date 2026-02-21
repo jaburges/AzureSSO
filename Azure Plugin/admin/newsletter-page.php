@@ -21,7 +21,7 @@ if (!in_array($current_tab, $valid_tabs)) {
 <div class="wrap azure-newsletter-wrap">
     <h1>
         <span class="dashicons dashicons-email-alt" style="font-size: 30px; width: 30px; height: 30px; margin-right: 10px;"></span>
-        <?php _e('Azure Newsletter', 'azure-plugin'); ?>
+        <?php _e('Newsletter', 'azure-plugin'); ?>
     </h1>
     
     <?php if (!($settings['enable_newsletter'] ?? false)): ?>

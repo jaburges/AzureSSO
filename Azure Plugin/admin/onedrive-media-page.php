@@ -27,7 +27,7 @@ $has_auth = !empty($authorized_users);
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - OneDrive Media Settings</h1>
+    <h1>PTA Tools - OneDrive Media Settings</h1>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">

@@ -41,7 +41,7 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Calendar Embed</h1>
+    <h1>PTA Tools - Calendar Embed</h1>
     
     <div class="azure-calendar-dashboard">
         <!-- Module Toggle Section -->

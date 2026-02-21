@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Email Logs</h1>
+    <h1>PTA Tools - Email Logs</h1>
     
     <div class="azure-email-logs-dashboard">
         <!-- Email Statistics -->

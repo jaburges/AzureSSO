@@ -40,7 +40,7 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Calendar Sync</h1>
+    <h1>PTA Tools - Calendar Sync</h1>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">

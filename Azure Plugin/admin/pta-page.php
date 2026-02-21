@@ -63,7 +63,7 @@ if (class_exists('Azure_PTA_Database')) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - PTA Roles & Organization</h1>
+    <h1>PTA Tools - PTA Roles & Organization</h1>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">
@@ -613,7 +613,7 @@ if (class_exists('Azure_PTA_Database')) {
             <li><strong>PTA Org Chart</strong> - Interactive organizational chart</li>
             <li><strong>PTA Open Positions</strong> - Current openings display</li>
         </ul>
-        <p>Find these modules in the <strong>"Azure Plugin"</strong> category when editing with Beaver Builder. Each module includes:</p>
+        <p>Find these modules in the <strong>"PTA Tools"</strong> category when editing with Beaver Builder. Each module includes:</p>
         <ul>
             <li>✅ All shortcode parameters as visual form fields</li>
             <li>✅ Color customization options</li>

@@ -1,0 +1,38 @@
+name: Build and Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build plugin zip
+        run: |
+          mkdir -p build
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.cursor' \
+            --exclude='*.zip' \
+            --exclude='PTATools.wiki' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='tests' \
+            "Azure Plugin/" "build/Azure Plugin/"
+          cd build
+          zip -r ../pta-tools.zip "Azure Plugin/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pta-tools.zip
+          generate_release_notes: true

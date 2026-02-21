@@ -182,7 +182,25 @@
                             open: true,
                             properties: [
                                 'font-family',
-                                'font-size',
+                                {
+                                    property: 'font-size',
+                                    type: 'select',
+                                    defaults: '14px',
+                                    options: [
+                                        { id: '10px', label: '10' },
+                                        { id: '12px', label: '12' },
+                                        { id: '13px', label: '13' },
+                                        { id: '14px', label: '14' },
+                                        { id: '16px', label: '16' },
+                                        { id: '18px', label: '18' },
+                                        { id: '20px', label: '20' },
+                                        { id: '24px', label: '24' },
+                                        { id: '28px', label: '28' },
+                                        { id: '32px', label: '32' },
+                                        { id: '36px', label: '36' },
+                                        { id: '48px', label: '48' }
+                                    ]
+                                },
                                 'font-weight',
                                 'letter-spacing',
                                 'color',
@@ -925,6 +943,25 @@
         
         var dc = editor.DomComponents;
         
+        // Register custom "media-library" trait type for image selection
+        editor.TraitManager.addType('media-library-button', {
+            createInput: function(opts) {
+                var el = document.createElement('div');
+                el.innerHTML = '<button type="button" class="button media-library-btn" style="width:100%;text-align:center;padding:8px 12px;background:#2271b1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">' +
+                    '<span class="dashicons dashicons-format-image" style="font-size:16px;width:16px;height:16px;margin-right:6px;vertical-align:middle;"></span>' +
+                    'Browse Media Library</button>';
+                var btn = el.querySelector('button');
+                var self = this;
+                btn.addEventListener('click', function() {
+                    var component = self.target;
+                    openMediaLibrary({ target: component });
+                });
+                return el;
+            },
+            onUpdate: function() {},
+            onEvent: function() {}
+        });
+        
         // === PTA DIRECTORY COMPONENT ===
         dc.addType('pta-directory', {
             isComponent: function(el) {
@@ -1194,6 +1231,10 @@
                 defaults: {
                     traits: [
                         {
+                            type: 'media-library-button',
+                            label: 'Image'
+                        },
+                        {
                             type: 'text',
                             label: 'Image URL',
                             name: 'src',
@@ -1220,6 +1261,17 @@
                             changeProp: 1
                         }
                     ]
+                },
+                init: function() {
+                    this.on('change:src', this.updateImageSrc);
+                },
+                updateImageSrc: function() {
+                    var src = this.get('src');
+                    if (!src) return;
+                    var imgEl = this.view && this.view.el ? this.view.el.querySelector('img') : null;
+                    if (imgEl) {
+                        imgEl.setAttribute('src', src);
+                    }
                 }
             }
         });
@@ -1318,6 +1370,25 @@
             $('.settings-placeholder').show();
             $('#traits-container').hide();
             $('#selected-element-name .element-name').text('No element selected');
+        });
+        
+        // Double-click on image components opens the media library
+        editor.on('component:dblclick', function(component) {
+            if (!component) return;
+            var el = component.view && component.view.el;
+            if (!el) return;
+            
+            // Check if this component or its parent is an email-image type
+            var imgComponent = null;
+            if (el.tagName === 'IMG') {
+                imgComponent = component.parent();
+            } else if (el.querySelector && el.querySelector('img')) {
+                imgComponent = component;
+            }
+            
+            if (imgComponent) {
+                openMediaLibrary({ target: imgComponent });
+            }
         });
     }
     
@@ -1551,9 +1622,26 @@
                     name: attachment.filename
                 });
                 
-                // If we have a target (existing image), update it
                 if (props && props.target) {
-                    props.target.set('src', attachment.url);
+                    var component = props.target;
+                    
+                    // Update the component's src property
+                    component.set('src', attachment.url);
+                    
+                    // Find and update the actual <img> element inside the component
+                    var imgEl = component.view && component.view.el ? component.view.el.querySelector('img') : null;
+                    if (imgEl) {
+                        imgEl.setAttribute('src', attachment.url);
+                        if (attachment.alt) {
+                            imgEl.setAttribute('alt', attachment.alt);
+                        }
+                    }
+                    
+                    // Also update the src trait input field if visible
+                    var srcTrait = component.getTrait('src');
+                    if (srcTrait) {
+                        srcTrait.set('value', attachment.url);
+                    }
                 }
             }
         });
@@ -2049,6 +2137,74 @@
         // Set cursor position after tag
         input.selectionStart = input.selectionEnd = start + tag.length;
         input.focus();
+    });
+
+    /**
+     * Update Design - syncs editor content and saves draft
+     */
+    $(document).on('click', '#btn-update-design', function(e) {
+        e.preventDefault();
+        var btn = $(this);
+        var originalHtml = btn.html();
+        
+        btn.prop('disabled', true);
+        btn.html('<span class="dashicons dashicons-update spin"></span> Updating...');
+        
+        if (editor) {
+            var inlinedHtml = getEmailReadyHtml();
+            var json = JSON.stringify(editor.getProjectData());
+            $('#newsletter_content_html').val(inlinedHtml);
+            $('#newsletter_content_json').val(json);
+        }
+        
+        // Trigger save draft via AJAX
+        var selectedLists = [];
+        $('input[name="newsletter_lists[]"]:checked').each(function() {
+            selectedLists.push($(this).val());
+        });
+        
+        var formData = {
+            action: 'azure_newsletter_save',
+            nonce: newsletterEditorConfig.nonce,
+            newsletter_id: $('#newsletter_id').val(),
+            newsletter_name: $('#newsletter_name').val(),
+            newsletter_subject: $('#newsletter_subject').val(),
+            newsletter_from: $('#newsletter_from').val(),
+            newsletter_content_html: $('#newsletter_content_html').val(),
+            newsletter_content_json: $('#newsletter_content_json').val(),
+            newsletter_lists: JSON.stringify(selectedLists),
+            send_option: 'draft'
+        };
+        
+        $.post(newsletterEditorConfig.ajaxUrl, formData, function(response) {
+            btn.prop('disabled', false);
+            
+            if (response.success) {
+                if (response.data.newsletter_id) {
+                    $('#newsletter_id').val(response.data.newsletter_id);
+                    var newUrl = newsletterEditorConfig.ajaxUrl.replace('admin-ajax.php', 
+                        'admin.php?page=azure-plugin-newsletter&action=new&id=' + response.data.newsletter_id);
+                    if (window.history.replaceState) {
+                        window.history.replaceState({}, '', newUrl);
+                    }
+                }
+                
+                btn.html('<span class="dashicons dashicons-yes-alt"></span> Updated!');
+                $('#save-status').html('<span class="saved">✓ Design updated</span>');
+                
+                setTimeout(function() {
+                    btn.html(originalHtml);
+                    $('#save-status').html('');
+                }, 2500);
+            } else {
+                btn.html(originalHtml);
+                alert('Error saving: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            alert('Network error. Please try again.');
+        });
     });
 
     /**

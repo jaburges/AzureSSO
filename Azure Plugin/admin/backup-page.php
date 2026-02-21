@@ -37,7 +37,7 @@ $settings = Azure_Settings::get_all_settings();
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - Backup Settings</h1>
+    <h1>PTA Tools - Backup Settings</h1>
     
     <!-- Module Status Toggle -->
     <div class="module-status-section">

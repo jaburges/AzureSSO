@@ -62,7 +62,7 @@ foreach ($group_mappings as $mapping) {
 ?>
 
 <div class="wrap">
-    <h1>Azure Plugin - PTA Office 365 Groups Management</h1>
+    <h1>PTA Tools - PTA Office 365 Groups Management</h1>
     
     <?php if (!Azure_Settings::is_module_enabled('pta')): ?>
     <div class="notice notice-warning">

@@ -542,6 +542,37 @@
     font-size: 14px;
 }
 
+/* Update Design button */
+#btn-update-design {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+    font-weight: 500;
+}
+
+#btn-update-design:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+#btn-update-design .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+    vertical-align: middle;
+    margin-right: 2px;
+}
+
+#btn-update-design .spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Media library button in traits */
+.media-library-btn:hover {
+    background: #135e96 !important;
+}
+
 /* Editor minimum height */
 .editor-main {
     min-height: 500px;

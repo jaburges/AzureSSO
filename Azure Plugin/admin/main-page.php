@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) {
 ?>
 
 <div class="wrap">
-    <h1>Microsoft PTA - Main Settings</h1>
+    <h1>PTA Tools - Main Settings</h1>
     
     <?php
     // Show setup wizard progress banner if not completed
@@ -278,7 +278,7 @@ if (!defined('ABSPATH')) {
                                 <label for="debug_mode">Enable detailed debug logging</label>
                                 <p class="description">
                                     ⚠️ <strong>Warning:</strong> Only enable for troubleshooting. Requires WP_DEBUG to be enabled in wp-config.php. 
-                                    <br>Impacts performance when enabled. Logs are written to <code>wp-content/plugins/Azure Plugin/logs.md</code>
+                                    <br>Impacts performance when enabled. Logs are written to <code>wp-content/plugins/PTA Tools/logs.md</code>
                                 </p>
                             </td>
                         </tr>

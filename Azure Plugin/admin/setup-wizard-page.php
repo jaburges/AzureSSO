@@ -58,9 +58,9 @@ $available_roles = $wp_roles->get_names();
                 <div class="wizard-step step-welcome active">
                     <div class="step-header">
                         <div class="plugin-logo">
-                            <span class="dashicons dashicons-cloud" style="font-size: 64px; width: 64px; height: 64px; color: #0078d4;"></span>
+                            <span class="dashicons dashicons-admin-plugins" style="font-size: 64px; width: 64px; height: 64px; color: #0078d4;"></span>
                         </div>
-                        <h1><?php _e('Welcome to Microsoft PTA', 'azure-plugin'); ?></h1>
+                        <h1><?php _e('Welcome to PTA Tools', 'azure-plugin'); ?></h1>
                         <p class="lead"><?php _e('Integrate your WordPress site with Microsoft Azure and Office 365 services.', 'azure-plugin'); ?></p>
                     </div>
                     
@@ -700,7 +700,7 @@ $available_roles = $wp_roles->get_names();
                             <span class="dashicons dashicons-yes-alt"></span>
                         </div>
                         <h1><?php _e('Setup Complete!', 'azure-plugin'); ?></h1>
-                        <p class="lead"><?php _e('Your Azure Plugin is configured and ready to use.', 'azure-plugin'); ?></p>
+                        <p class="lead"><?php _e('Your PTA Tools plugin is configured and ready to use.', 'azure-plugin'); ?></p>
                     </div>
                     
                     <div class="summary-section">

@@ -83,19 +83,19 @@ class Azure_Admin {
         try {
             // Main menu
             add_menu_page(
-            'Azure Plugin',
-            'Azure Plugin',
+            'PTA Tools',
+            'PTA Tools',
             'manage_options',
             'azure-plugin',
             array($this, 'admin_page'),
-            'dashicons-cloud',
+            'dashicons-admin-plugins',
             30
         );
         
         // Submenus
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - SSO',
+            'PTA Tools - SSO',
             'SSO',
             'manage_options',
             'azure-plugin-sso',
@@ -104,7 +104,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Backup',
+            'PTA Tools - Backup',
             'Backup',
             'manage_options',
             'azure-plugin-backup',
@@ -113,7 +113,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Calendar Embed',
+            'PTA Tools - Calendar Embed',
             'Calendar Embed',
             'manage_options',
             'azure-plugin-calendar',
@@ -122,7 +122,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Calendar Sync',
+            'PTA Tools - Calendar Sync',
             'Calendar Sync',
             'manage_options',
             'azure-plugin-tec',
@@ -131,7 +131,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Email',
+            'PTA Tools - Email',
             'Email',
             'manage_options',
             'azure-plugin-email',
@@ -141,7 +141,7 @@ class Azure_Admin {
         // Email Logs submenu under main Azure Plugin
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Email Logs',
+            'PTA Tools - Email Logs',
             'Email Logs',
             'manage_options',
             'azure-plugin-email-logs',
@@ -150,7 +150,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - PTA Roles',
+            'PTA Tools - PTA Roles',
             'PTA Roles',
             'manage_options',
             'azure-plugin-pta',
@@ -159,7 +159,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin-pta',
-            'Azure Plugin - PTA Groups',
+            'PTA Tools - PTA Groups',
             'O365 Groups',
             'manage_options',
             'azure-plugin-pta-groups',
@@ -168,7 +168,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - OneDrive Media',
+            'PTA Tools - OneDrive Media',
             'OneDrive Media',
             'manage_options',
             'azure-plugin-onedrive-media',
@@ -177,7 +177,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Classes',
+            'PTA Tools - Classes',
             'Classes',
             'manage_options',
             'azure-plugin-classes',
@@ -186,7 +186,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Upcoming Events',
+            'PTA Tools - Upcoming Events',
             'Upcoming Events',
             'manage_options',
             'azure-plugin-upcoming',
@@ -195,7 +195,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Newsletter',
+            'PTA Tools - Newsletter',
             'Newsletter',
             'manage_options',
             'azure-plugin-newsletter',
@@ -204,7 +204,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Event Tickets',
+            'PTA Tools - Event Tickets',
             'Event Tickets',
             'manage_options',
             'azure-plugin-tickets',
@@ -223,7 +223,7 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'Azure Plugin - Logs',
+            'PTA Tools - Logs',
             'System Logs',
             'manage_options',
             'azure-plugin-logs',
@@ -586,7 +586,7 @@ class Azure_Admin {
             
             include AZURE_PLUGIN_PATH . 'admin/main-page.php';
         } catch (Exception $e) {
-            echo '<div class="wrap"><h1>Azure Plugin - Error</h1>';
+            echo '<div class="wrap"><h1>PTA Tools - Error</h1>';
             echo '<div class="notice notice-error"><p><strong>Critical Error:</strong> ' . esc_html($e->getMessage()) . '</p></div>';
             echo '<p>Please check the system logs for more details. If this persists, try deactivating and reactivating the plugin.</p>';
             echo '</div>';
@@ -743,10 +743,10 @@ class Azure_Admin {
      */
     private function render_error_page($page_name, $exception) {
         echo '<div class="wrap">';
-        echo '<h1>Azure Plugin - ' . esc_html($page_name) . ' - Error</h1>';
+        echo '<h1>PTA Tools - ' . esc_html($page_name) . ' - Error</h1>';
         echo '<div class="notice notice-error"><p><strong>Critical Error:</strong> ' . esc_html($exception->getMessage()) . '</p></div>';
         echo '<p>Please check the system logs for more details. If this persists, try deactivating and reactivating the plugin.</p>';
-        echo '<p><a href="' . admin_url('admin.php?page=azure-plugin') . '" class="button">&larr; Back to Azure Plugin</a></p>';
+        echo '<p><a href="' . admin_url('admin.php?page=azure-plugin') . '" class="button">&larr; Back to PTA Tools</a></p>';
         echo '</div>';
         
         // Log the error
@@ -1241,7 +1241,7 @@ class Azure_Admin {
             }
             
             $filename = 'azure-plugin-logs-' . date('Y-m-d-H-i-s') . '.txt';
-            $content = "Azure Plugin Logs - Downloaded on " . date('Y-m-d H:i:s') . "\n";
+            $content = "PTA Tools Logs - Downloaded on " . date('Y-m-d H:i:s') . "\n";
             $content .= str_repeat("=", 60) . "\n\n";
             $content .= implode("\n", $log_lines);
             
@@ -2147,7 +2147,7 @@ class Azure_Admin {
         // Microsoft PTA Overview widget (always show)
         wp_add_dashboard_widget(
             'azure_plugin_overview',
-            __('Microsoft PTA Overview', 'azure-plugin'),
+            __('PTA Tools Overview', 'azure-plugin'),
             array($this, 'render_overview_widget')
         );
         
