@@ -312,6 +312,7 @@ class Azure_Admin {
                 break;
             case 'azure-plugin-newsletter':
                 // Newsletter admin styles and scripts
+                wp_enqueue_media();
                 wp_enqueue_style('azure-newsletter-admin', AZURE_PLUGIN_URL . 'css/newsletter-admin.css', array(), $cache_version);
                 wp_enqueue_script('azure-newsletter-admin', AZURE_PLUGIN_URL . 'js/newsletter-admin.js', array('jquery'), $cache_version, true);
                 wp_localize_script('azure-newsletter-admin', 'azureNewsletter', array(

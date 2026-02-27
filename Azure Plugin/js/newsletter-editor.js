@@ -951,10 +951,13 @@
                     '<span class="dashicons dashicons-format-image" style="font-size:16px;width:16px;height:16px;margin-right:6px;vertical-align:middle;"></span>' +
                     'Browse Media Library</button>';
                 var btn = el.querySelector('button');
-                var self = this;
-                btn.addEventListener('click', function() {
-                    var component = self.target;
-                    openMediaLibrary({ target: component });
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var component = editor.getSelected();
+                    if (component) {
+                        openMediaLibrary({ target: component });
+                    }
                 });
                 return el;
             },
@@ -1576,16 +1579,22 @@
      */
     function openMediaLibrary(props) {
         if (typeof wp === 'undefined' || typeof wp.media === 'undefined') {
-            alert('WordPress Media Library not available');
+            alert('WordPress Media Library not available. Please reload the page.');
             return;
         }
 
-        var frame = wp.media({
-            title: 'Select Image for Newsletter',
-            button: { text: 'Insert Image' },
-            multiple: false,
-            library: { type: 'image' }
-        });
+        try {
+            var frame = wp.media({
+                title: 'Select Image for Newsletter',
+                button: { text: 'Insert Image' },
+                multiple: false,
+                library: { type: 'image' }
+            });
+        } catch (err) {
+            console.error('Media Library error:', err);
+            alert('Could not open Media Library: ' + err.message);
+            return;
+        }
 
         frame.on('select', function() {
             var attachment = frame.state().get('selection').first().toJSON();
