@@ -384,7 +384,7 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
                                 <div id="sso_button_text_wrapper" style="margin-top: 10px; <?php echo ($settings['sso_show_on_login_page'] ?? true) ? '' : 'display: none;'; ?>">
                                     <label for="sso_login_button_text">
                                         <strong>Button Text:</strong><br />
-                                        <input type="text" name="sso_login_button_text" id="sso_login_button_text" value="<?php echo esc_attr($settings['sso_login_button_text'] ?? 'Sign in with WilderPTSA Email'); ?>" class="regular-text" placeholder="Sign in with WilderPTSA Email" />
+                                        <input type="text" name="sso_login_button_text" id="sso_login_button_text" value="<?php echo esc_attr($settings['sso_login_button_text'] ?? 'Sign in with Microsoft'); ?>" class="regular-text" placeholder="Sign in with Microsoft" />
                                     </label>
                                     <p class="description">Customize the text shown on the login button. The Microsoft icon will still be displayed.</p>
                                 </div>
@@ -654,7 +654,7 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
             <div class="shortcode-examples">
                 <div class="shortcode-example">
                     <h4>Login Button</h4>
-                    <code>[azure_sso_login text="Sign in with WilderPTSA Email" redirect="/dashboard"]</code>
+                    <code>[azure_sso_login text="Sign in with My PTA" redirect="/dashboard"]</code>
                     <p>Creates a login button that redirects to the specified page after authentication.</p>
                 </div>
                 

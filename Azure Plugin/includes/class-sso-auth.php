@@ -426,7 +426,7 @@ class Azure_SSO_Auth {
         }
         
         // Get custom button text from settings
-        $button_text = Azure_Settings::get_setting('sso_login_button_text', 'Sign in with WilderPTSA Email');
+        $button_text = Azure_Settings::get_setting('sso_login_button_text', 'Sign in with Microsoft');
         
         echo '<div style="margin: 20px 0; text-align: center;">';
         echo '<a href="' . esc_url($sso_url) . '" class="button button-primary" style="width: 100%; padding: 10px; font-size: 14px;">';

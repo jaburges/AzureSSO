@@ -1223,10 +1223,8 @@
         });
         
         // === IMAGE COMPONENT ===
-        dc.addType('email-image', {
-            isComponent: function(el) {
-                return el.tagName === 'TABLE' && el.querySelector('img') && !el.innerHTML.includes('Post');
-            },
+        // Extend the built-in 'image' type so any <img> gets the media library button
+        dc.addType('image', {
             model: {
                 defaults: {
                     traits: [
@@ -1237,15 +1235,13 @@
                         {
                             type: 'text',
                             label: 'Image URL',
-                            name: 'src',
-                            changeProp: 1
+                            name: 'src'
                         },
                         {
                             type: 'text',
                             label: 'Alt Text',
                             name: 'alt',
-                            placeholder: 'Describe the image',
-                            changeProp: 1
+                            placeholder: 'Describe the image'
                         },
                         {
                             type: 'text',
@@ -1257,21 +1253,9 @@
                         {
                             type: 'number',
                             label: 'Width',
-                            name: 'img_width',
-                            changeProp: 1
+                            name: 'width'
                         }
                     ]
-                },
-                init: function() {
-                    this.on('change:src', this.updateImageSrc);
-                },
-                updateImageSrc: function() {
-                    var src = this.get('src');
-                    if (!src) return;
-                    var imgEl = this.view && this.view.el ? this.view.el.querySelector('img') : null;
-                    if (imgEl) {
-                        imgEl.setAttribute('src', src);
-                    }
                 }
             }
         });
@@ -1378,16 +1362,8 @@
             var el = component.view && component.view.el;
             if (!el) return;
             
-            // Check if this component or its parent is an email-image type
-            var imgComponent = null;
             if (el.tagName === 'IMG') {
-                imgComponent = component.parent();
-            } else if (el.querySelector && el.querySelector('img')) {
-                imgComponent = component;
-            }
-            
-            if (imgComponent) {
-                openMediaLibrary({ target: imgComponent });
+                openMediaLibrary({ target: component });
             }
         });
     }
@@ -1625,22 +1601,26 @@
                 if (props && props.target) {
                     var component = props.target;
                     
-                    // Update the component's src property
-                    component.set('src', attachment.url);
-                    
-                    // Find and update the actual <img> element inside the component
-                    var imgEl = component.view && component.view.el ? component.view.el.querySelector('img') : null;
-                    if (imgEl) {
-                        imgEl.setAttribute('src', attachment.url);
-                        if (attachment.alt) {
-                            imgEl.setAttribute('alt', attachment.alt);
-                        }
+                    // Update image attributes via GrapesJS API
+                    var attrs = { src: attachment.url };
+                    if (attachment.alt) {
+                        attrs.alt = attachment.alt;
                     }
+                    component.addAttributes(attrs);
                     
-                    // Also update the src trait input field if visible
-                    var srcTrait = component.getTrait('src');
-                    if (srcTrait) {
-                        srcTrait.set('value', attachment.url);
+                    // Also update the DOM element directly for immediate visual feedback
+                    var el = component.view && component.view.el;
+                    if (el) {
+                        if (el.tagName === 'IMG') {
+                            el.setAttribute('src', attachment.url);
+                            if (attachment.alt) el.setAttribute('alt', attachment.alt);
+                        } else {
+                            var imgEl = el.querySelector('img');
+                            if (imgEl) {
+                                imgEl.setAttribute('src', attachment.url);
+                                if (attachment.alt) imgEl.setAttribute('alt', attachment.alt);
+                            }
+                        }
                     }
                 }
             }

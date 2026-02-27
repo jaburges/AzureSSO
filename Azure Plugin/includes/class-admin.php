@@ -423,7 +423,7 @@ class Azure_Admin {
         $settings['sso_auto_create_users'] = isset($_POST['sso_auto_create_users']);
         $settings['sso_default_role'] = sanitize_text_field($_POST['sso_default_role'] ?? 'subscriber');
         $settings['sso_show_on_login_page'] = isset($_POST['sso_show_on_login_page']);
-        $settings['sso_login_button_text'] = sanitize_text_field($_POST['sso_login_button_text'] ?? 'Sign in with WilderPTSA Email');
+        $settings['sso_login_button_text'] = sanitize_text_field($_POST['sso_login_button_text'] ?? 'Sign in with Microsoft');
         
         // Custom role settings
         $settings['sso_use_custom_role'] = isset($_POST['sso_use_custom_role']);

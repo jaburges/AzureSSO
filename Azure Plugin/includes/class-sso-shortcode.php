@@ -17,11 +17,11 @@ class Azure_SSO_Shortcode {
     
     /**
      * SSO Login shortcode
-     * Usage: [azure_sso_login text="Sign in with WilderPTSA Email" redirect="/dashboard"]
+     * Usage: [azure_sso_login text="Sign in with My PTA" redirect="/dashboard"]
      */
     public function sso_login_shortcode($atts) {
         $atts = shortcode_atts(array(
-            'text' => 'Sign in with WilderPTSA Email',
+            'text' => 'Sign in with Microsoft',
             'redirect' => '',
             'class' => 'azure-sso-login-button',
             'style' => ''

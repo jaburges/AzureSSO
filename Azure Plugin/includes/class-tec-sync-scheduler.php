@@ -30,7 +30,24 @@ class Azure_TEC_Sync_Scheduler {
         // Register per-mapping cron hooks dynamically
         $this->register_per_mapping_hooks();
         
+        // Self-healing: verify cron is scheduled when settings say it should be
+        add_action('admin_init', array($this, 'ensure_cron_scheduled'));
+        
         Azure_Logger::debug('TEC Sync Scheduler: Initialized', 'TEC');
+    }
+    
+    /**
+     * Self-healing cron check - re-schedules cron if it's missing but should be active
+     */
+    public function ensure_cron_scheduled() {
+        $settings = Azure_Settings::get_all_settings();
+        $sync_enabled = ($settings['tec_sync_schedule_enabled'] ?? false) && ($settings['enable_tec_integration'] ?? false);
+        
+        if ($sync_enabled && !wp_next_scheduled($this->hook_name)) {
+            $frequency = $settings['tec_sync_schedule_frequency'] ?? 'hourly';
+            $this->schedule_sync($frequency);
+            Azure_Logger::info("TEC Sync Scheduler: Re-scheduled missing cron with frequency '{$frequency}'", 'TEC');
+        }
     }
     
     /**
