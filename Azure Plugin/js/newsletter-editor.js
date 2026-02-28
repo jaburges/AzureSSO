@@ -7,6 +7,7 @@
 
     var editor = null;
     var currentStep = 1;
+    var mediaFrame = null;
 
     /**
      * Clean HTML content - remove any CSS text that leaked into body
@@ -1596,61 +1597,75 @@
             return;
         }
 
+        // Check if media templates exist in the DOM
+        if (!document.getElementById('tmpl-media-frame')) {
+            console.error('WP Media templates missing from DOM. wp_enqueue_media() may not have run correctly.');
+            console.log('wp.media exists:', typeof wp.media);
+            console.log('wp.media.view exists:', typeof wp.media.view);
+            console.log('wp.template exists:', typeof wp.template);
+            alert('Media Library templates not loaded. Please refresh the page and try again.');
+            return;
+        }
+
+        // Store current target for use in callback
+        openMediaLibrary._currentTarget = props && props.target ? props.target : null;
+
+        // Reuse existing frame (WordPress recommended singleton pattern)
+        if (mediaFrame) {
+            mediaFrame.open();
+            return;
+        }
+
         try {
-            var frame = wp.media({
+            mediaFrame = wp.media({
                 title: 'Select Image for Newsletter',
                 button: { text: 'Insert Image' },
-                multiple: false,
-                frame: 'select',
-                state: 'library',
-                library: { type: 'image' }
+                multiple: false
             });
         } catch (err) {
             console.error('Media Library error:', err);
             alert('Could not open Media Library: ' + err.message);
+            mediaFrame = null;
             return;
         }
 
-        frame.on('select', function() {
-            var attachment = frame.state().get('selection').first().toJSON();
+        mediaFrame.on('select', function() {
+            var attachment = mediaFrame.state().get('selection').first().toJSON();
+            var component = openMediaLibrary._currentTarget || editor.getSelected();
             
-            if (editor) {
-                editor.AssetManager.add({
-                    src: attachment.url,
-                    width: attachment.width,
-                    height: attachment.height,
-                    name: attachment.filename
-                });
-                
-                if (props && props.target) {
-                    var component = props.target;
-                    
-                    // Update image attributes via GrapesJS API
-                    var attrs = { src: attachment.url };
-                    if (attachment.alt) {
-                        attrs.alt = attachment.alt;
-                    }
-                    component.addAttributes(attrs);
-                    
-                    // Also update the DOM element directly for immediate visual feedback
-                    var el = component.view && component.view.el;
-                    if (el) {
-                        if (el.tagName === 'IMG') {
-                            el.setAttribute('src', attachment.url);
-                            if (attachment.alt) el.setAttribute('alt', attachment.alt);
-                        } else {
-                            var imgEl = el.querySelector('img');
-                            if (imgEl) {
-                                imgEl.setAttribute('src', attachment.url);
-                                if (attachment.alt) imgEl.setAttribute('alt', attachment.alt);
-                            }
-                        }
+            if (!editor || !component) return;
+
+            editor.AssetManager.add({
+                src: attachment.url,
+                width: attachment.width,
+                height: attachment.height,
+                name: attachment.filename
+            });
+            
+            // Update image attributes via GrapesJS API
+            var attrs = { src: attachment.url };
+            if (attachment.alt) {
+                attrs.alt = attachment.alt;
+            }
+            component.addAttributes(attrs);
+            
+            // Also update the DOM element directly for immediate visual feedback
+            var el = component.view && component.view.el;
+            if (el) {
+                if (el.tagName === 'IMG') {
+                    el.setAttribute('src', attachment.url);
+                    if (attachment.alt) el.setAttribute('alt', attachment.alt);
+                } else {
+                    var imgEl = el.querySelector('img');
+                    if (imgEl) {
+                        imgEl.setAttribute('src', attachment.url);
+                        if (attachment.alt) imgEl.setAttribute('alt', attachment.alt);
                     }
                 }
             }
         });
 
-        frame.open();
+        mediaFrame.open();
     }
 
     /**
