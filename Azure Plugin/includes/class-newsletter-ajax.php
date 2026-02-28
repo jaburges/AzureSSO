@@ -665,7 +665,8 @@ class Azure_Newsletter_Ajax {
         wp_send_json_success(array(
             'newsletter_id' => $newsletter_id,
             'status' => $data['status'],
-            'debug' => 'path:draft'
+            'content_html' => $data['content_html'],
+            'content_json' => $data['content_json']
         ));
     }
     

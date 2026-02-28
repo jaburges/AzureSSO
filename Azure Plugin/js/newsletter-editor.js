@@ -1782,13 +1782,9 @@
         }
         
         if (step === 3) {
-            // Sync latest design from editor so review always shows current content (including new images)
-            if (editor) {
-                $('#newsletter_content_html').val(getEmailReadyHtml());
-                $('#newsletter_content_json').val(JSON.stringify(editor.getProjectData()));
-            }
+            // Review shows the saved view: use hidden fields (set when leaving step 2 or from save response).
+            // Do not overwrite from editor here so that after Update/Save Draft, Review shows what was just saved.
             updateReviewSummary();
-            // Defer preview update until iframe is visible so images load reliably (no refresh needed)
             setTimeout(function() {
                 updatePreview();
             }, 100);
@@ -2240,7 +2236,12 @@
                 
                 btn.html('<span class="dashicons dashicons-yes-alt"></span> Updated!');
                 $('#save-status').html('<span class="saved">✓ Design updated</span>');
-                
+                if (response.data.content_html !== undefined) {
+                    $('#newsletter_content_html').val(response.data.content_html);
+                }
+                if (response.data.content_json !== undefined) {
+                    $('#newsletter_content_json').val(response.data.content_json);
+                }
                 setTimeout(function() {
                     btn.html(originalHtml);
                     $('#save-status').html('');
@@ -2464,8 +2465,12 @@
                     btn.text('Save Draft');
                 }
                 statusEl.html('<span class="saved">✓ Saved</span>');
-                
-                // Clear saved status after 3 seconds
+                if (response.data.content_html !== undefined) {
+                    $('#newsletter_content_html').val(response.data.content_html);
+                }
+                if (response.data.content_json !== undefined) {
+                    $('#newsletter_content_json').val(response.data.content_json);
+                }
                 setTimeout(function() {
                     statusEl.html('');
                 }, 3000);
