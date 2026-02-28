@@ -1782,8 +1782,16 @@
         }
         
         if (step === 3) {
+            // Sync latest design from editor so review always shows current content (including new images)
+            if (editor) {
+                $('#newsletter_content_html').val(getEmailReadyHtml());
+                $('#newsletter_content_json').val(JSON.stringify(editor.getProjectData()));
+            }
             updateReviewSummary();
-            updatePreview();
+            // Defer preview update until iframe is visible so images load reliably (no refresh needed)
+            setTimeout(function() {
+                updatePreview();
+            }, 100);
         }
         
         if (step === 4) {
@@ -1897,7 +1905,8 @@
     }
 
     /**
-     * Update preview iframe (Step 3)
+     * Update preview iframe (Step 3).
+     * Uses full document HTML so images and styles render.
      */
     function updatePreview() {
         var html = $('#newsletter_content_html').val();
