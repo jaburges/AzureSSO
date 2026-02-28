@@ -8,12 +8,16 @@ if (!defined('ABSPATH')) {
 }
 
 // Enqueue GrapesJS and dependencies
-wp_enqueue_media(); // For WordPress Media Library integration
+wp_enqueue_media();
 wp_enqueue_style('grapesjs', 'https://unpkg.com/grapesjs@0.21.10/dist/css/grapes.min.css', array(), '0.21.10');
-wp_enqueue_style('grapesjs-newsletter', 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.css', array('grapesjs'), '1.0.2');
 wp_enqueue_script('grapesjs', 'https://unpkg.com/grapesjs@0.21.10/dist/grapes.min.js', array(), '0.21.10', true);
-wp_enqueue_script('grapesjs-newsletter', 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.min.js', array('grapesjs'), '1.0.2', true);
+wp_enqueue_script('grapesjs-newsletter', 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/index.js', array('grapesjs'), '1.0.2', true);
 wp_enqueue_script('newsletter-editor', AZURE_PLUGIN_URL . 'js/newsletter-editor.js', array('jquery', 'media-views', 'grapesjs', 'grapesjs-newsletter'), AZURE_PLUGIN_VERSION, true);
+
+// Save WordPress Backbone/underscore before GrapesJS scripts load, in case they overwrite globals
+wp_add_inline_script('grapesjs', 'window.__wpBackbone = window.Backbone; window.__wpUnderscore = window._;', 'before');
+// Restore after GrapesJS scripts are done
+wp_add_inline_script('grapesjs-newsletter', 'if(window.__wpBackbone){window.Backbone=window.__wpBackbone;}if(window.__wpUnderscore){window._=window.__wpUnderscore;}', 'after');
 
 $settings = Azure_Settings::get_all_settings();
 $from_addresses = $settings['newsletter_from_addresses'] ?? array();

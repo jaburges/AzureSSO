@@ -576,6 +576,33 @@
 /* Ensure WordPress media modal appears above GrapesJS */
 .media-modal {
     z-index: 200000 !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+.media-modal .media-modal-content {
+    display: flex !important;
+    flex: 1 !important;
+    overflow: visible !important;
+}
+.media-modal .media-frame {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+}
+.media-modal .media-frame-content {
+    display: block !important;
+    flex: 1 !important;
+    min-height: 300px !important;
+    overflow: auto !important;
+}
+.media-modal .media-frame-title,
+.media-modal .media-frame-router,
+.media-modal .media-frame-toolbar {
+    display: block !important;
+}
+.media-modal .attachments-browser {
+    display: flex !important;
 }
 .media-modal-backdrop {
     z-index: 199999 !important;

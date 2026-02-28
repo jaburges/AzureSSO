@@ -122,10 +122,6 @@
         }
 
         try {
-            // Preserve WordPress's Backbone before GrapesJS potentially overrides it
-            var wpBackbone = window.Backbone;
-            var wpUnderscore = window._;
-            
             editor = grapesjs.init({
                 container: '#gjs-editor',
                 fromElement: false,
@@ -294,10 +290,6 @@
                     }
                 }
             });
-
-            // Restore WordPress's Backbone after GrapesJS init
-            if (wpBackbone) window.Backbone = wpBackbone;
-            if (wpUnderscore) window._ = wpUnderscore;
 
             // Add custom email blocks
             addEmailBlocks();
@@ -1597,30 +1589,38 @@
             return;
         }
 
-        // Check if media templates exist in the DOM
-        if (!document.getElementById('tmpl-media-frame')) {
-            console.error('WP Media templates missing from DOM. wp_enqueue_media() may not have run correctly.');
-            console.log('wp.media exists:', typeof wp.media);
-            console.log('wp.media.view exists:', typeof wp.media.view);
-            console.log('wp.template exists:', typeof wp.template);
-            alert('Media Library templates not loaded. Please refresh the page and try again.');
+        // Diagnostic logging
+        console.log('=== Media Library Diagnostics ===');
+        console.log('  wp.media:', typeof wp.media);
+        console.log('  wp.media.view:', wp.media && typeof wp.media.view);
+        console.log('  wp.media.view.MediaFrame:', wp.media && wp.media.view && typeof wp.media.view.MediaFrame);
+        console.log('  wp.media.view.MediaFrame.Select:', wp.media && wp.media.view && wp.media.view.MediaFrame && typeof wp.media.view.MediaFrame.Select);
+        console.log('  wp.Backbone:', typeof wp.Backbone);
+        console.log('  Backbone:', typeof Backbone);
+        console.log('  Backbone.View:', typeof Backbone !== 'undefined' && typeof Backbone.View);
+        console.log('  _:', typeof _);
+        console.log('  wp.template:', typeof wp.template);
+        console.log('  tmpl-media-frame:', !!document.getElementById('tmpl-media-frame'));
+        console.log('  tmpl-attachment:', !!document.getElementById('tmpl-attachment'));
+        console.log('  tmpl-attachments-browser:', !!document.getElementById('tmpl-attachments-browser'));
+        console.log('================================');
+
+        // Check for critical missing dependencies
+        if (!wp.media.view || !wp.media.view.MediaFrame) {
+            console.error('wp.media.view.MediaFrame is missing - media-views script may not have loaded');
+            alert('Media Library views not loaded. The media-views script may be missing.');
             return;
         }
 
-        // Store current target for use in callback
         openMediaLibrary._currentTarget = props && props.target ? props.target : null;
 
-        // Reuse existing frame (WordPress recommended singleton pattern)
-        if (mediaFrame) {
-            mediaFrame.open();
-            return;
-        }
-
+        // Always create a fresh frame to avoid stale state issues
         try {
             mediaFrame = wp.media({
                 title: 'Select Image for Newsletter',
                 button: { text: 'Insert Image' },
-                multiple: false
+                multiple: false,
+                library: { type: 'image' }
             });
         } catch (err) {
             console.error('Media Library error:', err);
@@ -1632,7 +1632,7 @@
         mediaFrame.on('select', function() {
             var attachment = mediaFrame.state().get('selection').first().toJSON();
             var component = openMediaLibrary._currentTarget || editor.getSelected();
-            
+
             if (!editor || !component) return;
 
             editor.AssetManager.add({
@@ -1641,15 +1641,13 @@
                 height: attachment.height,
                 name: attachment.filename
             });
-            
-            // Update image attributes via GrapesJS API
+
             var attrs = { src: attachment.url };
             if (attachment.alt) {
                 attrs.alt = attachment.alt;
             }
             component.addAttributes(attrs);
-            
-            // Also update the DOM element directly for immediate visual feedback
+
             var el = component.view && component.view.el;
             if (el) {
                 if (el.tagName === 'IMG') {
@@ -1666,6 +1664,29 @@
         });
 
         mediaFrame.open();
+
+        // Post-open diagnostic: check what rendered inside the modal
+        setTimeout(function() {
+            var modal = document.querySelector('.media-modal');
+            if (modal) {
+                var content = modal.querySelector('.media-frame-content');
+                var title = modal.querySelector('.media-frame-title');
+                console.log('=== Post-open Modal Check ===');
+                console.log('  Modal found:', true);
+                console.log('  Title element:', !!title, title ? title.innerHTML : 'N/A');
+                console.log('  Content element:', !!content);
+                console.log('  Content innerHTML length:', content ? content.innerHTML.length : 0);
+                console.log('  Content children:', content ? content.children.length : 0);
+                console.log('  Modal classes:', modal.className);
+                console.log('  Frame element:', !!modal.querySelector('.media-frame'));
+                console.log('  Router element:', !!modal.querySelector('.media-frame-router'));
+                console.log('  Toolbar element:', !!modal.querySelector('.media-frame-toolbar'));
+                console.log('  Browser element:', !!modal.querySelector('.attachments-browser'));
+                console.log('=============================');
+            } else {
+                console.log('Post-open check: No .media-modal found in DOM');
+            }
+        }, 500);
     }
 
     /**
