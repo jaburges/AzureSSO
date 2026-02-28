@@ -121,6 +121,10 @@
         }
 
         try {
+            // Preserve WordPress's Backbone before GrapesJS potentially overrides it
+            var wpBackbone = window.Backbone;
+            var wpUnderscore = window._;
+            
             editor = grapesjs.init({
                 container: '#gjs-editor',
                 fromElement: false,
@@ -289,6 +293,10 @@
                     }
                 }
             });
+
+            // Restore WordPress's Backbone after GrapesJS init
+            if (wpBackbone) window.Backbone = wpBackbone;
+            if (wpUnderscore) window._ = wpUnderscore;
 
             // Add custom email blocks
             addEmailBlocks();
@@ -1263,6 +1271,11 @@
             }
         });
         
+        // Backward compatibility for saved newsletters that reference 'email-image'
+        dc.addType('email-image', {
+            extend: 'default'
+        });
+        
         // === SHORTCODE COMPONENT ===
         dc.addType('wp-shortcode', {
             isComponent: function(el) {
@@ -1588,6 +1601,8 @@
                 title: 'Select Image for Newsletter',
                 button: { text: 'Insert Image' },
                 multiple: false,
+                frame: 'select',
+                state: 'library',
                 library: { type: 'image' }
             });
         } catch (err) {
