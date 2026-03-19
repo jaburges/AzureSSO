@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/jaburges/PTATools
  * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.36
+ * Version: 3.37
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -21,11 +21,12 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.36');
+define('AZURE_PLUGIN_VERSION', '3.37');
 
-// Auto-update from GitHub Releases
+// Auto-update from GitHub Releases (Update URI header must match hostname: github.com)
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
-    if ($plugin_file !== plugin_basename(__FILE__)) {
+    $me = plugin_basename(__FILE__);
+    if ($plugin_file !== $me) {
         return $update;
     }
 
@@ -52,11 +53,17 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
         return false;
     }
 
+    // Slug must be the plugin directory name so WordPress replaces the correct folder (e.g. "Azure Plugin" not "azure-plugin").
+    $slug = dirname($me);
+
     return [
-        'slug'    => $plugin_data['TextDomain'],
+        'id'      => 'https://github.com/jaburges/PTATools/',
+        'slug'    => $slug,
+        'plugin'  => $me,
         'version' => $new_version,
         'url'     => $release['html_url'],
         'package' => $release['assets'][0]['browser_download_url'],
+        'tested'  => '6.9',
     ];
 }, 10, 4);
 
