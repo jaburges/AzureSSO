@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/jaburges/PTATools
  * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.37
+ * Version: 3.38
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.37');
+define('AZURE_PLUGIN_VERSION', '3.38');
 
 // Auto-update from GitHub Releases (Update URI header must match hostname: github.com)
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
@@ -43,7 +43,19 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
     }
 
     $release = json_decode(wp_remote_retrieve_body($response), true);
-    if (empty($release['tag_name']) || empty($release['assets'][0]['browser_download_url'])) {
+    if (empty($release['tag_name']) || empty($release['assets'])) {
+        return $update;
+    }
+
+    // Use the plugin zip asset by name; GitHub also adds "Source code (zip)" which would break updates.
+    $package_url = null;
+    foreach ($release['assets'] as $asset) {
+        if (!empty($asset['name']) && $asset['name'] === 'pta-tools.zip' && !empty($asset['browser_download_url'])) {
+            $package_url = $asset['browser_download_url'];
+            break;
+        }
+    }
+    if (!$package_url) {
         return $update;
     }
 
@@ -62,7 +74,7 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
         'plugin'  => $me,
         'version' => $new_version,
         'url'     => $release['html_url'],
-        'package' => $release['assets'][0]['browser_download_url'],
+        'package' => $package_url,
         'tested'  => '6.9',
     ];
 }, 10, 4);
@@ -773,14 +785,15 @@ class AzurePlugin {
             $write_log("✅ **[STEP 5]** Database connection verified");
             
             $write_log("⏳ **[STEP 6]** Creating database tables");
-            // Create database tables
+            // Create database tables (including auction_bids and other module tables)
             try {
                 Azure_Logger::info('Creating database tables');
                 Azure_Database::create_tables();
                 Azure_Logger::info('Database tables created successfully');
             } catch (Exception $e) {
                 $write_log("❌ **[STEP 6 ERROR]** Failed to create main tables: " . $e->getMessage());
-                throw new Exception("Database table creation failed: " . $e->getMessage());
+                Azure_Logger::error('Database table creation failed: ' . $e->getMessage());
+                // Continue activation so plugin still updates; admin can fix DB or re-run activation
             }
             
             // Create PTA database tables
