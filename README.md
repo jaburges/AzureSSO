@@ -1,8 +1,8 @@
-# Microsoft WP - Complete WordPress Azure Integration Plugin
+# PTA Tools – WordPress Azure & WooCommerce Integration
 
-A comprehensive WordPress plugin that seamlessly integrates Microsoft Azure and Microsoft 365 services into WordPress. Manage everything from single sign-on authentication to calendar sync, email services, backups, PTA organizational management, and media storage—all from one unified plugin.
+A comprehensive WordPress plugin that integrates Microsoft Azure/Microsoft 365 with WordPress and WooCommerce. Single sign-on, calendar sync, email, backups, PTA organizational management, OneDrive media, **Classes**, **Event Tickets**, **Newsletter**, and **Auction** modules—all from one unified plugin (also known as **Microsoft WP**).
 
-**Version 1.1** - Recently optimized for performance with 30-40% faster page loads!
+**Recent:** Performance optimizations (30–40% faster), Auction module (bidding, Buy It Now, winner flow), Calendar manual sync, and sync history.
 
 ---
 
@@ -22,6 +22,10 @@ A comprehensive WordPress plugin that seamlessly integrates Microsoft Azure and 
    - [Email](#email)
    - [PTA Roles Management](#pta-roles-management)
    - [OneDrive/SharePoint Media](#onenedrivesharepoint-media)
+   - [Classes](#classes)
+   - [Newsletter](#newsletter)
+   - [Event Tickets](#event-tickets)
+   - [Auction](#auction)
 8. [Shortcodes Reference](#shortcodes-reference)
 9. [Performance & Optimization](#performance--optimization)
 10. [Troubleshooting](#troubleshooting)
@@ -31,15 +35,15 @@ A comprehensive WordPress plugin that seamlessly integrates Microsoft Azure and 
 
 ## 🎯 **Introduction**
 
-**Microsoft WP** is an all-in-one plugin that brings the power of Microsoft Azure and Microsoft 365 to your WordPress site. Whether you need enterprise-grade authentication, automated backups, calendar integration, email services, or organizational management for PTAs and nonprofits, this plugin has you covered.
+**PTA Tools** (Microsoft WP) is an all-in-one plugin that brings Microsoft Azure/Microsoft 365 and WooCommerce together. Use it for enterprise authentication, backups, calendar sync, email, PTA roles, OneDrive media, **Classes** (variable pricing, TEC events), **Event Tickets** (seating, QR, Apple Wallet), **Newsletter** (drag-drop editor, tracking), and **Auction** (bidding, Buy It Now, winner checkout).
 
-### **Why Microsoft WP?**
+### **Why PTA Tools?**
 
-- **Unified Management**: One plugin for all your Microsoft integrations
-- **Enterprise-Grade Security**: OAuth 2.0 authentication with Azure AD
-- **Flexible Configuration**: Use common credentials or separate credentials per module
-- **Modular Design**: Enable only the modules you need
-- **Professional Grade**: Built for reliability, scalability, and ease of use
+- **Unified Management**: One plugin for Microsoft integrations and PTA/WooCommerce features
+- **Enterprise-Grade Security**: OAuth 2.0 with Azure AD
+- **Flexible Configuration**: Common or per-module Azure credentials
+- **Modular Design**: Enable only the modules you need (SSO, Backup, Calendar, Email, PTA, OneDrive, TEC Sync, Classes, Newsletter, Tickets, Auction)
+- **Professional Grade**: Built for reliability and ease of use
 
 ---
 
@@ -132,6 +136,31 @@ A comprehensive code review has been completed:
 - Folder organization
 - Year-based folder creation
 
+### **📚 Classes**
+- WooCommerce “Class” product type with TEC event integration
+- Variable pricing (min/max attendees, final price)
+- Commit-to-buy flow and payment request emails
+- Chaperone assignment and season/schedule metadata
+
+### **📧 Newsletter**
+- Drag-and-drop newsletter editor
+- Lists, campaigns, and queue management
+- Open/click tracking and bounce handling
+- Send via Microsoft Graph or configured mailer
+
+### **🎫 Event Tickets**
+- WooCommerce “Event Ticket” product type
+- Visual seating designer and seat selection
+- QR code tickets and Apple Wallet
+- Event check-in
+
+### **🔨 Auction**
+- WooCommerce “Auction” product type
+- Bidding end date/time; optional Buy It Now with immediate payment
+- Quick bid buttons (+$5, +$10, +$20) and max bid (auto-bid)
+- Masked bidder display (e.g. “Ja***”); full bid audit trail
+- Winner order and checkout (Stripe via WooCommerce); “You won” email
+
 ---
 
 ## 📋 **Requirements**
@@ -142,6 +171,7 @@ A comprehensive code review has been completed:
 - **MySQL**: 5.6 or higher
 - **HTTPS**: Required for Azure authentication
 - **cURL Extension**: Required for API communications
+- **WooCommerce**: Required for Classes, Event Tickets, and Auction modules
 
 ### **Recommended Requirements**
 - **WordPress**: 6.0 or higher
@@ -278,14 +308,19 @@ Use different Azure app registrations for each module:
 
 Enable or disable modules based on your needs:
 
-1. Go to **Azure Plugin** → **Main Settings**
+1. Go to **PTA Tools** (Azure Plugin) → **Main Settings**
 2. Toggle modules on/off:
-   - **SSO** - Single Sign-On authentication
-   - **Backup** - Azure Blob Storage backups
-   - **Calendar** - Calendar embedding and sync
-   - **Email** - Microsoft Graph email services
-   - **PTA Roles** - Organizational management
-   - **OneDrive Media** - OneDrive/SharePoint integration
+   - **SSO** – Single Sign-On authentication
+   - **Backup** – Azure Blob Storage backups
+   - **Calendar** – Calendar embedding
+   - **Email** – Microsoft Graph email
+   - **PTA Roles** – Organizational management
+   - **TEC Integration** – Sync Outlook calendars to The Events Calendar
+   - **OneDrive Media** – OneDrive/SharePoint media
+   - **Classes** – Class products with variable pricing and TEC
+   - **Newsletter** – Newsletter editor and sending
+   - **Event Tickets** – Seating, QR tickets, check-in
+   - **Auction** – Auction products with bidding and Buy It Now
 
 3. Click **Configure** next to any enabled module to access its settings
 
@@ -901,6 +936,132 @@ Files are accessed through the WordPress media library interface.
 
 ---
 
+## 📚 **Classes**
+
+**Admin Page**: Azure Plugin → Classes
+
+### **Overview**
+
+WooCommerce “Class” product type for courses/workshops with The Events Calendar integration, variable pricing based on enrollment, and a commit-to-buy flow. Admins set schedule, venue, chaperone, and pricing; customers commit first and pay when the final price is set.
+
+### **Key Features**
+
+- **Product type**: “Class” in WooCommerce product type selector
+- **Schedule**: Start date, recurrence, occurrences, start time, duration
+- **Variable pricing**: Min/max attendees, price at min/max, final price when finalized
+- **Commitment flow**: $0 checkout to reserve; payment request email when final price is set
+- **Chaperone**: Assign and invite by email
+- **TEC**: Optional link to TEC events for calendar display
+
+### **No Shortcodes Listed Here**
+
+Class products are sold via standard WooCommerce product pages and cart/checkout.
+
+---
+
+## 📧 **Newsletter**
+
+**Admin Page**: Azure Plugin → Newsletter
+
+### **Overview**
+
+Create and send newsletters with a drag-and-drop editor, manage lists and campaigns, track opens/clicks, and handle bounces. Can use the plugin’s email module (e.g. Microsoft Graph) or your configured mailer.
+
+### **Key Features**
+
+- **Editor**: Drag-and-drop content blocks
+- **Lists**: Subscriber lists and membership
+- **Campaigns**: Create and send campaigns from templates
+- **Queue**: Queue management and sending
+- **Tracking**: Open and click tracking; bounce handling and stats
+
+### **No Shortcodes Reference in This Section**
+
+Newsletter signup/display shortcodes (if any) are configured in the Newsletter module settings.
+
+---
+
+## 🎫 **Event Tickets**
+
+**Admin Page**: Azure Plugin → Event Tickets
+
+### **Overview**
+
+WooCommerce “Event Ticket” product type with visual seating designer, seat selection on the frontend, QR code tickets, Apple Wallet support, and event check-in.
+
+### **Key Features**
+
+- **Product type**: “Event Ticket” in WooCommerce
+- **Seating**: Designer for venue layouts; customers pick seats
+- **Tickets**: QR codes and Apple Wallet passes
+- **Check-in**: Dedicated check-in page/tool for events
+- **TEC**: Link to The Events Calendar events and venues
+
+### **No Shortcodes Listed Here**
+
+Tickets are sold via WooCommerce product pages; seating UI is shown on the single product page.
+
+---
+
+## 🔨 **Auction**
+
+**Admin Page**: Azure Plugin → Auction
+
+### **Overview**
+
+WooCommerce “Auction” product type with timed bidding, optional Buy It Now, max bid (proxy/auto-bid), and winner checkout. Requires WooCommerce; payment runs through WooCommerce checkout (e.g. Stripe via WooCommerce Stripe Gateway).
+
+### **Configuration Steps**
+
+#### **1. Enable the Module**
+
+1. Go to **Azure Plugin** → **Main Settings**
+2. Enable **Auction**
+3. Click **Configure** to open the Auction dashboard
+
+#### **2. Create an Auction Product**
+
+1. Go to **Products** → **Add New** (or edit a product)
+2. Set **Product type** to **Auction**
+3. Open the **Auction** tab and set:
+   - **Bidding End Date** and **Bidding End Time**
+   - **Buy It Now**: checkbox and price (optional)
+   - **Require immediate payment**: when checked, Buy It Now sends the customer to checkout immediately
+
+4. Set **Regular price** as the starting/minimum bid
+5. Publish the product
+
+#### **3. How Bidding Works**
+
+- **Frontend**: Single product page shows current price, bid amount, quick buttons (+$5, +$10, +$20), and optional “Set max bid”. Recent bids show masked bidders (e.g. “Ja***”) and amounts.
+- **Login**: Users must be logged in to bid; others see “Register/Login to bid”.
+- **Max bid**: If set, the system auto-bids up to that amount in increments (e.g. $5) when outbid.
+- **Audit**: All bids and times are stored in the database for audit.
+
+#### **4. When the Auction Ends**
+
+- When the bidding end time has passed (checked on product load or cron), the auction is marked ended.
+- The winner is the user with the highest bid at end time.
+- A WooCommerce order is created for the winning amount and the winner is emailed a “You won” message with a link to checkout to pay (Stripe or other gateways as configured).
+
+#### **5. Buy It Now**
+
+- If Buy It Now is enabled and the auction has not ended, a “Buy It Now” button is shown.
+- On click, an order is created at the Buy It Now price and the customer is redirected to checkout.
+- The auction is marked sold so the normal “winner” flow does not run.
+
+### **Requirements**
+
+- **WooCommerce** must be active
+- **Stripe**: Use WooCommerce Stripe Gateway for Stripe; no separate Stripe SDK in the plugin
+- **Email**: “You won” emails use `wp_mail` (or the plugin’s email module if you route transactional mail through it)
+
+### **No Shortcodes**
+
+Auction products are displayed and bid on via the standard WooCommerce single product page.
+
+---
+
 ## 📚 **Shortcodes Reference**
 
 ### **Quick Reference Table**
@@ -923,6 +1084,10 @@ Files are accessed through the WordPress media library interface.
 | | `[pta-department-vp]` | Department VP info |
 | | `[pta-open-positions]` | Open positions list |
 | | `[pta-user-roles]` | User's role assignments |
+| **Classes** | — | Product-based; use WooCommerce product/cart pages |
+| **Newsletter** | — | Configure in Newsletter module (lists/campaigns) |
+| **Event Tickets** | — | Product-based; seating on single product page |
+| **Auction** | — | Product-based; bid UI on single product page |
 
 ### **Shortcode Examples**
 
@@ -1057,6 +1222,12 @@ See `review.md` for complete optimization roadmap and priorities.
 - Verify authentication is complete
 - Test connection button
 - Check site URL format for SharePoint
+
+#### **Auction Bidding or Buy It Now Not Working**
+- Ensure **WooCommerce** is installed and active
+- Ensure **Auction** module is enabled in Main Settings
+- Users must be logged in to bid; show “Register/Login to bid” if not
+- For Stripe: install WooCommerce Stripe Gateway; payment runs through checkout
 
 ### **Debug Mode**
 
@@ -1222,54 +1393,49 @@ This plugin integrates and enhances functionality from multiple Microsoft servic
 
 ## 📊 **Version History**
 
-### **Version 1.1** (Current)
+### **Version 3.35** (Current)
+- ✅ **Auction module**: WooCommerce Auction product type, bidding end date/time, Buy It Now, require immediate payment
+- ✅ Bidding: quick +$5/+$10/+$20, max bid (auto-bid), masked bidders (e.g. Ja***), full bid audit in database
+- ✅ Winner flow: end-of-auction order creation, checkout redirect, “You won” email
+- ✅ Calendar: Manual Sync Now button; sync history for TEC Integration
+
+### **Version 1.1**
 - ✅ Major performance optimization (45-50% faster)
-- ✅ **Phase 1:** Hot path logging cleanup (108 writes eliminated)
-- ✅ **Phase 2:** Component init cleanup (77 writes eliminated)
-- ✅ User-controlled debug mode with module selection
-- ✅ Automatic log rotation and cleanup
-- ✅ Scheduled maintenance system
-- ✅ Improved error handling
-- ✅ Enhanced security (nonce verification improvements)
-- ✅ Bug fixes for TEC sync, OneDrive media, backup settings
+- ✅ Hot path and component init logging cleanup
+- ✅ User-controlled debug mode, log rotation, scheduled maintenance
 
 ### **Version 1.0**
-- Initial release with 8 core modules
-- Complete Azure/Microsoft 365 integration
-- SSO, Backup, Calendar, Email, PTA, OneDrive features
+- Initial release with core modules
+- SSO, Backup, Calendar, Email, PTA, OneDrive; later Classes, Newsletter, Event Tickets, TEC Integration, Auction
 
 ---
 
 ## 🎯 **Development Status**
 
-**Current Focus:** Performance & optimization
-**Code Quality:** 6.5/10 (see `review.md` for details)
+**Current Focus:** Feature-complete modules (Auction, Calendar sync, etc.)
+**Code Quality:** See `review.md` for details
 **Test Coverage:** Manual testing (automated tests planned)
-**Documentation:** Comprehensive (README + inline help)
+**Documentation:** README covers all modules; inline help in admin
+
+**Modules:** SSO, Backup, Calendar Embed, Calendar Sync (TEC), Email, PTA Roles, OneDrive Media, Classes, Newsletter, Event Tickets, Auction
 
 **Recent Achievements:**
-- ✅ **Phase 1 Complete:** Hot path logging cleanup (108 writes eliminated)
-- ✅ **Phase 2 Complete:** Component init cleanup (77 writes eliminated)
-- ✅ User-controlled debug mode implemented
-- ✅ Code review and roadmap established
-- ✅ Logging strategy implemented
-- ✅ Scheduled maintenance active
-- ✅ **Total Performance Gain:** 45-50% faster page loads
+- ✅ Auction module (bidding, max bid, Buy It Now, winner flow)
+- ✅ Calendar manual sync and sync history
+- ✅ Performance optimizations and debug mode
 
-**Planned Improvements (Phase 3):**
-- 🔄 Database query optimization (SELECT * replacement, indexing)
-- 🔄 Settings caching implementation (object cache)
-- 🔄 CSS refactoring (remove 262 !important overrides)
+**Planned Improvements:**
+- 🔄 Database query optimization, settings caching, CSS refactoring
 - 🔄 OAuth token handling consolidation
 
-See `review.md` for complete roadmap and priorities.
+See `review.md` for full roadmap and priorities.
 
 ---
 
-**Version**: 1.1  
+**Version**: 3.35  
 **Author**: Jamie Burgess  
-**Last Updated**: November 14, 2025  
-**Plugin URI**: https://github.com/jamieburgess/microsoft-wp
+**Last Updated**: February 2026  
+**Plugin URI**: https://github.com/jaburges/PTATools
 
 **Ready to get started?** Follow the [Initial Setup](#initial-setup--basic-configuration) guide above!
 
