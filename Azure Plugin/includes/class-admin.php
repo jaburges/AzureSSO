@@ -61,8 +61,6 @@ class Azure_Admin {
         add_action('wp_ajax_azure_export_settings', array($this, 'ajax_export_settings'));
         add_action('wp_ajax_azure_import_settings', array($this, 'ajax_import_settings'));
         add_action('wp_ajax_azure_get_recent_activity', array($this, 'ajax_get_recent_activity'));
-        add_action('wp_ajax_azure_reset_setup_wizard', array($this, 'ajax_reset_setup_wizard'));
-        
         // Debug: Log that admin AJAX handlers are registered
         if (class_exists('Azure_Logger')) {
                 try {
@@ -860,7 +858,7 @@ class Azure_Admin {
         $enabled = $_POST['enabled'] === 'true';
         
         // Validate module name
-        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter', 'tickets');
+        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter', 'tickets', 'auction');
         if (!in_array($module, $valid_modules)) {
             wp_send_json_error('Invalid module name: ' . $module);
         }
@@ -1341,29 +1339,6 @@ class Azure_Admin {
     /**
      * Reset setup wizard for testing
      */
-    public function ajax_reset_setup_wizard() {
-        if (!current_user_can('administrator') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
-            wp_send_json_error('Unauthorized access');
-        }
-        
-        try {
-            // Reset wizard settings
-            Azure_Settings::update_setting('setup_wizard_completed', false);
-            Azure_Settings::update_setting('setup_wizard_step', 0);
-            Azure_Settings::update_setting('setup_wizard_azure_validated', false);
-            Azure_Settings::update_setting('setup_wizard_backup_validated', false);
-            
-            Azure_Logger::info('Admin: Setup wizard reset by user ' . get_current_user_id());
-            
-            wp_send_json_success(array(
-                'message' => 'Setup wizard reset successfully',
-                'redirect' => admin_url('admin.php?page=azure-plugin-setup')
-            ));
-        } catch (Exception $e) {
-            wp_send_json_error('Failed to reset setup wizard: ' . $e->getMessage());
-        }
-    }
-    
     public function ajax_get_recent_activity() {
         if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
             wp_send_json_error('Unauthorized access');

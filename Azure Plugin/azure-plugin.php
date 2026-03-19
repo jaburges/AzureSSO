@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/jaburges/PTATools
  * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.38
+ * Version: 3.39
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.38');
+define('AZURE_PLUGIN_VERSION', '3.39');
 
 // Auto-update from GitHub Releases (Update URI header must match hostname: github.com)
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
@@ -44,6 +44,9 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
 
     $release = json_decode(wp_remote_retrieve_body($response), true);
     if (empty($release['tag_name']) || empty($release['assets'])) {
+        if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            error_log('PTA Tools updater: No tag_name or assets in release response');
+        }
         return $update;
     }
 
@@ -56,6 +59,10 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
         }
     }
     if (!$package_url) {
+        if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            $names = array_map(function ($a) { return $a['name'] ?? ''; }, $release['assets']);
+            error_log('PTA Tools updater: pta-tools.zip not found in assets. Asset names: ' . implode(', ', $names));
+        }
         return $update;
     }
 
@@ -67,6 +74,10 @@ add_filter('update_plugins_github.com', function ($update, array $plugin_data, s
 
     // Slug must be the plugin directory name so WordPress replaces the correct folder (e.g. "Azure Plugin" not "azure-plugin").
     $slug = dirname($me);
+
+    if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+        error_log(sprintf('PTA Tools updater: offering update plugin=%s slug=%s from %s to %s package=%s', $me, $slug, $plugin_data['Version'], $new_version, $package_url));
+    }
 
     return [
         'id'      => 'https://github.com/jaburges/PTATools/',
