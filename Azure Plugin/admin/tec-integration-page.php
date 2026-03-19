@@ -171,6 +171,9 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
                 <button type="button" class="button" id="refresh-outlook-calendars">
                     <span class="dashicons dashicons-update"></span> Refresh Available Calendars
                 </button>
+                <button type="button" class="button" id="tec-manual-sync-now-mapping">
+                    <span class="dashicons dashicons-cloud-upload"></span> Manual Sync Now
+                </button>
                 <button type="button" class="button button-primary" id="add-calendar-mapping">
                     <span class="dashicons dashicons-plus-alt"></span> Add Calendar Mapping
                 </button>

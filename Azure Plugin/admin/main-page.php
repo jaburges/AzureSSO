@@ -191,6 +191,22 @@ if (!defined('ABSPATH')) {
                         <p>Visual seating designer, QR code tickets, Apple Wallet, and event check-in.</p>
                     </div>
                 </div>
+                
+                <div class="module-card <?php echo ($settings['enable_auction'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                    <div class="module-header">
+                        <h3><span class="dashicons dashicons-hammer"></span> Auction</h3>
+                        <div class="module-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="module-toggle" data-module="auction" <?php checked($settings['enable_auction'] ?? false); ?> />
+                                <span class="slider"></span>
+                            </label>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-auction'); ?>" class="button button-configure">Configure</a>
+                        </div>
+                    </div>
+                    <div class="module-description">
+                        <p>WooCommerce auction products with bidding, max bid, Buy It Now, and winner checkout.</p>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -209,6 +225,7 @@ if (!defined('ABSPATH')) {
                 <input type="hidden" name="enable_classes" id="hidden_enable_classes" value="<?php echo ($settings['enable_classes'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_newsletter" id="hidden_enable_newsletter" value="<?php echo ($settings['enable_newsletter'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_tickets" id="hidden_enable_tickets" value="<?php echo ($settings['enable_tickets'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_auction" id="hidden_enable_auction" value="<?php echo ($settings['enable_auction'] ?? false) ? '1' : '0'; ?>" />
                 
                 <div class="credentials-section">
                     <h2>Azure Credentials</h2>

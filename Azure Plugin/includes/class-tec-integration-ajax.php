@@ -647,7 +647,20 @@ class Azure_TEC_Integration_Ajax {
             
             if ($results && $results['success']) {
                 Azure_Logger::info("TEC Integration AJAX: Manual sync completed - Calendars: {$results['total_calendars']}, Events: {$results['total_events_synced']}, Errors: {$results['total_errors']}", 'TEC');
-                
+                if (class_exists('Azure_Database')) {
+                    Azure_Database::log_activity(
+                        'tec',
+                        'manual_sync_completed',
+                        'sync',
+                        null,
+                        array(
+                            'calendars' => $results['total_calendars'],
+                            'events_synced' => $results['total_events_synced'],
+                            'errors' => $results['total_errors']
+                        ),
+                        'success'
+                    );
+                }
                 wp_send_json_success(array(
                     'calendars_synced' => $results['total_calendars'],
                     'total_events_synced' => $results['total_events_synced'],
@@ -665,7 +678,7 @@ class Azure_TEC_Integration_Ajax {
     }
     
     /**
-     * Get sync history
+     * Get sync history from activity_log (module=tec, action/details/status schema)
      */
     public function ajax_get_sync_history() {
         if (!check_ajax_referer('azure_plugin_nonce', 'nonce', false)) {
@@ -680,63 +693,76 @@ class Azure_TEC_Integration_Ajax {
         
         global $wpdb;
         $activity_table = Azure_Database::get_table_name('activity_log');
-        
         if (!$activity_table) {
             wp_send_json_success(array());
             return;
         }
         
-        // Get recent TEC sync activities
+        // activity_log has: module, action, details (JSON), status, created_at (no category/level/message)
         $history = $wpdb->get_results(
-            "SELECT * FROM {$activity_table} 
-             WHERE category = 'TEC' 
-             AND level IN ('info', 'success', 'error')
-             AND message LIKE '%sync%'
-             ORDER BY created_at DESC 
-             LIMIT 20",
+            $wpdb->prepare(
+                "SELECT id, module, action, details, status, created_at FROM {$activity_table}
+                 WHERE LOWER(module) = %s
+                 AND (action LIKE %s OR action = %s OR action LIKE %s)
+                 ORDER BY created_at DESC LIMIT 50",
+                'tec',
+                '%sync%',
+                'tec_log',
+                '%scheduled%'
+            ),
             ARRAY_A
         );
         
         $formatted_history = array();
-        
-        if ($history) {
-            foreach ($history as $record) {
-                // Try to parse sync info from message
-                $message = $record['message'];
-                $type = 'Manual';
-                $calendars = 'Multiple';
-                $events_count = 0;
-                $status = 'success';
-                
-                // Extract events count if present
-                if (preg_match('/(\d+)\s+events?/i', $message, $matches)) {
-                    $events_count = intval($matches[1]);
+        foreach ($history ?: array() as $record) {
+            $details = !empty($record['details']) ? json_decode($record['details'], true) : null;
+            $type = 'Manual';
+            $calendars = '—';
+            $events_count = 0;
+            $status = $record['status'] === 'error' ? 'failed' : (strpos($record['status'], 'fail') !== false ? 'failed' : 'success');
+            $message = '';
+            
+            // From Azure_Database::log_activity (scheduler): action = scheduled_sync_completed, mapping_scheduled_sync_completed, etc.; details = array(calendars, events_synced, errors, ...)
+            if (is_array($details)) {
+                if (isset($details['events_synced'])) {
+                    $events_count = (int) $details['events_synced'];
                 }
-                
-                // Determine status
-                if (strpos($message, 'failed') !== false || strpos($message, 'error') !== false) {
-                    $status = 'failed';
-                } elseif (strpos($message, 'completed') !== false) {
-                    $status = 'success';
+                if (isset($details['calendars'])) {
+                    $calendars = is_numeric($details['calendars']) ? (int) $details['calendars'] . ' calendar(s)' : $details['calendars'];
                 }
-                
-                // Determine type
-                if (strpos($message, 'scheduled') !== false || strpos($message, 'Scheduled') !== false) {
-                    $type = 'Scheduled';
+                if (isset($details['calendar_name'])) {
+                    $calendars = $details['calendar_name'];
                 }
-                
-                $formatted_history[] = array(
-                    'timestamp' => date('M j, Y g:i A', strtotime($record['created_at'])),
-                    'type' => $type,
-                    'calendars' => $calendars,
-                    'events_count' => $events_count,
-                    'status' => $status,
-                    'message' => $message
-                );
+                if (isset($details['message'])) {
+                    $message = $details['message'];
+                }
             }
+            
+            if (strpos($record['action'], 'scheduled') !== false || strpos($record['action'], 'mapping_scheduled') !== false) {
+                $type = 'Scheduled';
+            } elseif ($record['action'] === 'manual_sync_completed' || $record['action'] === 'tec_log') {
+                $type = 'Manual';
+                if ($record['action'] === 'tec_log' && is_array($details) && isset($details['message'])) {
+                    $message = $details['message'];
+                    if (preg_match('/(\d+)\s+events?/i', $message, $m)) {
+                        $events_count = (int) $m[1];
+                    }
+                    if (strpos($message, 'failed') !== false || strpos($message, 'error') !== false) {
+                        $status = 'failed';
+                    }
+                }
+            }
+            
+            $formatted_history[] = array(
+                'timestamp' => date('M j, Y g:i A', strtotime($record['created_at'])),
+                'type' => $type,
+                'calendars' => $calendars,
+                'events_count' => $events_count,
+                'status' => $status,
+                'message' => $message
+            );
         }
         
-        Azure_Logger::debug('TEC Integration AJAX: Retrieved ' . count($formatted_history) . ' sync history records', 'TEC');
         wp_send_json_success($formatted_history);
     }
     

@@ -355,6 +355,23 @@ class Azure_Database {
             KEY expires_at (expires_at)
         ) $charset_collate;";
         
+        // Auction Bids table for audit trail
+        $table_auction_bids = $wpdb->prefix . 'azure_auction_bids';
+        $sql_auction_bids = "CREATE TABLE $table_auction_bids (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            product_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NOT NULL,
+            bid_amount decimal(14,2) NOT NULL,
+            max_bid decimal(14,2) DEFAULT NULL,
+            is_auto_bid tinyint(1) DEFAULT 0,
+            ip_address varchar(45) DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY product_id (product_id),
+            KEY user_id (user_id),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
         // Create all tables
@@ -374,6 +391,7 @@ class Azure_Database {
         dbDelta($sql_onedrive_files);
         dbDelta($sql_onedrive_sync_queue);
         dbDelta($sql_onedrive_tokens);
+        dbDelta($sql_auction_bids);
         
         // Log successful table creation
         Azure_Logger::info('Azure Plugin database tables created successfully');
@@ -399,6 +417,7 @@ class Azure_Database {
             'onedrive_files' => $wpdb->prefix . 'azure_onedrive_files',
             'onedrive_sync_queue' => $wpdb->prefix . 'azure_onedrive_sync_queue',
             'onedrive_tokens' => $wpdb->prefix . 'azure_onedrive_tokens',
+            'auction_bids' => $wpdb->prefix . 'azure_auction_bids',
             'newsletters' => $wpdb->prefix . 'azure_newsletters',
             'newsletter_queue' => $wpdb->prefix . 'azure_newsletter_queue',
             'newsletter_stats' => $wpdb->prefix . 'azure_newsletter_stats',

@@ -1033,21 +1033,14 @@ jQuery(document).ready(function($) {
     // ==========================================
     
     // ==========================================
-    // Manual Sync Now Handler
+    // Manual Sync Now Handler (Step 2 Calendar Mapping + Step 3 Manual Sync)
     // ==========================================
-    $('#tec-manual-sync-btn').on('click', function(e) {
-        e.preventDefault(); // Prevent any default action
-        
-        var button = $(this);
-        
+    function runManualSyncNow(button) {
         if (!confirm('This will sync all enabled calendar mappings now. This may take a few minutes. Continue?')) {
             return;
         }
-        
+        var originalHtml = button.html();
         button.prop('disabled', true).html('<span class="spinner is-active"></span> Syncing...');
-        
-        console.log('Starting manual sync...');
-        
         $.ajax({
             url: ajaxurl,
             type: 'POST',
@@ -1057,48 +1050,38 @@ jQuery(document).ready(function($) {
                 nonce: azureTecAdmin.nonce
             },
             success: function(response) {
-                console.log('Manual Sync Response:', response);
-                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Sync Now');
-                
+                button.prop('disabled', false).html(originalHtml);
                 if (response.success) {
                     var data = response.data;
                     var message = 'Sync completed successfully!\n\n';
                     message += 'Calendars synced: ' + data.calendars_synced + '\n';
                     message += 'Total events synced: ' + data.total_events_synced + '\n';
                     message += 'Errors: ' + data.total_errors;
-                    
                     alert(message);
-                    
-                    // Reload to show updated sync times
                     location.reload();
                 } else {
-                    var errorMsg = 'Unknown error';
-                    if (typeof response.data === 'string') {
-                        errorMsg = response.data;
-                    } else if (response.data && response.data.message) {
-                        errorMsg = response.data.message;
-                    }
+                    var errorMsg = typeof response.data === 'string' ? response.data : (response.data && response.data.message) ? response.data.message : 'Unknown error';
                     alert('Sync failed: ' + errorMsg);
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Manual Sync AJAX Error:', xhr, status, error);
-                console.error('Response Text:', xhr.responseText);
-                button.prop('disabled', false).html('<span class="dashicons dashicons-update"></span> Sync Now');
-                
-                // Try to parse error response
+                button.prop('disabled', false).html(originalHtml);
                 try {
                     var errorResponse = JSON.parse(xhr.responseText);
-                    if (errorResponse && errorResponse.data) {
-                        alert('Sync failed: ' + errorResponse.data);
-                    } else {
-                        alert('Sync failed: ' + error);
-                    }
-                } catch(e) {
+                    alert('Sync failed: ' + (errorResponse && errorResponse.data ? errorResponse.data : error));
+                } catch (e) {
                     alert('Sync failed: ' + error + ' (Status: ' + status + ')');
                 }
             }
         });
+    }
+    $('#tec-manual-sync-btn').on('click', function(e) {
+        e.preventDefault();
+        runManualSyncNow($(this));
+    });
+    $('#tec-manual-sync-now-mapping').on('click', function(e) {
+        e.preventDefault();
+        runManualSyncNow($(this));
     });
     
     // ==========================================
@@ -1155,4 +1138,35 @@ jQuery(document).ready(function($) {
             }
         });
     });
+
+    // Load Recent Sync History when section is present
+    if ($('#sync-history-list').length) {
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'azure_get_sync_history',
+                nonce: azureTecAdmin.nonce
+            },
+            success: function(response) {
+                var tbody = $('#sync-history-list');
+                if (!response.success || !response.data || response.data.length === 0) {
+                    tbody.html('<tr><td colspan="5" style="text-align: center; padding: 20px;"><em style="color: #666;">No sync history yet.</em></td></tr>');
+                    return;
+                }
+                var rows = response.data.map(function(row) {
+                    var statusClass = row.status === 'failed' ? 'status-failed' : 'status-success';
+                    return '<tr><td>' + (row.timestamp || '—') + '</td><td>' + (row.type || '—') + '</td><td>' + (row.calendars || '—') + '</td><td>' + (row.events_count || 0) + '</td><td><span class="status-badge ' + statusClass + '">' + (row.status || '—') + '</span></td></tr>';
+                });
+                tbody.html(rows.join(''));
+            },
+            error: function() {
+                $('#sync-history-list').html('<tr><td colspan="5" style="text-align: center; padding: 20px;"><em style="color: #999;">Could not load sync history.</em></td></tr>');
+            }
+        });
+    }
+});
+        });
+    }
 });

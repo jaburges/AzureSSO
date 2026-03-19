@@ -262,6 +262,7 @@ class Azure_Settings {
             'enable_classes' => false,
             'enable_newsletter' => false,
             'enable_tickets' => false,
+            'enable_auction' => false,
             
             // Debug settings
             'debug_mode' => false,

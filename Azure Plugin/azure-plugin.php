@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.34');
+define('AZURE_PLUGIN_VERSION', '3.35');
 
 // Auto-update from GitHub Releases
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
@@ -167,6 +167,9 @@ class AzurePlugin {
                 // Newsletter functionality
                 'class-newsletter-module.php' => 'Newsletter Module class',
                 
+                // Auction functionality
+                'class-auction-module.php' => 'Auction Module class',
+                
                 // Setup Wizard
                 'class-setup-wizard.php' => 'Setup Wizard class'
             );
@@ -305,6 +308,10 @@ class AzurePlugin {
             
             if (!empty($settings['enable_newsletter'])) {
                 $this->init_newsletter_components();
+            }
+            
+            if (!empty($settings['enable_auction'])) {
+                $this->init_auction_components();
             }
             
         } catch (Exception $e) {
@@ -665,6 +672,22 @@ class AzurePlugin {
                 'line' => $e->getLine()
             ));
             error_log('Azure Plugin: Newsletter init error - ' . $e->getMessage());
+        }
+    }
+    
+    private function init_auction_components() {
+        try {
+            if (class_exists('Azure_Auction_Module')) {
+                Azure_Auction_Module::get_instance();
+                Azure_Logger::debug_module('Auction', 'Auction Module initialized successfully');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Auction init failed: ' . $e->getMessage(), array(
+                'module' => 'Auction',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Auction init error - ' . $e->getMessage());
         }
     }
     

@@ -211,6 +211,15 @@ class Azure_Admin {
             array($this, 'admin_page_tickets')
         );
         
+        add_submenu_page(
+            'azure-plugin',
+            'PTA Tools - Auction',
+            'Auction',
+            'manage_options',
+            'azure-plugin-auction',
+            array($this, 'admin_page_auction')
+        );
+        
         // Tickets sub-pages (hidden from menu)
         add_submenu_page(
             null, // Hidden
@@ -707,6 +716,15 @@ class Azure_Admin {
             include AZURE_PLUGIN_PATH . 'admin/tickets-page.php';
         } catch (Exception $e) {
             $this->render_error_page('Event Tickets', $e);
+        }
+    }
+    
+    public function admin_page_auction() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/auction-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Auction', $e);
         }
     }
     
@@ -2205,6 +2223,15 @@ class Azure_Admin {
                 array($this, 'render_onedrive_media_widget')
             );
         }
+        
+        // Auction widget (if enabled)
+        if (Azure_Settings::is_module_enabled('auction')) {
+            wp_add_dashboard_widget(
+                'azure_auction_stats',
+                __('Auction', 'azure-plugin'),
+                array($this, 'render_auction_widget')
+            );
+        }
     }
     
     /**
@@ -2222,6 +2249,7 @@ class Azure_Admin {
             'enable_pta' => array('name' => 'PTA Roles', 'icon' => 'groups'),
             'enable_newsletter' => array('name' => 'Newsletter', 'icon' => 'megaphone'),
             'enable_onedrive_media' => array('name' => 'OneDrive Media', 'icon' => 'cloud-upload'),
+            'enable_auction' => array('name' => 'Auction', 'icon' => 'hammer'),
         );
         
         foreach ($module_map as $key => $info) {
@@ -2695,6 +2723,37 @@ class Azure_Admin {
             <a href="<?php echo admin_url('admin.php?page=azure-plugin-onedrive-media'); ?>" class="button">
                 <?php _e('Manage OneDrive Media', 'azure-plugin'); ?>
             </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render Auction dashboard widget
+     */
+    public function render_auction_widget() {
+        global $wpdb;
+        $stats = array(
+            'active_auctions' => 0,
+            'recent_bids' => 0,
+        );
+        $bids_table = Azure_Database::get_table_name('auction_bids');
+        if ($bids_table && $wpdb->get_var("SHOW TABLES LIKE '{$bids_table}'") === $bids_table) {
+            $stats['recent_bids'] = $wpdb->get_var("SELECT COUNT(*) FROM {$bids_table} WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)") ?: 0;
+        }
+        if (class_exists('WooCommerce')) {
+            $stats['active_auctions'] = $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_auction_bidding_end'
+                 WHERE p.post_type = 'product' AND p.post_status = 'publish'
+                 AND (pm.meta_value = '' OR pm.meta_value > NOW())"
+            ) ?: 0;
+        }
+        ?>
+        <div class="azure-auction-widget">
+            <p><strong><?php echo (int) $stats['active_auctions']; ?></strong> <?php _e('active auction(s)', 'azure-plugin'); ?></p>
+            <p><strong><?php echo (int) $stats['recent_bids']; ?></strong> <?php _e('bids in last 7 days', 'azure-plugin'); ?></p>
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-auction'); ?>" class="button"><?php _e('Auction', 'azure-plugin'); ?></a>
+            <a href="<?php echo admin_url('edit.php?post_type=product'); ?>" class="button"><?php _e('Products', 'azure-plugin'); ?></a>
         </div>
         <?php
     }
