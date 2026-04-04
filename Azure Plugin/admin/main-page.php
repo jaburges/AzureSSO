@@ -11,8 +11,9 @@ if (!defined('ABSPATH')) {
     // Show setup wizard progress banner if not completed
     $wizard_class_exists = class_exists('Azure_Setup_Wizard');
     $wizard_completed = Azure_Settings::get_setting('setup_wizard_completed', false);
+    $restore_completed = get_option('azure_restore_completed', false);
     
-    if ($wizard_class_exists && !$wizard_completed):
+    if ($wizard_class_exists && !$wizard_completed && !$restore_completed):
         $wizard_progress = Azure_Setup_Wizard::get_wizard_progress();
     ?>
     <div class="setup-progress-banner">
@@ -31,6 +32,10 @@ if (!defined('ABSPATH')) {
         <div class="azure-plugin-modules">
             <h2>Module Status</h2>
             
+            <?php
+            $calendar_enabled = $settings['enable_calendar'] || ($settings['enable_tec_integration'] ?? false);
+            $selling_any = ($settings['enable_auction'] ?? false) || ($settings['enable_classes'] ?? false) || ($settings['enable_product_fields'] ?? false) || ($settings['enable_donations'] ?? false);
+            ?>
             <div class="module-cards">
                 <div class="module-card <?php echo $settings['enable_sso'] ? 'enabled' : 'disabled'; ?>">
                     <div class="module-header">
@@ -64,9 +69,9 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 
-                <div class="module-card <?php echo $settings['enable_calendar'] ? 'enabled' : 'disabled'; ?>">
+                <div class="module-card <?php echo $calendar_enabled ? 'enabled' : 'disabled'; ?>">
                     <div class="module-header">
-                        <h3><span class="dashicons dashicons-calendar-alt"></span> Calendar Embed</h3>
+                        <h3><span class="dashicons dashicons-calendar-alt"></span> Calendar</h3>
                         <div class="module-controls">
                             <label class="switch">
                                 <input type="checkbox" class="module-toggle" data-module="calendar" <?php checked($settings['enable_calendar']); ?> />
@@ -76,23 +81,29 @@ if (!defined('ABSPATH')) {
                         </div>
                     </div>
                     <div class="module-description">
-                        <p>Embed Microsoft Outlook calendars in your website.</p>
+                        <p>Calendar embed, sync with The Events Calendar, upcoming events, and volunteer sign-ups.</p>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px;">
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" class="module-toggle" data-module="volunteer" <?php checked($settings['enable_volunteer'] ?? false); ?> style="margin: 0;" />
+                                Volunteer Sign Up
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
                 <div class="module-card <?php echo $settings['enable_email'] ? 'enabled' : 'disabled'; ?>">
                     <div class="module-header">
-                        <h3><span class="dashicons dashicons-email-alt"></span> Email Sender</h3>
+                        <h3><span class="dashicons dashicons-email-alt"></span> Emails</h3>
                         <div class="module-controls">
                             <label class="switch">
                                 <input type="checkbox" class="module-toggle" data-module="email" <?php checked($settings['enable_email']); ?> />
                                 <span class="slider"></span>
                             </label>
-                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-email'); ?>" class="button button-configure">Configure</a>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-emails'); ?>" class="button button-configure">Configure</a>
                         </div>
                     </div>
                     <div class="module-description">
-                        <p>Send emails through Microsoft Graph API.</p>
+                        <p>Send emails through Microsoft Graph API with logging and tracking.</p>
                     </div>
                 </div>
                 
@@ -112,22 +123,6 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 
-                <div class="module-card <?php echo ($settings['enable_tec_integration'] ?? false) ? 'enabled' : 'disabled'; ?>">
-                    <div class="module-header">
-                        <h3><span class="dashicons dashicons-calendar-alt"></span> TEC Integration</h3>
-                        <div class="module-controls">
-                            <label class="switch">
-                                <input type="checkbox" class="module-toggle" data-module="tec_integration" <?php checked($settings['enable_tec_integration'] ?? false); ?> />
-                                <span class="slider"></span>
-                            </label>
-                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-calendar'); ?>#tec-sync" class="button button-configure">Configure</a>
-                        </div>
-                    </div>
-                    <div class="module-description">
-                        <p>Sync Outlook calendars to The Events Calendar plugin.</p>
-                    </div>
-                </div>
-                
                 <div class="module-card <?php echo ($settings['enable_onedrive_media'] ?? false) ? 'enabled' : 'disabled'; ?>">
                     <div class="module-header">
                         <h3><span class="dashicons dashicons-cloud-upload"></span> OneDrive Media</h3>
@@ -141,22 +136,6 @@ if (!defined('ABSPATH')) {
                     </div>
                     <div class="module-description">
                         <p>Store WordPress media files in OneDrive/SharePoint with CDN optimization.</p>
-                    </div>
-                </div>
-                
-                <div class="module-card <?php echo ($settings['enable_classes'] ?? false) ? 'enabled' : 'disabled'; ?>">
-                    <div class="module-header">
-                        <h3><span class="dashicons dashicons-welcome-learn-more"></span> Classes</h3>
-                        <div class="module-controls">
-                            <label class="switch">
-                                <input type="checkbox" class="module-toggle" data-module="classes" <?php checked($settings['enable_classes'] ?? false); ?> />
-                                <span class="slider"></span>
-                            </label>
-                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-classes'); ?>" class="button button-configure">Configure</a>
-                        </div>
-                    </div>
-                    <div class="module-description">
-                        <p>Create class products with TEC events, variable pricing, and commit-to-buy flow.</p>
                     </div>
                 </div>
                 
@@ -192,24 +171,96 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 
-                <div class="module-card <?php echo ($settings['enable_auction'] ?? false) ? 'enabled' : 'disabled'; ?>">
+                <div class="module-card <?php echo $selling_any ? 'enabled' : 'disabled'; ?>">
                     <div class="module-header">
-                        <h3><span class="dashicons dashicons-hammer"></span> Auction</h3>
+                        <h3><span class="dashicons dashicons-cart"></span> Selling</h3>
                         <div class="module-controls">
-                            <label class="switch">
-                                <input type="checkbox" class="module-toggle" data-module="auction" <?php checked($settings['enable_auction'] ?? false); ?> />
-                                <span class="slider"></span>
-                            </label>
-                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-auction'); ?>" class="button button-configure">Configure</a>
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-selling'); ?>" class="button button-configure">Configure</a>
                         </div>
                     </div>
                     <div class="module-description">
-                        <p>WooCommerce auction products with bidding, max bid, Buy It Now, and winner checkout.</p>
+                        <p>Auction, Classes, Product Fields, and Donations. Enable/disable each within the module.</p>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px;">
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" class="module-toggle" data-module="auction" <?php checked($settings['enable_auction'] ?? false); ?> style="margin: 0;" />
+                                Auction
+                            </label>
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" class="module-toggle" data-module="classes" <?php checked($settings['enable_classes'] ?? false); ?> style="margin: 0;" />
+                                Classes
+                            </label>
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" class="module-toggle" data-module="product_fields" <?php checked($settings['enable_product_fields'] ?? false); ?> style="margin: 0;" />
+                                Product Fields
+                            </label>
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" class="module-toggle" data-module="donations" <?php checked($settings['enable_donations'] ?? false); ?> style="margin: 0;" />
+                                Donations
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        
+
+        <div class="azure-plugin-dependencies" style="margin-top: 20px;">
+            <h2>Plugin Dependencies</h2>
+            <p class="description">These third-party plugins are required by various PTA Tools modules. Install and activate any that are needed for your enabled modules.</p>
+            <table class="wp-list-table widefat fixed striped" style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Plugin</th>
+                        <th style="width: 15%;">Status</th>
+                        <th>Used By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    $dependencies = array(
+                        array(
+                            'name'    => 'The Events Calendar (TEC)',
+                            'check'   => class_exists('Tribe__Events__Main'),
+                            'modules' => 'TEC Integration, Calendar Sync, Classes, Event Tickets',
+                        ),
+                        array(
+                            'name'    => 'WooCommerce',
+                            'check'   => class_exists('WooCommerce'),
+                            'modules' => 'Classes, Auction, Event Tickets, Product Fields',
+                        ),
+                        array(
+                            'name'    => 'Forminator',
+                            'check'   => class_exists('Forminator'),
+                            'modules' => 'PTA Roles (Signup Forms)',
+                        ),
+                        array(
+                            'name'    => 'Beaver Builder',
+                            'check'   => class_exists('FLBuilder'),
+                            'modules' => 'PTA Roles (Custom Modules)',
+                        ),
+                        array(
+                            'name'    => 'Event Tickets',
+                            'check'   => class_exists('Tribe__Tickets__Main'),
+                            'modules' => 'Event Tickets, Check-In',
+                        ),
+                    );
+                    foreach ($dependencies as $dep):
+                        $status_class = $dep['check'] ? 'success' : 'error';
+                        $status_label = $dep['check'] ? 'Active' : 'Not Installed';
+                        $icon = $dep['check'] ? 'yes-alt' : 'warning';
+                    ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($dep['name']); ?></strong></td>
+                        <td>
+                            <span class="dashicons dashicons-<?php echo $icon; ?>" style="color: <?php echo $dep['check'] ? '#46b450' : '#dc3232'; ?>; vertical-align: middle;"></span>
+                            <span style="color: <?php echo $dep['check'] ? '#46b450' : '#dc3232'; ?>;"><?php echo $status_label; ?></span>
+                        </td>
+                        <td><?php echo esc_html($dep['modules']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
         <div class="azure-plugin-settings">
             <form method="post" action="">
                 <?php wp_nonce_field('azure_plugin_settings'); ?>
@@ -226,6 +277,9 @@ if (!defined('ABSPATH')) {
                 <input type="hidden" name="enable_newsletter" id="hidden_enable_newsletter" value="<?php echo ($settings['enable_newsletter'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_tickets" id="hidden_enable_tickets" value="<?php echo ($settings['enable_tickets'] ?? false) ? '1' : '0'; ?>" />
                 <input type="hidden" name="enable_auction" id="hidden_enable_auction" value="<?php echo ($settings['enable_auction'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_product_fields" id="hidden_enable_product_fields" value="<?php echo ($settings['enable_product_fields'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_volunteer" id="hidden_enable_volunteer" value="<?php echo ($settings['enable_volunteer'] ?? false) ? '1' : '0'; ?>" />
+                <input type="hidden" name="enable_donations" id="hidden_enable_donations" value="<?php echo ($settings['enable_donations'] ?? false) ? '1' : '0'; ?>" />
                 
                 <div class="credentials-section">
                     <h2>Azure Credentials</h2>
@@ -354,7 +408,7 @@ if (!defined('ABSPATH')) {
             <div class="info-box">
                 <h3>Support & Documentation</h3>
                 <p>
-                    <a href="<?php echo admin_url('admin.php?page=azure-plugin-logs'); ?>" class="button">View Logs</a>
+                    <a href="<?php echo admin_url('admin.php?page=azure-plugin-system'); ?>" class="button">View Logs</a>
                     <a href="#" class="button" onclick="location.reload();">Refresh Status</a>
                 </p>
             </div>

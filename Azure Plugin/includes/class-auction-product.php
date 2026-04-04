@@ -23,12 +23,46 @@ class WC_Product_Auction extends WC_Product {
         return 'auction';
     }
 
+    /**
+     * Auction products are not purchasable through the normal cart/checkout flow.
+     * Purchases happen via bidding or Buy It Now, which create orders directly.
+     */
+    public function is_purchasable() {
+        return false;
+    }
+
     public function is_virtual() {
         return false;
     }
 
     public function is_sold_individually() {
         return true;
+    }
+
+    /**
+     * Return the starting/regular price so WooCommerce price display doesn't break.
+     */
+    public function get_price($context = 'view') {
+        $price = parent::get_price($context);
+        if ($price === '' || $price === null) {
+            $price = $this->get_regular_price($context);
+        }
+        return $price;
+    }
+
+    public function add_to_cart_text() {
+        if ($this->is_auction_ended() || in_array($this->get_auction_status(), array('ended', 'sold'), true)) {
+            return __('Auction ended', 'azure-plugin');
+        }
+        return __('View auction', 'azure-plugin');
+    }
+
+    public function add_to_cart_url() {
+        return get_permalink($this->get_id());
+    }
+
+    public function single_add_to_cart_text() {
+        return $this->add_to_cart_text();
     }
 
     /**

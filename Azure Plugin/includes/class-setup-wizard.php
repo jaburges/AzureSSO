@@ -82,13 +82,22 @@ class Azure_Setup_Wizard {
             return;
         }
         
-        // Don't redirect on AJAX, wizard page, or activation
-        if (wp_doing_ajax() || isset($_GET['page']) && $_GET['page'] === 'azure-plugin-setup') {
+        // Don't redirect on AJAX, wizard page, restore wizard, or activation
+        $page = $_GET['page'] ?? '';
+        if (wp_doing_ajax() || $page === 'azure-plugin-setup' || $page === 'azure-plugin-restore') {
             return;
         }
         
         // Don't redirect during plugin activation
         if (isset($_GET['activate']) || isset($_GET['activate-multi'])) {
+            return;
+        }
+
+        // Don't redirect if a restore recently completed (DB was replaced)
+        if (get_transient('azure_restore_progress')) {
+            return;
+        }
+        if (get_option('azure_restore_completed')) {
             return;
         }
         
@@ -475,13 +484,12 @@ class Azure_Setup_Wizard {
         }
         
         // Test connection to Azure Blob Storage
-        // Load the storage class if not already loaded
-        if (!class_exists('Azure_Backup_Azure_Storage')) {
+        if (!class_exists('Azure_Backup_Storage')) {
             require_once AZURE_PLUGIN_PATH . 'includes/class-backup-azure-storage.php';
         }
         
-        if (class_exists('Azure_Backup_Azure_Storage')) {
-            $storage = new Azure_Backup_Azure_Storage();
+        if (class_exists('Azure_Backup_Storage')) {
+            $storage = new Azure_Backup_Storage();
             $result = $storage->test_connection($storage_account, $storage_key, $container_name);
             
             if ($result['success']) {
@@ -603,6 +611,7 @@ class Azure_Setup_Wizard {
      * Check if wizard should be shown
      */
     public static function should_show_wizard() {
+        if (get_option('azure_restore_completed')) return false;
         return !Azure_Settings::get_setting('setup_wizard_completed', false);
     }
     

@@ -72,22 +72,31 @@ class Azure_Auction_Module {
     }
 
     public function maybe_process_ended_auction() {
-        global $product;
-        if ($product && $product->get_type() === 'auction' && class_exists('Azure_Auction_Lifecycle')) {
-            (new Azure_Auction_Lifecycle())->maybe_process_ended_auction($product->get_id());
+        try {
+            global $product;
+            if (!$product instanceof WC_Product || $product->get_type() !== 'auction') {
+                return;
+            }
+            if (class_exists('Azure_Auction_Lifecycle')) {
+                (new Azure_Auction_Lifecycle())->maybe_process_ended_auction($product->get_id());
+            }
+        } catch (\Throwable $e) {
+            if (class_exists('Azure_Logger')) {
+                Azure_Logger::error('Auction maybe_process_ended_auction error: ' . $e->getMessage());
+            }
         }
     }
 
     public function remove_auction_add_to_cart() {
         global $product;
-        if ($product && $product->get_type() === 'auction') {
+        if ($product instanceof WC_Product && $product->get_type() === 'auction') {
             remove_action('woocommerce_single_product_summary', 'woocommerce_template_single_add_to_cart', 30);
         }
     }
 
     public function render_single_product_auction() {
         global $product;
-        if (!$product || $product->get_type() !== 'auction') {
+        if (!$product instanceof WC_Product || $product->get_type() !== 'auction') {
             return;
         }
         $product_id = $product->get_id();
@@ -98,12 +107,28 @@ class Azure_Auction_Module {
         $logged_in = is_user_logged_in();
         $bids = class_exists('Azure_Auction_Bids') ? (new Azure_Auction_Bids())->get_masked_bid_history($product_id) : array('bids' => array(), 'current_price' => $product->get_regular_price());
         $current_price = isset($bids['current_price']) ? (float) $bids['current_price'] : (float) $product->get_regular_price();
+        $has_bids = !empty($bids['bids']);
+        $price_label = $has_bids ? __('Current bid:', 'azure-plugin') : __('Starting bid:', 'azure-plugin');
+
+        $end_raw = $product->get_auction_bidding_end();
+        $end_ts = 0;
+        if ($end_raw) {
+            $end_ts = is_numeric($end_raw) ? (int) $end_raw : strtotime($end_raw);
+        }
         ?>
         <div class="azure-auction-bid-wrapper" data-product-id="<?php echo esc_attr($product_id); ?>">
-            <p class="auction-current-price">
-                <strong><?php _e('Current price:', 'azure-plugin'); ?></strong>
-                <span class="auction-price-value"><?php echo wc_price($current_price); ?></span>
-            </p>
+            <div class="auction-info-bar">
+                <div class="auction-current-price">
+                    <span class="auction-price-label"><?php echo esc_html($price_label); ?></span>
+                    <span class="auction-price-value"><?php echo wc_price($current_price); ?></span>
+                </div>
+                <?php if ($end_ts > 0) : ?>
+                <div class="auction-countdown" data-end="<?php echo esc_attr($end_ts); ?>">
+                    <span class="auction-countdown-label"><?php _e('Ends in:', 'azure-plugin'); ?></span>
+                    <span class="auction-countdown-timer"></span>
+                </div>
+                <?php endif; ?>
+            </div>
             <?php if ($product->is_buy_it_now_enabled() && $product->get_buy_it_now_price() > 0) : ?>
             <p class="auction-buy-it-now">
                 <button type="button" class="button auction-buy-it-now-btn"><?php printf(__('Buy It Now for %s', 'azure-plugin'), wc_price($product->get_buy_it_now_price())); ?></button>
@@ -112,10 +137,14 @@ class Azure_Auction_Module {
             <?php if ($logged_in) : ?>
             <div class="auction-bid-form">
                 <label for="auction-bid-amount"><?php _e('Your bid', 'azure-plugin'); ?></label>
-                <input type="number" id="auction-bid-amount" class="auction-bid-amount" min="0" step="0.01" value="<?php echo esc_attr($current_price + 5); ?>" />
-                <button type="button" class="button auction-quick-bid" data-increment="5">+<?php echo esc_html(wc_price(5)); ?></button>
-                <button type="button" class="button auction-quick-bid" data-increment="10">+<?php echo esc_html(wc_price(10)); ?></button>
-                <button type="button" class="button auction-quick-bid" data-increment="20">+<?php echo esc_html(wc_price(20)); ?></button>
+                <div class="auction-bid-controls">
+                    <input type="number" id="auction-bid-amount" class="auction-bid-amount" min="0" step="0.01" value="<?php echo esc_attr($current_price + 5); ?>" />
+                    <div class="auction-quick-buttons">
+                        <button type="button" class="button auction-quick-bid" data-increment="5">+$5</button>
+                        <button type="button" class="button auction-quick-bid" data-increment="10">+$10</button>
+                        <button type="button" class="button auction-quick-bid" data-increment="20">+$20</button>
+                    </div>
+                </div>
                 <p class="auction-max-bid-row">
                     <label><input type="checkbox" class="auction-use-max-bid" /> <?php _e('Set max bid (auto-bid up to this amount)', 'azure-plugin'); ?></label>
                     <input type="number" class="auction-max-bid-amount" min="0" step="0.01" style="display:none; width:100px;" />
@@ -124,28 +153,59 @@ class Azure_Auction_Module {
                 <span class="auction-bid-message" style="display:none;"></span>
             </div>
             <?php else : ?>
-            <p class="auction-login-required"><?php _e('Please log in or register to bid.', 'azure-plugin'); ?></p>
+            <p class="auction-login-required">
+                <?php printf(
+                    __('Please %slog in%s or %sregister%s to place a bid.', 'azure-plugin'),
+                    '<a href="' . esc_url(wp_login_url(get_permalink())) . '">',
+                    '</a>',
+                    '<a href="' . esc_url(wp_registration_url()) . '">',
+                    '</a>'
+                ); ?>
+            </p>
             <?php endif; ?>
             <div class="auction-bid-history">
-                <h4><?php _e('Recent bids', 'azure-plugin'); ?></h4>
-                <ul class="auction-bid-list">
-                    <?php foreach (isset($bids['bids']) ? $bids['bids'] : array() as $b) : ?>
-                    <li><?php echo esc_html(isset($b['bidder']) ? $b['bidder'] : '***'); ?> — <?php echo wc_price(isset($b['amount']) ? $b['amount'] : 0); ?> <span class="bid-time"><?php echo esc_html(isset($b['time']) ? $b['time'] : ''); ?></span></li>
-                    <?php endforeach; ?>
-                </ul>
-                <?php if (empty($bids['bids'])) : ?>
-                <p class="no-bids"><?php _e('No bids yet.', 'azure-plugin'); ?></p>
-                <?php endif; ?>
+                <h4><?php _e('Bid history', 'azure-plugin'); ?></h4>
+                <table class="auction-bid-table" <?php echo !$has_bids ? 'style="display:none;"' : ''; ?>>
+                    <thead>
+                        <tr>
+                            <th><?php _e('Bidder', 'azure-plugin'); ?></th>
+                            <th><?php _e('Amount', 'azure-plugin'); ?></th>
+                            <th><?php _e('Time', 'azure-plugin'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody class="auction-bid-list">
+                        <?php foreach (isset($bids['bids']) ? $bids['bids'] : array() as $b) : ?>
+                        <tr>
+                            <td><?php echo esc_html(isset($b['bidder']) ? $b['bidder'] : '***'); ?></td>
+                            <td><?php echo wc_price(isset($b['amount']) ? $b['amount'] : 0); ?></td>
+                            <td class="bid-time"><?php echo esc_html(isset($b['time']) ? $b['time'] : ''); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <p class="no-bids" <?php echo $has_bids ? 'style="display:none;"' : ''; ?>><?php _e('No bids yet. Be the first to bid!', 'azure-plugin'); ?></p>
             </div>
         </div>
         <?php
     }
 
     public function enqueue_auction_scripts() {
-        global $product;
-        if (!is_product() || !$product || $product->get_type() !== 'auction') {
+        if (!is_product()) {
             return;
         }
+        global $product;
+        if (!$product instanceof WC_Product) {
+            $product = wc_get_product(get_queried_object_id());
+        }
+        if (!$product instanceof WC_Product || $product->get_type() !== 'auction') {
+            return;
+        }
+        wp_enqueue_style(
+            'azure-auction-frontend',
+            AZURE_PLUGIN_URL . 'css/auction-frontend.css',
+            array(),
+            defined('AZURE_PLUGIN_VERSION') ? AZURE_PLUGIN_VERSION : '1.0'
+        );
         wp_enqueue_script(
             'azure-auction-bid',
             AZURE_PLUGIN_URL . 'js/auction-bid.js',

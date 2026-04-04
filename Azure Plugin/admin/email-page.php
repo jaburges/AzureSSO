@@ -32,8 +32,10 @@ if ($email_queue_table) {
 $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap">
     <h1>PTA Tools - Email Settings</h1>
+<?php endif; ?>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">
@@ -456,7 +458,9 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
             </div>
         </div>
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <script>
 jQuery(document).ready(function($) {

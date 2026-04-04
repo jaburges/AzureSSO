@@ -31,9 +31,13 @@ class Azure_Upcoming_Module {
     }
     
     /**
-     * Enqueue frontend styles
+     * Enqueue frontend styles only when [up-next] shortcode is present.
      */
     public function enqueue_frontend_styles() {
+        global $post;
+        if (!is_a($post, 'WP_Post') || !has_shortcode($post->post_content, 'up-next')) {
+            return;
+        }
         wp_enqueue_style(
             'azure-upcoming-frontend',
             AZURE_PLUGIN_URL . 'css/upcoming-frontend.css',

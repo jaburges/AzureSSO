@@ -26,6 +26,10 @@ class Azure_Admin {
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widgets'));
         add_action('wp_ajax_azure_test_credentials', array($this, 'ajax_test_credentials'));
         add_action('wp_ajax_azure_toggle_module', array($this, 'ajax_toggle_module'));
+        add_action('wp_ajax_azure_clear_media_library', array($this, 'ajax_clear_media_library'));
+        add_action('wp_ajax_azure_regen_diag_key', array($this, 'ajax_regen_diag_key'));
+        add_action('wp_ajax_azure_save_org_settings', array($this, 'ajax_save_org_settings'));
+        add_action('wp_ajax_azure_run_cron_now', array($this, 'ajax_run_cron_now'));
         add_action('wp_ajax_azure_calendar_authorize', array($this, 'ajax_calendar_authorize'));
             
             // Calendar Embed AJAX handlers
@@ -111,39 +115,20 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'PTA Tools - Calendar Embed',
-            'Calendar Embed',
+            'PTA Tools - Calendar',
+            'Calendar',
             'manage_options',
             'azure-plugin-calendar',
-            array($this, 'admin_page_calendar')
+            array($this, 'admin_page_calendar_combined')
         );
         
         add_submenu_page(
             'azure-plugin',
-            'PTA Tools - Calendar Sync',
-            'Calendar Sync',
+            'PTA Tools - Emails',
+            'Emails',
             'manage_options',
-            'azure-plugin-tec',
-            array($this, 'admin_page_tec')
-        );
-        
-        add_submenu_page(
-            'azure-plugin',
-            'PTA Tools - Email',
-            'Email',
-            'manage_options',
-            'azure-plugin-email',
-            array($this, 'admin_page_email')
-        );
-        
-        // Email Logs submenu under main Azure Plugin
-        add_submenu_page(
-            'azure-plugin',
-            'PTA Tools - Email Logs',
-            'Email Logs',
-            'manage_options',
-            'azure-plugin-email-logs',
-            array($this, 'admin_page_email_logs')
+            'azure-plugin-emails',
+            array($this, 'admin_page_emails')
         );
         
         add_submenu_page(
@@ -163,6 +148,15 @@ class Azure_Admin {
             'azure-plugin-pta-groups',
             array($this, 'admin_page_pta_groups')
         );
+
+        add_submenu_page(
+            'azure-plugin-pta',
+            'PTA Tools - Forminator Customization',
+            'Forminator',
+            'manage_options',
+            'azure-plugin-pta-forminator',
+            array($this, 'admin_page_pta_forminator')
+        );
         
         add_submenu_page(
             'azure-plugin',
@@ -171,24 +165,6 @@ class Azure_Admin {
             'manage_options',
             'azure-plugin-onedrive-media',
             array($this, 'admin_page_onedrive_media')
-        );
-        
-        add_submenu_page(
-            'azure-plugin',
-            'PTA Tools - Classes',
-            'Classes',
-            'manage_options',
-            'azure-plugin-classes',
-            array($this, 'admin_page_classes')
-        );
-        
-        add_submenu_page(
-            'azure-plugin',
-            'PTA Tools - Upcoming Events',
-            'Upcoming Events',
-            'manage_options',
-            'azure-plugin-upcoming',
-            array($this, 'admin_page_upcoming')
         );
         
         add_submenu_page(
@@ -211,16 +187,16 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'PTA Tools - Auction',
-            'Auction',
+            'PTA Tools - Selling',
+            'Selling',
             'manage_options',
-            'azure-plugin-auction',
-            array($this, 'admin_page_auction')
+            'azure-plugin-selling',
+            array($this, 'admin_page_selling')
         );
         
         // Tickets sub-pages (hidden from menu)
         add_submenu_page(
-            null, // Hidden
+            null,
             'Check-in Scanner',
             'Check-in Scanner',
             'scan_tickets',
@@ -230,11 +206,11 @@ class Azure_Admin {
         
         add_submenu_page(
             'azure-plugin',
-            'PTA Tools - Logs',
-            'System Logs',
+            'PTA Tools - System',
+            'System',
             'manage_options',
-            'azure-plugin-logs',
-            array($this, 'admin_page_logs')
+            'azure-plugin-system',
+            array($this, 'admin_page_system')
         );
         
         } catch (Error $e) {
@@ -299,23 +275,31 @@ class Azure_Admin {
         // Load page-specific CSS files
         $current_page = isset($_GET['page']) ? $_GET['page'] : '';
         
+        $tabbed_pages = array(
+            'azure-plugin-calendar', 'azure-plugin-system',
+            'azure-plugin-emails', 'azure-plugin-selling',
+        );
+        if (in_array($current_page, $tabbed_pages)) {
+            wp_enqueue_style('azure-admin-tabs', AZURE_PLUGIN_URL . 'css/admin-tabs.css', array(), $cache_version);
+        }
+
         switch ($current_page) {
             case 'azure-plugin-backup':
                 wp_enqueue_style('azure-backup-frontend', AZURE_PLUGIN_URL . 'css/backup-frontend.css', array(), $cache_version);
                 break;
-            case 'azure-plugin-email':
+            case 'azure-plugin-emails':
                 wp_enqueue_style('azure-email-frontend', AZURE_PLUGIN_URL . 'css/email-frontend.css', array(), $cache_version);
                 break;
             case 'azure-plugin-calendar':
+                $tab = isset($_GET['tab']) ? $_GET['tab'] : 'embed';
                 wp_enqueue_style('azure-calendar-frontend', AZURE_PLUGIN_URL . 'css/calendar-frontend.css', array(), $cache_version);
-                break;
-            case 'azure-plugin-tec':
-                // Enqueue TEC admin JavaScript
-                wp_enqueue_script('azure-tec-admin', AZURE_PLUGIN_URL . 'js/tec-admin.js', array('jquery'), $cache_version, true);
-                wp_localize_script('azure-tec-admin', 'azureTecAdmin', array(
-                    'ajaxUrl' => admin_url('admin-ajax.php'),
-                    'nonce' => wp_create_nonce('azure_plugin_nonce')
-                ));
+                if ($tab === 'sync') {
+                    wp_enqueue_script('azure-tec-admin', AZURE_PLUGIN_URL . 'js/tec-admin.js', array('jquery'), $cache_version, true);
+                    wp_localize_script('azure-tec-admin', 'azureTecAdmin', array(
+                        'ajaxUrl' => admin_url('admin-ajax.php'),
+                        'nonce' => wp_create_nonce('azure_plugin_nonce')
+                    ));
+                }
                 break;
             case 'azure-plugin-newsletter':
                 // Newsletter admin styles and scripts
@@ -479,7 +463,11 @@ class Azure_Admin {
         $settings['backup_retention_days'] = isset($_POST['azure_plugin_settings']['backup_retention_days'])
             ? intval($_POST['azure_plugin_settings']['backup_retention_days'])
             : 30;
-        
+
+        $settings['backup_split_size'] = isset($_POST['azure_plugin_settings']['backup_split_size'])
+            ? max(25, intval($_POST['azure_plugin_settings']['backup_split_size']))
+            : 400;
+
         // Legacy: also check direct POST variables for backwards compatibility
         if (empty($settings['backup_types']) && isset($_POST['backup_types'])) {
             $settings['backup_types'] = array_map('sanitize_text_field', $_POST['backup_types']);
@@ -572,7 +560,7 @@ class Azure_Admin {
         
         // Media library options
         $settings['onedrive_media_show_badge'] = isset($_POST['onedrive_media_show_badge']);
-        $settings['onedrive_media_keep_local_copies'] = isset($_POST['onedrive_media_keep_local_copies']);
+        $settings['onedrive_media_keep_local_copies'] = true;
         
         // Advanced options
         $settings['onedrive_media_max_file_size'] = intval($_POST['onedrive_media_max_file_size'] ?? 4294967296);
@@ -672,7 +660,15 @@ class Azure_Admin {
             $this->render_error_page('PTA Groups', $e);
         }
     }
-    
+
+    public function admin_page_pta_forminator() {
+        try {
+            include AZURE_PLUGIN_PATH . 'admin/pta-forminator-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('PTA Forminator', $e);
+        }
+    }
+
     public function admin_page_onedrive_media() {
         try {
             $settings = Azure_Settings::get_all_settings();
@@ -726,6 +722,15 @@ class Azure_Admin {
         }
     }
     
+    public function admin_page_product_fields() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/product-fields-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Product Fields', $e);
+        }
+    }
+    
     public function admin_page_tickets_checkin() {
         try {
             include AZURE_PLUGIN_PATH . 'admin/tickets-checkin.php';
@@ -755,6 +760,44 @@ class Azure_Admin {
         }
     }
     
+    public function admin_page_calendar_combined() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/calendar-combined-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Calendar', $e);
+        }
+    }
+
+    public function admin_page_system() {
+        try {
+            $logs = Azure_Logger::get_logs(200);
+            include AZURE_PLUGIN_PATH . 'admin/system-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('System', $e);
+        }
+    }
+
+    public function admin_page_emails() {
+        try {
+            $email_logger = Azure_Email_Logger::get_instance();
+            $email_stats = $email_logger->get_email_stats();
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/emails-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Emails', $e);
+        }
+    }
+
+    public function admin_page_selling() {
+        try {
+            $settings = Azure_Settings::get_all_settings();
+            include AZURE_PLUGIN_PATH . 'admin/selling-page.php';
+        } catch (Exception $e) {
+            $this->render_error_page('Selling', $e);
+        }
+    }
+
     /**
      * Render error page for admin pages
      */
@@ -858,7 +901,7 @@ class Azure_Admin {
         $enabled = $_POST['enabled'] === 'true';
         
         // Validate module name
-        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter', 'tickets', 'auction');
+        $valid_modules = array('sso', 'backup', 'calendar', 'email', 'pta', 'tec_integration', 'onedrive_media', 'classes', 'newsletter', 'tickets', 'auction', 'product_fields', 'donations');
         if (!in_array($module, $valid_modules)) {
             wp_send_json_error('Invalid module name: ' . $module);
         }
@@ -1054,13 +1097,18 @@ class Azure_Admin {
             $auth = new Azure_SSO_Auth();
             $test_result = $auth->test_connection($client_id, $client_secret, $tenant_id);
             
+            $response_data = array(
+                'message' => $test_result['message'],
+                'checks'  => $test_result['checks'] ?? array()
+            );
+            
             if ($test_result['success']) {
-                wp_send_json_success($test_result['message']);
+                wp_send_json_success($response_data);
             } else {
-                wp_send_json_error($test_result['message']);
+                wp_send_json_error($response_data);
             }
         } catch (Exception $e) {
-            wp_send_json_error('SSO test failed: ' . $e->getMessage());
+            wp_send_json_error(array('message' => 'SSO test failed: ' . $e->getMessage(), 'checks' => array()));
         }
     }
     
@@ -1951,13 +1999,28 @@ class Azure_Admin {
             $graph_api = new Azure_OneDrive_Media_GraphAPI();
             $base_folder = Azure_Settings::get_setting('onedrive_media_base_folder', 'WordPress Media');
             
-            // Create folders for: Before 2024, 2024, 2025, ..., current year
-            $current_year = date('Y');
-            $folders_to_create = array('Before 2024');
-            
-            for ($year = 2024; $year <= $current_year; $year++) {
-                $folders_to_create[] = (string)$year;
+            $current_year = (int) date('Y');
+            $folders_to_create = array();
+
+            // Detect earliest year from existing WordPress uploads
+            $upload_dir = wp_upload_dir();
+            $upload_base = $upload_dir['basedir'];
+            if (is_dir($upload_base)) {
+                foreach (scandir($upload_base) as $entry) {
+                    if (preg_match('/^(\d{4})$/', $entry) && is_dir($upload_base . '/' . $entry)) {
+                        $yr = (int) $entry;
+                        if ($yr >= 2010 && $yr <= $current_year) {
+                            $folders_to_create[] = (string) $yr;
+                        }
+                    }
+                }
             }
+
+            // Ensure at least the current year exists
+            if (!in_array((string) $current_year, $folders_to_create, true)) {
+                $folders_to_create[] = (string) $current_year;
+            }
+            sort($folders_to_create);
             
             $created = array();
             $errors = array();
@@ -2235,8 +2298,8 @@ class Azure_Admin {
         ?>
         <style>
             .azure-overview-widget .enabled-modules { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
-            .azure-overview-widget .module-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: #f0f6fc; border-radius: 3px; font-size: 12px; }
-            .azure-overview-widget .module-badge .dashicons { font-size: 14px; width: 14px; height: 14px; color: #0078d4; }
+            .azure-overview-widget .module-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: #f0f6fc; border-radius: 3px; font-size: 12px; line-height: 1.4; }
+            .azure-overview-widget .module-badge .dashicons { font-size: 14px; width: 14px; height: 14px; line-height: 14px; color: #0078d4; vertical-align: middle; }
             .azure-overview-widget .quick-links { display: flex; gap: 10px; flex-wrap: wrap; }
         </style>
         <div class="azure-overview-widget">
@@ -2251,11 +2314,40 @@ class Azure_Admin {
                 <?php endforeach; ?>
             </div>
             
+            <p style="margin-top: 12px; margin-bottom: 4px;"><strong><?php _e('Plugin Dependencies', 'azure-plugin'); ?></strong></p>
+            <div class="enabled-modules">
+                <?php
+                $deps = array(
+                    array('The Events Calendar', class_exists('Tribe__Events__Main'), 'the-events-calendar'),
+                    array('WooCommerce', class_exists('WooCommerce'), 'woocommerce'),
+                    array('Forminator', class_exists('Forminator'), 'forminator'),
+                    array('Beaver Builder', class_exists('FLBuilder'), 'beaver-builder-lite-version'),
+                    array('Event Tickets', class_exists('Tribe__Tickets__Main'), 'event-tickets'),
+                );
+                foreach ($deps as $dep):
+                    $color = $dep[1] ? '#46b450' : '#dc3232';
+                    $icon = $dep[1] ? 'yes-alt' : 'warning';
+                    $install_url = admin_url('plugin-install.php?s=' . urlencode($dep[2]) . '&tab=search&type=term');
+                ?>
+                <?php if (!$dep[1]): ?>
+                <a href="<?php echo esc_url($install_url); ?>" class="module-badge" style="background: #fcf0f0; text-decoration: none; color: inherit;">
+                    <span class="dashicons dashicons-<?php echo $icon; ?>" style="color: <?php echo $color; ?>;"></span>
+                    <?php echo esc_html($dep[0]); ?>
+                </a>
+                <?php else: ?>
+                <span class="module-badge" style="background: #f0f6fc;">
+                    <span class="dashicons dashicons-<?php echo $icon; ?>" style="color: <?php echo $color; ?>;"></span>
+                    <?php echo esc_html($dep[0]); ?>
+                </span>
+                <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+
             <div class="quick-links">
                 <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>" class="button button-primary">
                     <?php _e('Dashboard', 'azure-plugin'); ?>
                 </a>
-                <a href="<?php echo admin_url('admin.php?page=azure-plugin-logs'); ?>" class="button">
+                <a href="<?php echo admin_url('admin.php?page=azure-plugin-system'); ?>" class="button">
                     <?php _e('System Logs', 'azure-plugin'); ?>
                 </a>
             </div>
@@ -2548,7 +2640,7 @@ class Azure_Admin {
             </p>
             <?php endif; ?>
             
-            <a href="<?php echo admin_url('admin.php?page=azure-plugin-tec-integration'); ?>" class="button">
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-calendar&tab=sync'); ?>" class="button">
                 <?php _e('Manage Calendar Sync', 'azure-plugin'); ?>
             </a>
         </div>
@@ -2727,9 +2819,147 @@ class Azure_Admin {
         <div class="azure-auction-widget">
             <p><strong><?php echo (int) $stats['active_auctions']; ?></strong> <?php _e('active auction(s)', 'azure-plugin'); ?></p>
             <p><strong><?php echo (int) $stats['recent_bids']; ?></strong> <?php _e('bids in last 7 days', 'azure-plugin'); ?></p>
-            <a href="<?php echo admin_url('admin.php?page=azure-plugin-auction'); ?>" class="button"><?php _e('Auction', 'azure-plugin'); ?></a>
+            <a href="<?php echo admin_url('admin.php?page=azure-plugin-selling&tab=auction'); ?>" class="button"><?php _e('Auction', 'azure-plugin'); ?></a>
             <a href="<?php echo admin_url('edit.php?post_type=product'); ?>" class="button"><?php _e('Products', 'azure-plugin'); ?></a>
         </div>
         <?php
+    }
+
+    /**
+     * AJAX: Clear the entire WordPress media library in batches.
+     * Removes attachment posts, postmeta, local files, and OneDrive mappings.
+     * Does NOT delete files from SharePoint/OneDrive.
+     */
+    public function ajax_save_org_settings() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        $fields = array('org_domain', 'org_name', 'org_team_name', 'org_admin_email');
+        foreach ($fields as $field) {
+            if (isset($_POST[$field])) {
+                Azure_Settings::update_setting($field, sanitize_text_field($_POST[$field]));
+            }
+        }
+
+        wp_send_json_success(array('message' => 'Organization settings saved.'));
+    }
+
+    public function ajax_run_cron_now() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        $hook = sanitize_text_field($_POST['hook'] ?? '');
+        if (empty($hook)) {
+            wp_send_json_error('No hook specified');
+            return;
+        }
+
+        $allowed_hooks = array(
+            'azure_backup_scheduled', 'azure_backup_cleanup',
+            'azure_sso_scheduled_sync', 'onedrive_media_auto_sync',
+            'pta_sync_o365_groups_scheduled', 'pta_sync_group_memberships_scheduled',
+            'pta_process_sync_queue', 'pta_daily_cleanup',
+            'azure_process_email_queue', 'azure_mail_token_refresh',
+            'azure_calendar_token_refresh',
+            'azure_newsletter_process_queue', 'azure_newsletter_check_bounces',
+            'azure_newsletter_weekly_validation', 'azure_newsletter_sync_mailgun_stats',
+            'azure_tickets_cleanup_reservations',
+        );
+
+        if (!in_array($hook, $allowed_hooks)) {
+            wp_send_json_error('Hook not allowed');
+            return;
+        }
+
+        do_action($hook);
+        wp_send_json_success(array('message' => 'Job executed: ' . $hook));
+    }
+
+    public function ajax_regen_diag_key() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+        $key = Azure_Diagnostics_API::regenerate_api_key();
+        wp_send_json_success(array('key' => $key));
+    }
+
+    public function ajax_clear_media_library() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+            return;
+        }
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        @set_time_limit(120);
+
+        global $wpdb;
+        $batch = 100;
+
+        // Temporarily unhook OneDrive delete so we don't remove files from SharePoint
+        if (class_exists('Azure_OneDrive_Media_Manager')) {
+            $manager = Azure_OneDrive_Media_Manager::get_instance();
+            if ($manager) {
+                remove_action('delete_attachment', array($manager, 'handle_delete_attachment'), 10);
+            }
+        }
+
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' ORDER BY ID ASC LIMIT %d",
+            $batch
+        ));
+
+        if (empty($ids)) {
+            // All attachments gone — also truncate OneDrive mapping table
+            $onedrive_table = Azure_Database::get_table_name('onedrive_files');
+            $wpdb->query("TRUNCATE TABLE {$onedrive_table}");
+
+            Azure_Logger::info('Clear Media Library: Complete — all attachments and mappings removed.');
+            wp_send_json_success(array(
+                'done'    => true,
+                'deleted' => 0,
+                'message' => 'Media library cleared. OneDrive mappings truncated.',
+            ));
+            return;
+        }
+
+        $deleted = 0;
+        foreach ($ids as $id) {
+            wp_delete_attachment((int) $id, true);
+            $deleted++;
+        }
+
+        $remaining = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
+
+        // Re-hook OneDrive delete
+        if (isset($manager) && $manager) {
+            add_action('delete_attachment', array($manager, 'handle_delete_attachment'), 10, 1);
+        }
+
+        wp_send_json_success(array(
+            'done'      => false,
+            'deleted'   => $deleted,
+            'remaining' => $remaining,
+            'message'   => "Deleted {$deleted} attachments... {$remaining} remaining.",
+        ));
     }
 }

@@ -12,6 +12,9 @@ class Azure_Logger {
     private static $log_file = '';
     private static $max_file_size = 20971520; // 20MB in bytes
     private static $initialized = false;
+    private static $db_table_verified = null;
+    private static $db_logging_disabled = false;
+    private static $rotation_checked = false;
     
     public static function is_initialized() {
         return self::$initialized;
@@ -184,24 +187,18 @@ class Azure_Logger {
      */
     private static function write_to_file($content) {
         try {
-            // Ensure directory exists
-            $log_dir = dirname(self::$log_file);
-            if (!is_dir($log_dir)) {
-                wp_mkdir_p($log_dir);
+            if (!self::$rotation_checked) {
+                $log_dir = dirname(self::$log_file);
+                if (!is_dir($log_dir)) {
+                    wp_mkdir_p($log_dir);
+                }
+                self::rotate_log_if_needed();
+                self::$rotation_checked = true;
             }
             
-            // Rotate log if needed before writing
-            self::rotate_log_if_needed();
-            
-            // Write with file locking for crash safety
-            $result = file_put_contents(self::$log_file, $content, FILE_APPEND | LOCK_EX);
-            
-            if ($result === false) {
-                error_log('Azure Logger: Failed to write to log file: ' . self::$log_file);
-            }
-            
+            @file_put_contents(self::$log_file, $content, FILE_APPEND | LOCK_EX);
         } catch (Exception $e) {
-            error_log('Azure Logger: Exception during file write - ' . $e->getMessage());
+            // Silently fail
         }
     }
     
@@ -402,11 +399,11 @@ class Azure_Logger {
             );
             
             if ($is_log_line) {
-                // Apply filters
-                if (!empty($level_filter) && strpos($line, " - {$level_filter} - ") === false) {
+                $line_lower = strtolower($line);
+                if (!empty($level_filter) && strpos($line_lower, ' - ' . strtolower($level_filter) . ' - ') === false) {
                     continue;
                 }
-                if (!empty($module_filter) && strpos($line, "[{$module_filter}]") === false) {
+                if (!empty($module_filter) && strpos($line_lower, '[' . strtolower($module_filter) . ']') === false) {
                     continue;
                 }
                 $log_lines[] = $line;
@@ -472,9 +469,18 @@ class Azure_Logger {
      * Log to database for activity tracking
      */
     private static function log_to_database($level, $module, $message, $context = array()) {
+        // Never write DEBUG to database - too chatty
+        if ($level === 'DEBUG') {
+            return;
+        }
+
+        // If a previous DB write failed this request, stop trying
+        if (self::$db_logging_disabled) {
+            return;
+        }
+
         global $wpdb;
         
-        // Skip if database isn't initialized yet
         if (!class_exists('Azure_Database')) {
             return;
         }
@@ -484,24 +490,21 @@ class Azure_Logger {
             return;
         }
         
-        // Check if table exists before trying to insert
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$activity_table'");
-        if (!$table_exists) {
-            return; // Skip logging if table doesn't exist
+        // Cache table existence check - only query DB once per request
+        if (self::$db_table_verified === null) {
+            self::$db_table_verified = ($wpdb->get_var("SHOW TABLES LIKE '$activity_table'") === $activity_table);
+        }
+        if (!self::$db_table_verified) {
+            return;
         }
         
-        // Map log levels to activity status
         $status_map = array(
             'ERROR' => 'error',
             'WARNING' => 'warning',
             'INFO' => 'success',
-            'DEBUG' => 'info'
         );
         
-        $status = $status_map[$level] ?? 'info';
-        
-        // Insert into activity log - match actual table schema
-        $wpdb->insert(
+        $result = $wpdb->insert(
             $activity_table,
             array(
                 'module' => $module,
@@ -510,15 +513,20 @@ class Azure_Logger {
                 'object_id' => null,
                 'user_id' => get_current_user_id(),
                 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
                 'details' => json_encode(array(
                     'level' => $level,
                     'message' => $message,
                     'context' => $context
                 )),
-                'status' => $status
+                'status' => $status_map[$level] ?? 'info'
             ),
             array('%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s')
         );
+
+        // If insert failed, disable DB logging for this request
+        if ($result === false) {
+            self::$db_logging_disabled = true;
+        }
     }
 }

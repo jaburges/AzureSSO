@@ -1,3 +1,6 @@
 /Azure Plugin.zip
 /Deprecated
 Azure Plugin/PTATools.wiki/
+wiki-temp/
+.cursor/
+*.env

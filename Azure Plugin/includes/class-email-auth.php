@@ -99,7 +99,7 @@ class Azure_Email_Auth {
         Azure_Database::log_activity('email', 'authorization_completed', 'auth', null);
         
         // Redirect back to email settings
-        wp_redirect(admin_url('admin.php?page=azure-plugin-email&auth=success'));
+        wp_redirect(admin_url('admin.php?page=azure-plugin-emails&tab=settings&auth=success'));
         exit;
     }
     

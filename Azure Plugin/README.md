@@ -3,7 +3,7 @@
 [![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)](https://wordpress.org/)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/)
 [![License](https://img.shields.io/badge/License-GPL%20v2-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
-[![Version](https://img.shields.io/badge/Version-3.0-orange.svg)](https://github.com/jaburges/AzureSSO)
+[![Version](https://img.shields.io/badge/Version-3.46-orange.svg)](https://github.com/jaburges/PTATools)
 
 **A comprehensive Microsoft 365 integration plugin for WordPress** designed for PTAs, nonprofits, and organizations. Features Azure AD Single Sign-On, automated backups to Azure Blob Storage, email newsletters with visual editor, Outlook calendar embedding, PTA role management, The Events Calendar integration, and more.
 
@@ -38,7 +38,7 @@
 ### 💾 Data Management
 | Module | Description |
 |--------|-------------|
-| **[Backup to Azure](https://github.com/jaburges/AzureSSO/wiki/Backup-Module)** | Automated backups to Azure Blob Storage with scheduling and restoration |
+| **[Backup to Azure](https://github.com/jaburges/AzureSSO/wiki/Backup-Module)** | Automated backups to Azure Blob Storage with scheduling, granular plugin/theme selection, restore progress tracking, and remote backup sync |
 
 ### 📅 Calendar & Events
 | Module | Description |
@@ -56,17 +56,25 @@
 ### 👥 Organization Management
 | Module | Description |
 |--------|-------------|
-| **[PTA Roles](https://github.com/jaburges/AzureSSO/wiki/PTA-Roles-Module)** | Manage volunteer roles, departments, and O365 group sync |
+| **[PTA Roles](https://github.com/jaburges/AzureSSO/wiki/PTA-Roles-Module)** | Manage volunteer roles, departments, O365 group sync, org chart with emails, Forminator signup integration |
 
 ### 🛒 E-Commerce
 | Module | Description |
 |--------|-------------|
-| **[Classes (WooCommerce)](https://github.com/jaburges/AzureSSO/wiki/Classes-Module)** | Create class products with TEC integration, variable pricing, commit-to-buy |
+| **[Classes (WooCommerce)](https://github.com/jaburges/PTATools/wiki/Classes-Module)** | Create class products with TEC integration, variable pricing, commit-to-buy |
+| **[Auction](https://github.com/jaburges/PTATools/wiki/Auction-Module)** | Timed bidding, Buy It Now, max bid, confirm-bid modal, instant updates |
+| **[Product Fields](https://github.com/jaburges/PTATools/wiki/Product-Fields-Module)** | Custom checkout fields with children profiles, applied by category |
+| **[Donations](https://github.com/jaburges/PTATools/wiki/Donations-Module)** | Round-up at checkout, campaigns with goals, `[pta-donate]` shortcode |
+
+### 🙋 Volunteering
+| Module | Description |
+|--------|-------------|
+| **[Volunteer Sign Up](https://github.com/jaburges/PTATools/wiki/Volunteer-Signup-Module)** | SignUpGenius-style sheets with TEC integration, reminders, `[volunteer_signup]` shortcode |
 
 ### 📁 Media
 | Module | Description |
 |--------|-------------|
-| **[OneDrive Media](https://github.com/jaburges/AzureSSO/wiki/OneDrive-Module)** | Browse and insert OneDrive files into WordPress |
+| **[OneDrive Media](https://github.com/jaburges/AzureSSO/wiki/OneDrive-Module)** | Store media in OneDrive/SharePoint with recursive sync, cloud serving, and Repair Missing Media tool |
 
 ---
 
@@ -86,7 +94,10 @@
 | Plugin | Required For |
 |--------|--------------|
 | [The Events Calendar](https://theeventscalendar.com/) | Calendar Sync, Classes, Upcoming Events |
-| [WooCommerce](https://woocommerce.com/) | Classes module |
+| [WooCommerce](https://woocommerce.com/) | Classes, Event Tickets, Auction modules |
+| [Forminator](https://wpmudev.com/project/forminator/) | PTA Roles signup form integration |
+| [Beaver Builder](https://www.wpbeaverbuilder.com/) | Page builder integration |
+| [Event Tickets](https://theeventscalendar.com/products/wordpress-event-tickets/) | Event Tickets module |
 
 ---
 
@@ -175,6 +186,7 @@ Credentials: Required
 - Automatic user creation with role mapping
 - Azure AD claims sync (name, email, department)
 - Optional: Force SSO-only authentication
+- Exclusion list with domain filtering (block external domains from sync/login)
 
 **Shortcodes:**
 ```
@@ -188,10 +200,17 @@ Credentials: Required
 Location: Azure Plugin → Backup
 Credentials: Azure Storage Account + Access Key
 ```
-- Backup database, files, plugins, themes
-- Scheduled or manual backups
-- Restore from any backup point
+- Split, component-based backups (database, plugins, themes, media, content)
+- Granular plugin/theme selection — choose individual items to include
+- Scheduled or manual backups with real-time progress bar
+- Post-backup validation verifies all files exist in Azure Storage
+- Restore from local backup jobs or directly from Azure Storage (remote sync)
+- Selective component restore with progress tracking
+- Cross-site restore support — restore backups onto a different WordPress instance
+- Chunked uploads and streamed operations to prevent out-of-memory errors
 - Retention policy management
+
+📖 **[Full Backup & Restore Guide →](docs/backup-and-restore.md)**
 
 ### Calendar Embed
 ```
@@ -245,10 +264,12 @@ Credentials: Email service (Mailgun, SendGrid, Amazon SES, or Office 365)
 Location: Azure Plugin → PTA Roles
 Credentials: Required for O365 Groups sync
 ```
-- Manage departments and roles
+- Manage departments and roles (VP, Treasurer, Secretary, and custom positions)
 - User assignments with audit logging
-- O365 Groups synchronization
-- Organizational charts
+- O365 Groups synchronization at department and role level
+- Interactive org chart with O365 group email links (mailto)
+- Forminator integration for role signup forms (opens in modal from org chart)
+- Pre-populated forms for logged-in users
 
 **Shortcodes:**
 ```
@@ -294,9 +315,12 @@ Dependencies: The Events Calendar
 Location: Azure Plugin → OneDrive Media
 Credentials: Required (OAuth flow)
 ```
-- Browse OneDrive in WordPress
-- Insert files into posts/pages
-- Large file support
+- Store WordPress media in OneDrive/SharePoint
+- Automatic upload on media add, optional local copy removal
+- Recursive sync into year-based subfolders
+- Repair Missing Media tool (re-downloads files after backup restore)
+- Sharing link and thumbnail URL generation
+- CDN optimization via Microsoft's global network
 
 ---
 
@@ -319,7 +343,9 @@ Credentials: Required (OAuth flow)
 | "Invalid Taxonomy" error | Ensure the Classes module is enabled |
 | Calendar not loading | Check shared mailbox permissions |
 | SSO redirect loop | Verify redirect URI matches exactly |
-| Backup stuck | Check PHP memory limit (512M+ recommended) |
+| Backup stuck | Check PHP memory limit (512M+ recommended). Cancel and retry via the admin page. |
+| Media missing after restore | Use OneDrive Media → Repair Missing Media to re-download files |
+| Sync shows 0 files | Ensure year-based subfolders are being scanned (v3.40+ recurses automatically) |
 
 ### Debug Mode
 Add to `wp-config.php`:
@@ -370,4 +396,4 @@ This project is licensed under the GPL v2 or later - see the [LICENSE](LICENSE) 
 
 ---
 
-**Version 3.0** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jaburges/AzureSSO/issues)
+**Version 3.46** | [Changelog](CHANGELOG.md) | [Report Issue](https://github.com/jaburges/PTATools/issues)

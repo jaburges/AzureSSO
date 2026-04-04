@@ -33,7 +33,18 @@ class Azure_Settings {
     
     public static function get_setting($key, $default = '') {
         $settings = self::get_all_settings();
-        return isset($settings[$key]) ? $settings[$key] : $default;
+        $value = isset($settings[$key]) ? $settings[$key] : $default;
+
+        // Derive org_domain from WP_HOME if not explicitly set
+        if ($key === 'org_domain' && empty($value)) {
+            $home = defined('WP_HOME') ? WP_HOME : get_option('home', '');
+            $parsed = wp_parse_url($home);
+            if (!empty($parsed['host'])) {
+                $value = preg_replace('/^www\./', '', $parsed['host']);
+            }
+        }
+
+        return $value;
     }
     
     public static function update_setting($key, $value) {
@@ -287,8 +298,9 @@ class Azure_Settings {
             'sso_use_custom_role' => false,
             'sso_custom_role_name' => 'AzureAD',
             'sso_sync_enabled' => false,
-            'sso_sync_frequency' => 'daily',
+            'sso_sync_frequency' => 'hourly',
             'sso_preserve_local_data' => false,
+            'sso_exclude_external_domains' => false,
             
             // Backup specific settings
             'backup_client_id' => '',
@@ -301,7 +313,10 @@ class Azure_Settings {
             'backup_storage_account_key' => '',
             'backup_storage_container_name' => 'wordpress-backups',
             'backup_types' => array('content', 'media', 'plugins', 'themes'),
+            'backup_selected_plugins' => array(),
+            'backup_selected_themes' => array(),
             'backup_retention_days' => 30,
+            'backup_split_size' => 400,
             'backup_max_execution_time' => 300,
             'backup_schedule_enabled' => false,
             'backup_schedule_frequency' => 'daily',
@@ -354,6 +369,15 @@ class Azure_Settings {
             'pta_delete_azure_users' => true,
             'pta_welcome_email_enabled' => true,
             'pta_license_sku' => 'O365_BUSINESS_ESSENTIALS',
+
+            // PTA Forminator integration
+            'pta_forminator_form_id' => '',
+            'pta_forminator_role_field_id' => '',
+            'pta_forminator_dept_field_id' => '',
+            'pta_forminator_fname_field_id' => '',
+            'pta_forminator_lname_field_id' => '',
+            'pta_forminator_email_field_id' => '',
+            'pta_forminator_open_roles_only' => true,
             
             // TEC Calendar Sync specific settings
             'tec_calendar_user_email' => '',
@@ -381,7 +405,7 @@ class Azure_Settings {
             'onedrive_media_link_expiration' => 'never',
             'onedrive_media_cdn_optimization' => true,
             'onedrive_media_show_badge' => true,
-            'onedrive_media_keep_local_copies' => false,
+            'onedrive_media_keep_local_copies' => true,
             'onedrive_media_max_file_size' => 4294967296,
             'onedrive_media_chunk_size' => 10485760,
             

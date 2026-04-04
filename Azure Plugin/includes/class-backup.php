@@ -1,6 +1,10 @@
 <?php
 /**
- * Core backup functionality for Azure Plugin
+ * Backup orchestrator - manages jobs, scheduling, AJAX, and delegates
+ * archive creation to Azure_Backup_Engine.
+ *
+ * v2: Split archives per component, WP-Cron resumption chain,
+ * per-entity state tracking, manifest-based backup sets.
  */
 
 if (!defined('ABSPATH')) {
@@ -8,884 +12,145 @@ if (!defined('ABSPATH')) {
 }
 
 class Azure_Backup {
-    
-    private static $backup_in_progress = false;
-    private static $current_backup_id = null;
+
     private $settings;
-    
+
     public function __construct() {
         try {
             $this->settings = Azure_Settings::get_all_settings();
-            
-            // Hook for scheduled backups
-            add_action('azure_backup_scheduled', array($this, 'run_scheduled_backup'));
-            
-            // Hook for background backup processing
-            add_action('azure_backup_process', array($this, 'process_background_backup'));
-            
-            // AJAX actions for admin
+
+            add_action('azure_backup_resume', array($this, 'backup_resume'), 10, 1);
+            // Legacy hook kept for any in-flight jobs
+            add_action('azure_backup_process', array($this, 'backup_resume'), 10, 1);
+
             add_action('wp_ajax_azure_start_backup', array($this, 'ajax_start_backup'));
             add_action('wp_ajax_azure_get_backup_jobs', array($this, 'ajax_get_backup_jobs'));
             add_action('wp_ajax_azure_get_backup_progress', array($this, 'ajax_get_backup_progress'));
-            add_action('wp_ajax_azure_trigger_backup_process', array($this, 'ajax_trigger_backup_process'));
             add_action('wp_ajax_azure_cancel_all_backups', array($this, 'ajax_cancel_all_backups'));
+            add_action('wp_ajax_azure_run_backup_now', array($this, 'ajax_run_backup_now'));
             add_action('wp_ajax_azure_cleanup_backup_files', array($this, 'ajax_cleanup_backup_files'));
-            
+            add_action('wp_ajax_azure_trigger_backup_process', array($this, 'ajax_trigger_backup_process'));
+            add_action('wp_ajax_azure_get_backup_components', array($this, 'ajax_get_backup_components'));
+            add_action('wp_ajax_azure_download_backup_blob', array($this, 'ajax_download_backup_blob'));
+
+            // Heartbeat API for progress (P3)
+            add_filter('heartbeat_received', array($this, 'heartbeat_received'), 10, 2);
+
+            // Ensure entity_state column exists (v2 migration)
+            $this->maybe_add_entity_state_column();
         } catch (Exception $e) {
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::error('Backup: Constructor error - ' . $e->getMessage());
             }
-            // Initialize with empty settings if there's an error
             $this->settings = array();
         }
     }
-    
-    /**
-     * Create a new backup
-     */
-    public function create_backup($backup_name, $backup_types, $scheduled = false) {
-        if (self::$backup_in_progress) {
-            throw new Exception('Another backup is already in progress.');
-        }
-        
-        // Validate backup types
-        $valid_types = array('content', 'media', 'plugins', 'themes', 'database');
-        $backup_types = array_intersect($backup_types, $valid_types);
-        
-        if (empty($backup_types)) {
-            throw new Exception('No valid backup types specified.');
-        }
-        
-        // Generate unique backup ID
-        $backup_id = uniqid('backup_', true);
-        $backup_id = str_replace('.', '', $backup_id);
-        
-        // Create backup record in database
-        $job_id = $this->create_backup_job($backup_id, $backup_name, $backup_types, $scheduled);
-        
-        if (!$job_id) {
-            throw new Exception('Failed to create backup job record.');
-        }
-        
-        self::$backup_in_progress = true;
-        self::$current_backup_id = $backup_id;
-        
-        Azure_Logger::info('Backup: Starting backup job: ' . $backup_name);
-        Azure_Database::log_activity('backup', 'backup_started', 'job', $job_id, array('types' => $backup_types));
-        
-        try {
-            // Create backup directory
-            $backup_dir = $this->get_backup_directory($backup_id);
-            if (!wp_mkdir_p($backup_dir)) {
-                throw new Exception('Failed to create backup directory.');
-            }
-            
-            // Start backup process
-            $this->process_backup($job_id, $backup_id, $backup_types, $backup_dir);
-            
-            Azure_Logger::info('Backup: Backup completed successfully: ' . $backup_name);
-            return $backup_id;
-            
-        } catch (Exception $e) {
-            Azure_Logger::error('Backup: Backup failed: ' . $e->getMessage());
-            $this->update_backup_status($job_id, 'failed', $e->getMessage());
-            
-            self::$backup_in_progress = false;
-            self::$current_backup_id = null;
-            
-            throw $e;
-        }
-    }
-    
-    /**
-     * Process backup
-     */
-    private function process_backup($job_id, $backup_id, $backup_types, $backup_dir) {
-        Azure_Logger::info('Backup: ========== process_backup() ENTRY ==========', 'Backup');
-        Azure_Logger::info('Backup: Job ID: ' . $job_id, 'Backup');
-        Azure_Logger::info('Backup: Backup ID: ' . $backup_id, 'Backup');
-        Azure_Logger::info('Backup: Backup Types: ' . implode(', ', $backup_types), 'Backup');
-        Azure_Logger::info('Backup: Backup Dir: ' . $backup_dir, 'Backup');
-        
-        // Set execution time limit to prevent timeout
-        Azure_Logger::info('Backup: Setting execution limits for process_backup...', 'Backup');
-        @set_time_limit(3600); // 1 hour max
-        @ini_set('memory_limit', '512M'); // Increase memory limit
-        
-        Azure_Logger::info('Backup: Updating job status to RUNNING...', 'Backup');
-        $this->update_backup_status($job_id, 'running');
-        $this->update_backup_progress($backup_id, 10, 'running', 'Starting backup process...');
-        
-        $backup_files = array();
-        $total_types = count($backup_types);
-        $completed_types = 0;
-        
-        Azure_Logger::info('Backup: Starting backup of ' . $total_types . ' types...', 'Backup');
-        
-        foreach ($backup_types as $type) {
-            Azure_Logger::info("Backup: -------- Processing {$type} backup --------", 'Backup');
-            $progress = 10 + (40 * $completed_types / $total_types); // 10-50% for individual backups
-            $this->update_backup_progress($backup_id, $progress, 'running', "Backing up {$type}...");
-            
-            $type_start_time = microtime(true);
-            $files = array();
-            
-            try {
-                switch ($type) {
-                    case 'database':
-                        Azure_Logger::info('Backup: Calling backup_database()...', 'Backup');
-                        $files = $this->backup_database($backup_dir, $backup_id);
-                        break;
-                    case 'content':
-                        Azure_Logger::info('Backup: Calling backup_content()...', 'Backup');
-                        $files = $this->backup_content($backup_dir, $backup_id);
-                        break;
-                    case 'media':
-                        Azure_Logger::info('Backup: Calling backup_media()...', 'Backup');
-                        $files = $this->backup_media($backup_dir, $backup_id, $backup_id, $progress);
-                        break;
-                    case 'plugins':
-                        Azure_Logger::info('Backup: Calling backup_plugins()...', 'Backup');
-                        $files = $this->backup_plugins($backup_dir, $backup_id);
-                        break;
-                    case 'themes':
-                        Azure_Logger::info('Backup: Calling backup_themes()...', 'Backup');
-                        $files = $this->backup_themes($backup_dir, $backup_id);
-                        break;
-                }
-                
-                $type_elapsed = round(microtime(true) - $type_start_time, 2);
-                $file_count = is_array($files) ? count($files) : 0;
-                
-                if ($files) {
-                    $backup_files = array_merge($backup_files, $files);
-                }
-                
-                // Update progress after each type completes
-                $completed_types++;
-                $progress_complete = 10 + (40 * $completed_types / $total_types);
-                $this->update_backup_progress($backup_id, $progress_complete, 'running', "{$type} backup completed");
-                Azure_Logger::info("Backup: COMPLETED {$type} backup - {$file_count} files in {$type_elapsed}s", 'Backup');
-                
-            } catch (Exception $e) {
-                Azure_Logger::error("Backup: FAILED to backup {$type}: " . $e->getMessage(), 'Backup');
-                Azure_Logger::error("Backup: Exception in {$type}: " . $e->getTraceAsString(), 'Backup');
-                // Continue with other backup types even if one fails
-                $completed_types++;
-            }
-        }
-        
-        Azure_Logger::info('Backup: All backup types processed. Total files collected: ' . count($backup_files), 'Backup');
-        
-        // Create final archive
-        Azure_Logger::info('Backup: -------- Creating backup archive --------', 'Backup');
-        $this->update_backup_progress($backup_id, 60, 'running', 'Creating backup archive...');
-        
-        $archive_start_time = microtime(true);
-        $archive_path = $this->create_backup_archive($backup_dir, $backup_id, $backup_files);
-        $archive_elapsed = round(microtime(true) - $archive_start_time, 2);
-        
-        Azure_Logger::info('Backup: Archive creation took ' . $archive_elapsed . 's', 'Backup');
-        
-        if (!$archive_path) {
-            Azure_Logger::error('Backup: create_backup_archive() returned empty/null', 'Backup');
-            throw new Exception('Failed to create backup archive.');
-        }
-        
-        Azure_Logger::info('Backup: Archive created at: ' . $archive_path, 'Backup');
-        
-        // Upload to Azure Storage
-        Azure_Logger::info('Backup: -------- Uploading to Azure Storage --------', 'Backup');
-        $this->update_backup_progress($backup_id, 80, 'running', 'Uploading to Azure Storage...');
-        
-        // Verify archive exists and has content before upload
-        if (!file_exists($archive_path)) {
-            Azure_Logger::error('Backup: Archive file does NOT exist at: ' . $archive_path, 'Backup');
-            throw new Exception('Backup archive not found at: ' . $archive_path);
-        }
-        
-        $archive_size = filesize($archive_path);
-        Azure_Logger::info('Backup: Archive file size: ' . $archive_size . ' bytes (' . $this->format_bytes($archive_size) . ')', 'Backup');
-        
-        if ($archive_size < 1024) { // Less than 1KB is suspicious
-            Azure_Logger::error('Backup: Archive is suspiciously small: ' . $archive_size . ' bytes', 'Backup');
-            throw new Exception('Backup archive is too small (' . $archive_size . ' bytes) - likely incomplete');
-        }
-        
-        Azure_Logger::info('Backup: Archive verified - Size: ' . $this->format_bytes($archive_size) . ' at: ' . $archive_path, 'Backup');
-        
-        Azure_Logger::info('Backup: Checking for Azure_Backup_Storage class...', 'Backup');
-        if (class_exists('Azure_Backup_Storage')) {
-            Azure_Logger::info('Backup: Azure_Backup_Storage class exists, instantiating...', 'Backup');
-            $storage = new Azure_Backup_Storage();
-            
-            // Test storage connection before upload
-            Azure_Logger::info('Backup: Testing Azure Storage connection...', 'Backup');
-            $storage_test = $storage->test_connection();
-            
-            if (!$storage_test['success']) {
-                Azure_Logger::error('Backup: Azure Storage connection FAILED: ' . $storage_test['message'], 'Backup');
-                throw new Exception('Azure Storage connection failed: ' . $storage_test['message']);
-            }
-            
-            Azure_Logger::info('Backup: Azure Storage connection verified successfully', 'Backup');
-            Azure_Logger::info('Backup: Starting upload to Azure Storage...', 'Backup');
-            
-            $upload_start_time = microtime(true);
-            $blob_name = $storage->upload_backup($archive_path, $backup_id);
-            $upload_elapsed = round(microtime(true) - $upload_start_time, 2);
-            
-            Azure_Logger::info('Backup: Upload took ' . $upload_elapsed . 's', 'Backup');
-            
-            if ($blob_name) {
-                Azure_Logger::info('Backup: Upload successful! Blob name: ' . $blob_name, 'Backup');
-                $this->update_backup_blob_info($job_id, $blob_name, $archive_size);
-                Azure_Logger::info('Backup: Successfully uploaded to Azure Storage: ' . $blob_name . ' (' . $this->format_bytes($archive_size) . ')', 'Backup');
-                $this->update_backup_progress($backup_id, 90, 'running', 'Upload completed: ' . $blob_name);
-            } else {
-                Azure_Logger::error('Backup: Upload FAILED - no blob name returned', 'Backup');
-                throw new Exception('Failed to upload backup to Azure Storage - no blob name returned');
-            }
-        } else {
-            Azure_Logger::error('Backup: Azure_Backup_Storage class NOT FOUND', 'Backup');
-            throw new Exception('Azure_Backup_Storage class not available');
-        }
-        
-        // Clean up local files
-        Azure_Logger::info('Backup: -------- Cleaning up temporary files --------', 'Backup');
-        $this->update_backup_progress($backup_id, 95, 'running', 'Cleaning up temporary files...');
-        $this->cleanup_backup_files($backup_dir, $archive_path);
-        Azure_Logger::info('Backup: Cleanup completed', 'Backup');
-        
-        // Mark as complete
-        Azure_Logger::info('Backup: -------- Marking backup as COMPLETED --------', 'Backup');
-        $this->update_backup_status($job_id, 'completed');
-        $this->update_backup_progress($backup_id, 100, 'completed', 'Backup completed successfully!');
-        
-        self::$backup_in_progress = false;
-        self::$current_backup_id = null;
-        
-        Azure_Logger::info('Backup: ========== process_backup() COMPLETED SUCCESSFULLY ==========', 'Backup');
-        
-        // Send notification if enabled
-        if ($this->settings['backup_email_notifications'] ?? false) {
-            Azure_Logger::info('Backup: Sending email notification...', 'Backup');
-            $this->send_backup_notification($job_id, true, 'Backup completed successfully');
-        }
-    }
-    
-    /**
-     * Backup database
-     */
-    private function backup_database($backup_dir, $backup_id) {
-        $sql_file = $backup_dir . '/database_' . $backup_id . '.sql';
-        
+
+    private function maybe_add_entity_state_column() {
         global $wpdb;
-        
-        // Get all tables
-        $tables = $wpdb->get_results('SHOW TABLES', ARRAY_N);
-        
-        if (empty($tables)) {
-            throw new Exception('No database tables found.');
+        $table = $this->get_table();
+        if (!$table) return;
+
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'entity_state'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN entity_state longtext AFTER backup_types");
         }
-        
-        $sql_content = '';
-        
-        // Add database info header
-        $sql_content .= "-- WordPress Database Backup\n";
-        $sql_content .= "-- Generated: " . date('Y-m-d H:i:s') . "\n";
-        $sql_content .= "-- Site: " . get_site_url() . "\n\n";
-        $sql_content .= "SET foreign_key_checks = 0;\n\n";
-        
-        foreach ($tables as $table) {
-            $table_name = $table[0];
-            
-            // Get table structure
-            $create_table = $wpdb->get_row("SHOW CREATE TABLE `{$table_name}`", ARRAY_N);
-            $sql_content .= "DROP TABLE IF EXISTS `{$table_name}`;\n";
-            $sql_content .= $create_table[1] . ";\n\n";
-            
-            // Get table data
-            $rows = $wpdb->get_results("SELECT * FROM `{$table_name}`", ARRAY_A);
-            
-            if (!empty($rows)) {
-                $sql_content .= "INSERT INTO `{$table_name}` VALUES ";
-                $value_strings = array();
-                
-                foreach ($rows as $row) {
-                    $values = array();
-                    foreach ($row as $value) {
-                        if (is_null($value)) {
-                            $values[] = 'NULL';
-                        } else {
-                            $values[] = "'" . $wpdb->_real_escape($value) . "'";
-                        }
-                    }
-                    $value_strings[] = '(' . implode(',', $values) . ')';
-                }
-                
-                $sql_content .= implode(',', $value_strings) . ";\n\n";
-            }
-        }
-        
-        $sql_content .= "SET foreign_key_checks = 1;\n";
-        
-        if (file_put_contents($sql_file, $sql_content) === false) {
-            throw new Exception('Failed to write database backup file.');
-        }
-        
-        return array($sql_file);
     }
-    
-    /**
-     * Backup WordPress content
-     */
-    private function backup_content($backup_dir, $backup_id) {
-        $content_dir = $backup_dir . '/content_' . $backup_id;
-        wp_mkdir_p($content_dir);
-        
-        $wp_content = WP_CONTENT_DIR;
-        // Exclude directories that are backed up separately or should not be included
-        $exclude_dirs = array(
-            'uploads',       // Backed up separately as 'media'
-            'plugins',       // Backed up separately
-            'themes',        // Backed up separately
-            'cache',         // Cache files
-            'backup',        // Other backup folders
-            'backups',       // Our backup folder
-            'temp_backup_',  // Temp backup directories
-            'upgrade',       // WordPress upgrade temp files
-            'wflogs',        // Wordfence logs
-            'debug.log',     // Debug log
-        );
-        
-        return $this->copy_directory($wp_content, $content_dir, $exclude_dirs);
+
+    // ------------------------------------------------------------------
+    // Job management helpers
+    // ------------------------------------------------------------------
+
+    private function get_table() {
+        return Azure_Database::get_table_name('backup_jobs');
     }
-    
-    /**
-     * Backup media files
-     */
-    private function backup_media($backup_dir, $backup_id, $progress_backup_id = null, $base_progress = 0) {
-        $media_dir = $backup_dir . '/media_' . $backup_id;
-        wp_mkdir_p($media_dir);
-        
-        $uploads_dir = wp_upload_dir()['basedir'];
-        
-        if (!is_dir($uploads_dir)) {
-            Azure_Logger::warning('Backup: Uploads directory not found: ' . $uploads_dir);
-            return array();
-        }
-        
-        // Update progress at start
-        if ($progress_backup_id) {
-            $this->update_backup_progress($progress_backup_id, $base_progress, 'running', 'Scanning media files...');
-        }
-        
-        return $this->copy_directory($uploads_dir, $media_dir, array(), $progress_backup_id, $base_progress);
-    }
-    
-    /**
-     * Backup plugins
-     */
-    private function backup_plugins($backup_dir, $backup_id) {
-        $plugins_dir = $backup_dir . '/plugins_' . $backup_id;
-        wp_mkdir_p($plugins_dir);
-        
-        $wp_plugins = WP_PLUGIN_DIR;
-        
-        // Exclude backup folders and temp directories from plugin backups
-        // This prevents backing up our own backup files (recursive/large files)
-        $exclude_dirs = array(
-            'backups',           // Our plugin's backup folder
-            'temp_backup_',      // Temp backup directories
-            'node_modules',      // Node modules (if any plugin has them)
-            '.git',              // Git directories
-            'cache',             // Cache directories
-        );
-        
-        Azure_Logger::info('Backup: Starting plugins backup with exclusions: ' . implode(', ', $exclude_dirs), 'Backup');
-        
-        return $this->copy_directory($wp_plugins, $plugins_dir, $exclude_dirs, $backup_id, 50);
-    }
-    
-    /**
-     * Backup themes
-     */
-    private function backup_themes($backup_dir, $backup_id) {
-        $themes_dir = $backup_dir . '/themes_' . $backup_id;
-        wp_mkdir_p($themes_dir);
-        
-        $wp_themes = get_theme_root();
-        
-        return $this->copy_directory($wp_themes, $themes_dir);
-    }
-    
-    /**
-     * Copy directory recursively
-     */
-    private function copy_directory($source, $destination, $exclude_dirs = array(), $progress_backup_id = null, $base_progress = 0) {
-        $files = array();
-        $file_count = 0;
-        $skipped_count = 0;
-        $last_progress_update = time();
-        
-        if (!is_dir($source)) {
-            return $files;
-        }
-        
-        try {
-            // Use SKIP_DOTS and don't follow symlinks to avoid broken symlink issues
-            // Also catch UnexpectedValueException which occurs with broken symlinks
-            $flags = RecursiveDirectoryIterator::SKIP_DOTS;
-            
-            $directory = new RecursiveDirectoryIterator($source, $flags);
-            $iterator = new RecursiveIteratorIterator(
-                $directory,
-                RecursiveIteratorIterator::SELF_FIRST,
-                RecursiveIteratorIterator::CATCH_GET_CHILD // Skip directories that can't be accessed
-            );
-            
-            foreach ($iterator as $item) {
-                try {
-                    // Heartbeat - update progress every 10 seconds to show we're still working
-                    if ($progress_backup_id && (time() - $last_progress_update) > 10) {
-                        $this->update_backup_progress(
-                            $progress_backup_id, 
-                            $base_progress, 
-                            'running', 
-                            "Copying files... ({$file_count} processed, {$skipped_count} skipped)"
-                        );
-                        $last_progress_update = time();
-                        
-                        // Reset execution time limit to prevent timeout
-                        @set_time_limit(600); // Add another 10 minutes
-                    }
-                    
-                    $source_path = $item->getPathname();
-                    
-                    // Skip broken symlinks
-                    if ($item->isLink() && !file_exists($item->getRealPath())) {
-                        Azure_Logger::debug("Backup: Skipping broken symlink: {$source_path}");
-                        $skipped_count++;
-                        continue;
-                    }
-                    
-                    // Skip if the path doesn't actually exist (can happen with some edge cases)
-                    if (!file_exists($source_path)) {
-                        Azure_Logger::debug("Backup: Skipping non-existent path: {$source_path}");
-                        $skipped_count++;
-                        continue;
-                    }
-                    
-                    $relative_path = str_replace($source, '', $source_path);
-                    $destination_path = $destination . $relative_path;
-                    
-                    // Check if we should exclude this path
-                    $should_exclude = false;
-                    foreach ($exclude_dirs as $exclude) {
-                        // Handle both exact matches and prefix matches (for temp_backup_ style exclusions)
-                        $sep = DIRECTORY_SEPARATOR;
-                        
-                        // Exact directory match
-                        if (strpos($relative_path, $sep . $exclude . $sep) !== false ||
-                            substr($relative_path, -strlen($sep . $exclude)) === $sep . $exclude) {
-                            $should_exclude = true;
-                            break;
-                        }
-                        
-                        // Prefix match (for patterns like temp_backup_*)
-                        if (substr($exclude, -1) === '_' || strpos($exclude, '*') !== false) {
-                            $pattern = str_replace('*', '', $exclude);
-                            if (strpos($relative_path, $sep . $pattern) !== false) {
-                                $should_exclude = true;
-                                break;
-                            }
-                        }
-                        
-                        // Also check for .zip files in plugin backup directories
-                        if (preg_match('/\.zip$/i', $source_path) && strpos($relative_path, $sep . 'backups' . $sep) !== false) {
-                            $should_exclude = true;
-                            break;
-                        }
-                    }
-                    
-                    if ($should_exclude) {
-                        $skipped_count++;
-                        continue;
-                    }
-                    
-                    if ($item->isDir()) {
-                        wp_mkdir_p($destination_path);
-                    } elseif ($item->isFile()) {
-                        // Skip very large files (> 100MB) to prevent memory issues
-                        $file_size = @$item->getSize();
-                        if ($file_size === false) {
-                            Azure_Logger::debug("Backup: Skipping unreadable file: {$source_path}");
-                            $skipped_count++;
-                            continue;
-                        }
-                        if ($file_size > 100 * 1024 * 1024) {
-                            Azure_Logger::warning("Backup: Skipping large file (>100MB): {$source_path}");
-                            $skipped_count++;
-                            continue;
-                        }
-                        
-                        wp_mkdir_p(dirname($destination_path));
-                        if (@copy($source_path, $destination_path)) {
-                            $files[] = $destination_path;
-                            $file_count++;
-                        } else {
-                            Azure_Logger::warning("Backup: Failed to copy file: {$source_path}");
-                            $skipped_count++;
-                        }
-                    }
-                } catch (Exception $item_exception) {
-                    // Log and continue - don't let one bad file stop the whole backup
-                    Azure_Logger::warning("Backup: Exception processing item: " . $item_exception->getMessage());
-                    $skipped_count++;
-                    continue;
-                }
-            }
-            
-            // Final progress update
-            if ($progress_backup_id) {
-                $this->update_backup_progress(
-                    $progress_backup_id, 
-                    $base_progress, 
-                    'running', 
-                    "Copied {$file_count} files" . ($skipped_count > 0 ? " ({$skipped_count} skipped)" : "")
-                );
-            }
-            
-        } catch (UnexpectedValueException $e) {
-            // This occurs when RecursiveDirectoryIterator encounters a broken symlink or inaccessible directory
-            Azure_Logger::error("Backup: Directory access error in copy_directory: " . $e->getMessage());
-            // Return what we've copied so far
-        } catch (Exception $e) {
-            Azure_Logger::error("Backup: Exception in copy_directory: " . $e->getMessage());
-            // Return what we've copied so far
-        }
-        
-        return $files;
-    }
-    
-    /**
-     * Format bytes to human readable string
-     */
-    private function format_bytes($bytes, $precision = 2) {
-        $units = array('B', 'KB', 'MB', 'GB', 'TB', 'PB');
-        
-        for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
-            $bytes /= 1024;
-        }
-        
-        return round($bytes, $precision) . ' ' . $units[$i];
-    }
-    
-    /**
-     * Create backup archive
-     */
-    private function create_backup_archive($backup_dir, $backup_id, $files) {
-        $archive_path = AZURE_PLUGIN_PATH . 'backups/' . $backup_id . '.zip';
-        
-        if (!class_exists('ZipArchive')) {
-            throw new Exception('ZipArchive extension is not available.');
-        }
-        
-        // Ensure backups directory exists
-        $backups_dir = AZURE_PLUGIN_PATH . 'backups/';
-        if (!is_dir($backups_dir)) {
-            wp_mkdir_p($backups_dir);
-        }
-        
-        $zip = new ZipArchive();
-        $result = $zip->open($archive_path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-        
-        if ($result !== TRUE) {
-            $error_messages = array(
-                ZipArchive::ER_EXISTS => 'File already exists',
-                ZipArchive::ER_INCONS => 'Zip archive inconsistent',
-                ZipArchive::ER_INVAL => 'Invalid argument',
-                ZipArchive::ER_MEMORY => 'Memory allocation failure',
-                ZipArchive::ER_NOENT => 'No such file',
-                ZipArchive::ER_NOZIP => 'Not a zip archive',
-                ZipArchive::ER_OPEN => 'Cannot open file',
-                ZipArchive::ER_READ => 'Read error',
-                ZipArchive::ER_SEEK => 'Seek error',
-            );
-            $error_msg = isset($error_messages[$result]) ? $error_messages[$result] : 'Unknown error: ' . $result;
-            throw new Exception('Failed to create backup archive: ' . $error_msg);
-        }
-        
-        $added_count = 0;
-        $failed_count = 0;
-        
-        // Add all files to archive
-        foreach ($files as $file) {
-            // Skip if file doesn't exist or isn't readable
-            if (!file_exists($file) || !is_readable($file)) {
-                Azure_Logger::warning("Backup: Skipping non-existent/unreadable file in archive: {$file}");
-                $failed_count++;
-                continue;
-            }
-            
-            $relative_name = str_replace($backup_dir . '/', '', $file);
-            
-            // Normalize path separators for zip
-            $relative_name = str_replace('\\', '/', $relative_name);
-            
-            if ($zip->addFile($file, $relative_name)) {
-                $added_count++;
-            } else {
-                Azure_Logger::warning("Backup: Failed to add file to archive: {$file}");
-                $failed_count++;
-            }
-        }
-        
-        Azure_Logger::info("Backup: Added {$added_count} files to archive, {$failed_count} failed");
-        
-        $zip->close();
-        
-        if (!file_exists($archive_path)) {
-            throw new Exception('Failed to create backup archive file.');
-        }
-        
-        $archive_size = filesize($archive_path);
-        Azure_Logger::info("Backup: Archive created: {$archive_path} (" . size_format($archive_size) . ")");
-        
-        return $archive_path;
-    }
-    
-    /**
-     * Get backup directory path
-     */
-    private function get_backup_directory($backup_id) {
-        return AZURE_PLUGIN_PATH . 'backups/temp_' . $backup_id;
-    }
-    
-    /**
-     * Spawn the backup cron process immediately
-     * WordPress cron is "lazy" - it only runs when someone visits the site.
-     * This function triggers the cron immediately via a non-blocking HTTP request.
-     */
-    private function spawn_backup_cron($backup_id) {
-        Azure_Logger::info('Backup: ========== SPAWN CRON START ==========', 'Backup');
-        Azure_Logger::info('Backup: Attempting to spawn cron for backup: ' . $backup_id, 'Backup');
-        
-        // First, try to spawn WordPress cron
-        $cron_url = site_url('wp-cron.php');
-        
-        Azure_Logger::info('Backup: Cron URL: ' . $cron_url, 'Backup');
-        Azure_Logger::info('Backup: Site URL: ' . site_url(), 'Backup');
-        Azure_Logger::info('Backup: Home URL: ' . home_url(), 'Backup');
-        
-        // Check if DISABLE_WP_CRON is set
-        if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
-            Azure_Logger::warning('Backup: DISABLE_WP_CRON is TRUE - WordPress cron is disabled!', 'Backup');
-            Azure_Logger::warning('Backup: Will attempt direct backup execution instead', 'Backup');
-            
-            // Try to run the backup directly
-            $this->run_backup_directly($backup_id);
-            return;
-        }
-        
-        // Use wp_remote_post with blocking=false to trigger cron without waiting
-        $args = array(
-            'timeout'   => 0.01,
-            'blocking'  => false,
-            'sslverify' => apply_filters('https_local_ssl_verify', false),
-            'body'      => array(
-                'doing_wp_cron' => sprintf('%.22F', microtime(true))
-            )
-        );
-        
-        Azure_Logger::info('Backup: Sending cron spawn request...', 'Backup');
-        $response = wp_remote_post($cron_url, $args);
-        
-        if (is_wp_error($response)) {
-            Azure_Logger::error('Backup: Cron spawn FAILED: ' . $response->get_error_message(), 'Backup');
-            Azure_Logger::info('Backup: Will try alternative method - direct execution', 'Backup');
-            
-            // Alternative: Try to run the backup directly
-            $this->run_backup_directly($backup_id);
-        } else {
-            Azure_Logger::info('Backup: Cron spawn request sent successfully (non-blocking)', 'Backup');
-            
-            // Also set up the fallback transient
-            $this->schedule_ajax_fallback($backup_id);
-        }
-        
-        Azure_Logger::info('Backup: ========== SPAWN CRON END ==========', 'Backup');
-    }
-    
-    /**
-     * Run backup directly (fallback when cron doesn't work)
-     */
-    private function run_backup_directly($backup_id) {
-        Azure_Logger::info('Backup: ========== DIRECT EXECUTION START ==========', 'Backup');
-        Azure_Logger::info('Backup: Attempting direct backup execution for: ' . $backup_id, 'Backup');
-        
-        // Check if we're already in a cron context
-        if (defined('DOING_CRON') && DOING_CRON) {
-            Azure_Logger::info('Backup: Already in DOING_CRON context, calling process_background_backup directly', 'Backup');
-            $this->process_background_backup($backup_id);
-            return;
-        }
-        
-        // Try a loopback request to admin-ajax.php to trigger the backup
-        $ajax_url = admin_url('admin-ajax.php');
-        Azure_Logger::info('Backup: Trying loopback to: ' . $ajax_url, 'Backup');
-        
-        $args = array(
-            'timeout'   => 1, // Give it 1 second to start
-            'blocking'  => false,
-            'sslverify' => apply_filters('https_local_ssl_verify', false),
-            'body'      => array(
-                'action'    => 'azure_trigger_backup_process',
-                'backup_id' => $backup_id,
-                'nonce'     => wp_create_nonce('azure_plugin_nonce')
-            )
-        );
-        
-        $response = wp_remote_post($ajax_url, $args);
-        
-        if (is_wp_error($response)) {
-            Azure_Logger::error('Backup: Loopback request FAILED: ' . $response->get_error_message(), 'Backup');
-            
-            // Last resort: Try to run directly in this request
-            Azure_Logger::warning('Backup: Attempting synchronous backup execution as last resort', 'Backup');
-            
-            // Set a flag to prevent infinite loops
-            if (!get_transient('azure_backup_direct_running_' . $backup_id)) {
-                set_transient('azure_backup_direct_running_' . $backup_id, true, 300);
-                
-                // Run the backup directly (this will block the current request)
-                $this->process_background_backup($backup_id);
-                
-                delete_transient('azure_backup_direct_running_' . $backup_id);
-            } else {
-                Azure_Logger::warning('Backup: Direct execution already in progress for: ' . $backup_id, 'Backup');
-            }
-        } else {
-            Azure_Logger::info('Backup: Loopback request sent successfully', 'Backup');
-        }
-        
-        Azure_Logger::info('Backup: ========== DIRECT EXECUTION END ==========', 'Backup');
-    }
-    
-    /**
-     * Schedule an AJAX fallback for backup processing
-     * This creates a transient that the progress checker can use to trigger the backup
-     */
-    private function schedule_ajax_fallback($backup_id) {
-        // Set a transient that indicates this backup needs to be triggered
-        set_transient('azure_backup_needs_trigger_' . $backup_id, true, 300); // 5 minutes
-        Azure_Logger::info('Backup: Set AJAX fallback transient for: ' . $backup_id, 'Backup');
-    }
-    
-    /**
-     * Create backup job record
-     */
-    private function create_backup_job($backup_id, $backup_name, $backup_types, $scheduled) {
+
+    public function update_backup_progress($backup_id, $progress, $status = null, $message = null) {
         global $wpdb;
-        
-        Azure_Logger::debug('Backup: create_backup_job called with ID: ' . $backup_id, 'Backup');
-        
-        try {
-            $table = Azure_Database::get_table_name('backup_jobs');
-            Azure_Logger::debug('Backup: Table name retrieved: ' . ($table ? $table : 'NULL'), 'Backup');
-            
-            if (!$table) {
-                Azure_Logger::error('Backup: Backup jobs table name not found', 'Backup');
-                return false;
-            }
-            
-            // Check if table actually exists
-            $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
-            if (!$table_exists) {
-                Azure_Logger::error('Backup: Table does not exist: ' . $table . ' - attempting to create it', 'Backup');
-                
-                // Try to create the missing table
-                try {
-                    if (method_exists('Azure_Database', 'create_tables')) {
-                        Azure_Database::create_tables();
-                        Azure_Logger::info('Backup: Database tables creation attempted', 'Backup');
-                        
-                        // Check again if table exists now
-                        $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
-                        if (!$table_exists) {
-                            Azure_Logger::error('Backup: Table still does not exist after creation attempt: ' . $table, 'Backup');
-                            // Let's try to create just the backup jobs table manually
-                            $this->create_backup_jobs_table_manual();
-                            
-                            // Final check
-                            $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
-                            if (!$table_exists) {
-                                Azure_Logger::error('Backup: Manual table creation also failed: ' . $table, 'Backup');
-                                return false;
-                            }
-                        } else {
-                            Azure_Logger::info('Backup: Table created successfully: ' . $table, 'Backup');
-                        }
-                    } else {
-                        throw new Exception('Azure_Database::create_tables method not found');
-                    }
-                } catch (Exception $create_exception) {
-                    Azure_Logger::error('Backup: Failed to create database tables: ' . $create_exception->getMessage(), 'Backup');
-                    return false;
-                }
-            }
-            
-            Azure_Logger::debug('Backup: Table exists, proceeding with insert', 'Backup');
-            
-            $insert_data = array(
-                'backup_id' => $backup_id,
-                'job_name' => $backup_name,
-                'backup_types' => json_encode($backup_types),
-                'status' => 'pending',
-                'progress' => 0,
-                'message' => 'Backup initialized',
-                'started_at' => current_time('mysql')
-            );
-            
-            Azure_Logger::debug('Backup: Insert data prepared: ' . json_encode($insert_data), 'Backup');
-            
-            $result = $wpdb->insert(
-                $table,
-                $insert_data,
-                array('%s', '%s', '%s', '%s', '%d', '%s', '%s')
-            );
-            
-            if ($result === false) {
-                Azure_Logger::error('Backup: Database insert failed. Error: ' . $wpdb->last_error, 'Backup');
-                return false;
-            }
-            
-            $insert_id = $wpdb->insert_id;
-            Azure_Logger::debug('Backup: Insert successful, ID: ' . $insert_id, 'Backup');
-            
-            return $insert_id;
-            
-        } catch (Exception $e) {
-            Azure_Logger::error('Backup: Exception in create_backup_job: ' . $e->getMessage(), 'Backup');
-            return false;
-        }
+        $table = $this->get_table();
+        if (!$table) return;
+
+        $data = array('progress' => $progress, 'updated_at' => gmdate('Y-m-d H:i:s'));
+        if ($status) $data['status'] = $status;
+        if ($message) $data['message'] = $message;
+
+        $wpdb->update($table, $data, array('backup_id' => $backup_id));
     }
-    
-    /**
-     * Create backup jobs table manually as fallback
-     */
-    private function create_backup_jobs_table_manual() {
+
+    private function update_job_state($backup_id, $entity_state) {
         global $wpdb;
-        
-        $charset_collate = $wpdb->get_charset_collate();
+        $table = $this->get_table();
+        if (!$table) return;
+        $wpdb->update(
+            $table,
+            array('entity_state' => json_encode($entity_state), 'updated_at' => gmdate('Y-m-d H:i:s')),
+            array('backup_id' => $backup_id)
+        );
+    }
+
+    private function get_job($backup_id) {
+        global $wpdb;
+        $table = $this->get_table();
+        if (!$table) return null;
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE backup_id = %s", $backup_id));
+    }
+
+    private function update_status($job_id, $status, $error = null) {
+        global $wpdb;
+        $table = $this->get_table();
+        if (!$table) return;
+        $data = array('status' => $status);
+        if ($status === 'completed') $data['completed_at'] = gmdate('Y-m-d H:i:s');
+        if ($error) $data['error_message'] = $error;
+        $wpdb->update($table, $data, array('id' => $job_id));
+    }
+
+    private function update_blob_info($job_id, $blob_name, $file_size) {
+        global $wpdb;
+        $table = $this->get_table();
+        if (!$table) return;
+        $wpdb->update($table, array('azure_blob_name' => $blob_name, 'file_size' => $file_size), array('id' => $job_id));
+    }
+
+    private function create_backup_job($backup_id, $name, $types, $scheduled) {
+        global $wpdb;
+        $table = $this->get_table();
+        if (!$table) {
+            $this->ensure_backup_table();
+            $table = $this->get_table();
+            if (!$table) return false;
+        }
+
+        $entity_state = array();
+        foreach ($types as $t) {
+            $entity_state[$t] = array('status' => 'pending', 'files' => array());
+        }
+
+        $result = $wpdb->insert($table, array(
+            'backup_id'    => $backup_id,
+            'job_name'     => $name,
+            'backup_types' => json_encode($types),
+            'entity_state' => json_encode($entity_state),
+            'status'       => 'pending',
+            'progress'     => 0,
+            'message'      => 'Backup initialized',
+            'started_at'   => gmdate('Y-m-d H:i:s'),
+        ));
+
+        return $result !== false ? $wpdb->insert_id : false;
+    }
+
+    private function ensure_backup_table() {
+        global $wpdb;
         $table_name = $wpdb->prefix . 'azure_backup_jobs';
-        
-        $sql = "CREATE TABLE $table_name (
+        $charset = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE {$table_name} (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             backup_id varchar(255) NOT NULL,
             job_name varchar(255) NOT NULL,
             backup_types longtext,
+            entity_state longtext,
             status varchar(50) DEFAULT 'pending',
             progress int(11) DEFAULT 0,
             message longtext,
@@ -901,813 +166,780 @@ class Azure_Backup {
             UNIQUE KEY backup_id (backup_id),
             KEY status (status),
             KEY created_at (created_at)
-        ) $charset_collate;";
-        
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        $result = dbDelta($sql);
-        
-        Azure_Logger::debug('Backup: Manual table creation result: ' . json_encode($result), 'Backup');
-        
-        return $result;
+        ) {$charset};";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta($sql);
     }
-    
+
+    // ------------------------------------------------------------------
+    // Backup resume / cron chain (core loop)
+    // ------------------------------------------------------------------
+
     /**
-     * Update backup status
+     * Process one entity of a backup job then schedule the next resumption.
+     * This is the heart of the WP-Cron chain approach.
      */
-    private function update_backup_status($job_id, $status, $error_message = null) {
-        global $wpdb;
-        
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            return false;
-        }
-        
-        $data = array('status' => $status);
-        $formats = array('%s');
-        
-        if ($status === 'completed') {
-            $data['completed_at'] = current_time('mysql');
-            $formats[] = '%s';
-        }
-        
-        if ($error_message) {
-            $data['error_message'] = $error_message;
-            $formats[] = '%s';
-        }
-        
-        return $wpdb->update(
-            $table,
-            $data,
-            array('id' => $job_id),
-            $formats,
-            array('%d')
-        );
-    }
-    
-    /**
-     * Update backup blob information
-     */
-    private function update_backup_blob_info($job_id, $blob_name, $file_size) {
-        global $wpdb;
-        
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            return false;
-        }
-        
-        return $wpdb->update(
-            $table,
-            array(
-                'azure_blob_name' => $blob_name,
-                'file_size' => $file_size
-            ),
-            array('id' => $job_id),
-            array('%s', '%d'),
-            array('%d')
-        );
-    }
-    
-    /**
-     * Clean up backup files
-     */
-    private function cleanup_backup_files($backup_dir, $archive_path = null) {
-        // Remove temporary directory
-        if (is_dir($backup_dir)) {
-            Azure_Logger::debug('Backup: Removing temp directory: ' . $backup_dir, 'Backup');
-            $this->remove_directory($backup_dir);
-        }
-        
-        // Remove archive if specified (after upload)
-        if ($archive_path && file_exists($archive_path)) {
-            Azure_Logger::debug('Backup: Removing local archive: ' . $archive_path, 'Backup');
-            $deleted = @unlink($archive_path);
-            if ($deleted) {
-                Azure_Logger::info('Backup: Local archive deleted successfully: ' . $archive_path, 'Backup');
-            } else {
-                Azure_Logger::warning('Backup: Failed to delete local archive: ' . $archive_path, 'Backup');
-            }
-        }
-    }
-    
-    /**
-     * Remove directory recursively
-     */
-    private function remove_directory($dir) {
-        if (!is_dir($dir)) {
-            return;
-        }
-        
-        try {
-            $files = @scandir($dir);
-            if ($files === false) {
-                Azure_Logger::warning("Backup: Cannot scan directory for removal: {$dir}");
-                return;
-            }
-            
-            $files = array_diff($files, array('.', '..'));
-            
-            foreach ($files as $file) {
-                $path = $dir . DIRECTORY_SEPARATOR . $file;
-                
-                // Handle symlinks - just unlink them, don't follow
-                if (is_link($path)) {
-                    @unlink($path);
-                    continue;
-                }
-                
-                if (is_dir($path)) {
-                    $this->remove_directory($path);
-                } else {
-                    @unlink($path);
-                }
-            }
-            
-            @rmdir($dir);
-        } catch (Exception $e) {
-            Azure_Logger::warning("Backup: Exception removing directory {$dir}: " . $e->getMessage());
-        }
-    }
-    
-    /**
-     * Send backup notification
-     */
-    private function send_backup_notification($job_id, $success, $message) {
-        $notification_email = $this->settings['backup_notification_email'] ?? get_option('admin_email');
-        
-        if (empty($notification_email)) {
-            return;
-        }
-        
-        $subject = $success ? 'Backup Completed Successfully' : 'Backup Failed';
-        $subject .= ' - ' . get_bloginfo('name');
-        
-        $body = "Backup notification from " . get_bloginfo('name') . "\n\n";
-        $body .= "Status: " . ($success ? 'Success' : 'Failed') . "\n";
-        $body .= "Message: " . $message . "\n";
-        $body .= "Time: " . current_time('mysql') . "\n";
-        $body .= "Site URL: " . get_site_url() . "\n";
-        
-        wp_mail($notification_email, $subject, $body);
-    }
-    
-    /**
-     * Run scheduled backup
-     */
-    public function run_scheduled_backup() {
-        if (!Azure_Settings::get_setting('backup_schedule_enabled', false)) {
-            return;
-        }
-        
-        $backup_types = Azure_Settings::get_setting('backup_types', array('content', 'media', 'plugins', 'themes', 'database'));
-        $backup_name = 'Scheduled Backup - ' . date('Y-m-d H:i:s');
-        
-        try {
-            $this->create_backup($backup_name, $backup_types, true);
-        } catch (Exception $e) {
-            Azure_Logger::error('Backup: Scheduled backup failed: ' . $e->getMessage());
-            $this->send_backup_notification(0, false, $e->getMessage());
-        }
-    }
-    
-    /**
-     * AJAX handler for starting backup
-     */
-    public function ajax_start_backup() {
-        // Enhanced debugging for backup start
-        Azure_Logger::debug('Backup: ajax_start_backup called', 'Backup');
-        
-        if (!current_user_can('manage_options')) {
-            Azure_Logger::error('Backup: User lacks manage_options capability', 'Backup');
-            wp_send_json_error('Insufficient permissions');
-        }
-        
-        if (!wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
-            Azure_Logger::error('Backup: Invalid nonce', 'Backup');
-            wp_send_json_error('Invalid security token');
-        }
-        
-        Azure_Logger::info('Backup: Manual backup requested via AJAX', 'Backup');
-        
-        try {
-            // Check if Azure_Settings class exists
-            if (!class_exists('Azure_Settings')) {
-                throw new Exception('Azure_Settings class not found');
-            }
-            
-            // Check if Azure_Database class exists  
-            if (!class_exists('Azure_Database')) {
-                throw new Exception('Azure_Database class not found');
-            }
-            
-            Azure_Logger::debug('Backup: Required classes found', 'Backup');
-            
-            $backup_types = Azure_Settings::get_setting('backup_types', array('content', 'media', 'plugins', 'themes', 'database'));
-            $backup_name = 'Manual Backup - ' . date('Y-m-d H:i:s');
-            
-            Azure_Logger::debug('Backup: Settings retrieved - types: ' . json_encode($backup_types), 'Backup');
-            
-            // Generate backup ID for progress tracking
-            $backup_id = 'backup_' . time() . '_' . wp_generate_password(8, false);
-            Azure_Logger::debug('Backup: Generated backup ID: ' . $backup_id, 'Backup');
-            
-            // Check database connection
-            global $wpdb;
-            if (!$wpdb) {
-                throw new Exception('WordPress database connection not available');
-            }
-            
-            Azure_Logger::debug('Backup: Database connection confirmed', 'Backup');
-            
-            // Create backup job record (but don't run the backup yet)
-            $job_id = $this->create_backup_job($backup_id, $backup_name, $backup_types, false);
-            if (!$job_id) {
-                throw new Exception('Failed to create backup job record - check database');
-            }
-            
-            Azure_Logger::info('Backup: Created backup job with ID: ' . $backup_id . ' (Job ID: ' . $job_id . ')', 'Backup');
-            
-            // Schedule background backup processing
-            $scheduled = wp_schedule_single_event(time(), 'azure_backup_process', array($backup_id));
-            if ($scheduled === false) {
-                Azure_Logger::warning('Backup: wp_schedule_single_event returned false, will try direct spawn', 'Backup');
-            }
-            
-            Azure_Logger::debug('Backup: Background process scheduled, now spawning cron', 'Backup');
-            
-            // Spawn the cron immediately - don't wait for a page visit
-            // This is crucial because WordPress cron is "lazy" and only runs on page visits
-            $this->spawn_backup_cron($backup_id);
-            
-            wp_send_json_success(array(
-                'message' => 'Backup started successfully',
-                'backup_id' => $backup_id,
-                'requires_progress' => true
-            ));
-            
-        } catch (Exception $e) {
-            Azure_Logger::error('Backup: Failed to start backup - Exception: ' . $e->getMessage(), 'Backup');
-            Azure_Logger::error('Backup: Exception trace: ' . $e->getTraceAsString(), 'Backup');
-            wp_send_json_error('Backup initialization failed: ' . $e->getMessage());
-        } catch (Error $e) {
-            Azure_Logger::error('Backup: Failed to start backup - Fatal Error: ' . $e->getMessage(), 'Backup');
-            Azure_Logger::error('Backup: Error trace: ' . $e->getTraceAsString(), 'Backup');
-            wp_send_json_error('Fatal error during backup initialization: ' . $e->getMessage());
-        } catch (Throwable $e) {
-            Azure_Logger::error('Backup: Failed to start backup - Throwable: ' . $e->getMessage(), 'Backup');
-            wp_send_json_error('Unexpected error during backup initialization: ' . $e->getMessage());
-        }
-    }
-    
-    /**
-     * Process backup in background
-     */
-    public function process_background_backup($backup_id) {
-        Azure_Logger::info('Backup: ########## BACKGROUND PROCESS ENTRY ##########', 'Backup');
-        Azure_Logger::info('Backup: Backup ID: ' . ($backup_id ?: 'EMPTY'), 'Backup');
-        Azure_Logger::info('Backup: PHP Version: ' . PHP_VERSION, 'Backup');
-        Azure_Logger::info('Backup: Memory Limit: ' . ini_get('memory_limit'), 'Backup');
-        Azure_Logger::info('Backup: Max Execution Time: ' . ini_get('max_execution_time'), 'Backup');
-        Azure_Logger::info('Backup: DOING_CRON: ' . (defined('DOING_CRON') && DOING_CRON ? 'true' : 'false'), 'Backup');
-        Azure_Logger::info('Backup: DOING_AJAX: ' . (defined('DOING_AJAX') && DOING_AJAX ? 'true' : 'false'), 'Backup');
-        
-        if (empty($backup_id)) {
-            Azure_Logger::error('Backup: Background process called without backup ID - ABORTING', 'Backup');
-            return;
-        }
-        
-        // Set execution limits
-        Azure_Logger::info('Backup: Setting execution limits...', 'Backup');
-        $time_result = @set_time_limit(3600); // 1 hour
-        $memory_result = @ini_set('memory_limit', '512M');
-        Azure_Logger::info('Backup: set_time_limit result: ' . ($time_result ? 'success' : 'failed/ignored'), 'Backup');
-        Azure_Logger::info('Backup: ini_set memory_limit result: ' . ($memory_result ?: 'failed/ignored'), 'Backup');
-        Azure_Logger::info('Backup: New Memory Limit: ' . ini_get('memory_limit'), 'Backup');
-        Azure_Logger::info('Backup: New Max Execution Time: ' . ini_get('max_execution_time'), 'Backup');
-        
-        global $wpdb;
-        Azure_Logger::info('Backup: Getting backup_jobs table name...', 'Backup');
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            Azure_Logger::error('Backup: Backup jobs table not found - ABORTING', 'Backup');
-            return;
-        }
-        Azure_Logger::info('Backup: Table name: ' . $table, 'Backup');
-        
-        // Get the backup job
-        Azure_Logger::info('Backup: Fetching job from database...', 'Backup');
-        $job = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE backup_id = %s",
-            $backup_id
-        ));
-        
+    public function backup_resume($backup_id) {
+        @ignore_user_abort(true);
+        $max_exec = max(intval(Azure_Settings::get_setting('backup_max_execution_time', 3600)), 300);
+        @set_time_limit($max_exec);
+        @ini_set('memory_limit', '512M');
+
+        Azure_Logger::info("Backup: Resume called for {$backup_id}", 'Backup');
+
+        $job = $this->get_job($backup_id);
         if (!$job) {
-            Azure_Logger::error('Backup: Job not found for backup ID: ' . $backup_id . ' - ABORTING', 'Backup');
-            Azure_Logger::error('Backup: Last DB error: ' . $wpdb->last_error, 'Backup');
+            Azure_Logger::error("Backup: Job not found: {$backup_id}", 'Backup');
             return;
         }
-        
-        Azure_Logger::info('Backup: Job found successfully', 'Backup');
-        Azure_Logger::info('Backup: Job ID: ' . $job->id, 'Backup');
-        Azure_Logger::info('Backup: Job Status: ' . $job->status, 'Backup');
-        Azure_Logger::info('Backup: Job Types: ' . $job->backup_types, 'Backup');
-        Azure_Logger::info('Backup: Job Created: ' . ($job->created_at ?? $job->started_at ?? 'unknown'), 'Backup');
-        
-        // Check if job is already running or completed
+
+        if (in_array($job->status, array('completed', 'failed', 'cancelled'))) {
+            Azure_Logger::info("Backup: Job {$backup_id} already {$job->status}, skipping", 'Backup');
+            return;
+        }
+
+        // Guard against double-run — allow 15 min for long zip/upload operations
         if ($job->status === 'running') {
-            Azure_Logger::warning('Backup: Job is already running - checking if stale...', 'Backup');
-            // Allow re-processing if job has been "running" for more than 10 minutes
-            $job_time = strtotime($job->created_at ?? $job->started_at ?? 'now');
-            if ((time() - $job_time) < 600) {
-                Azure_Logger::warning('Backup: Job started less than 10 minutes ago, skipping to avoid duplicate processing', 'Backup');
+            $last = strtotime($job->updated_at ?? $job->started_at ?? 'now');
+            if ((time() - $last) < 900) {
+                Azure_Logger::info("Backup: Job still active ({$backup_id}), skipping duplicate", 'Backup');
                 return;
             }
-            Azure_Logger::warning('Backup: Job appears stale (>10 min), reprocessing...', 'Backup');
-        } elseif ($job->status === 'completed') {
-            Azure_Logger::info('Backup: Job already completed, skipping', 'Backup');
-            return;
-        } elseif ($job->status === 'failed' || $job->status === 'cancelled') {
-            Azure_Logger::info('Backup: Job status is ' . $job->status . ', skipping', 'Backup');
-            return;
         }
-        
+
+        $this->update_backup_progress($backup_id, 5, 'running', 'Backup in progress...');
+
+        $entity_state = json_decode($job->entity_state ?? '{}', true);
+        if (empty($entity_state)) {
+            $types = json_decode($job->backup_types, true) ?: array('database', 'mu-plugins', 'plugins', 'themes', 'content');
+            foreach ($types as $t) {
+                $entity_state[$t] = array('status' => 'pending', 'files' => array());
+            }
+        }
+
+        $job_meta = get_transient('azure_backup_meta_' . $backup_id);
+        if (!is_array($job_meta)) $job_meta = array();
+        $backup_dir = $this->get_backup_directory($backup_id);
+        wp_mkdir_p($backup_dir);
+
+        if (!class_exists('Azure_Backup_Engine')) {
+            require_once AZURE_PLUGIN_PATH . 'includes/class-backup-engine.php';
+        }
+
+        $self = $this;
+        $engine = new Azure_Backup_Engine($backup_id, $backup_dir, function ($pct, $status, $msg) use ($self, $backup_id) {
+            $self->update_backup_progress($backup_id, $pct ?: 0, $status, $msg);
+        });
+
+        $storage = class_exists('Azure_Backup_Storage') ? new Azure_Backup_Storage() : null;
+        $total_entities = count($entity_state);
+        $done_entities = count(array_filter($entity_state, function ($e) { return $e['status'] === 'completed'; }));
+
+        $empty_entities = array();
+
         try {
-            // Parse backup types from JSON
-            Azure_Logger::info('Backup: Parsing backup types...', 'Backup');
-            $backup_types = json_decode($job->backup_types, true);
-            if (!is_array($backup_types)) {
-                Azure_Logger::warning('Backup: Failed to parse backup_types, using defaults', 'Backup');
-                $backup_types = array('content', 'media', 'plugins', 'themes', 'database');
-            }
-            
-            Azure_Logger::info('Backup: ========== STARTING BACKUP PROCESS ==========', 'Backup');
-            Azure_Logger::info('Backup: Processing ' . count($backup_types) . ' backup types: ' . implode(', ', $backup_types), 'Backup');
-            
-            // Update status to running
-            Azure_Logger::info('Backup: Updating job status to RUNNING...', 'Backup');
-            $this->update_backup_progress($backup_id, 5, 'running', 'Initializing backup...');
-            Azure_Logger::info('Backup: Job status updated to RUNNING', 'Backup');
-            
-            // Create backup directory
-            Azure_Logger::info('Backup: Creating backup directory...', 'Backup');
-            $backup_dir = $this->get_backup_directory($backup_id);
-            Azure_Logger::info('Backup: Backup directory path: ' . $backup_dir, 'Backup');
-            
-            if (!wp_mkdir_p($backup_dir)) {
-                Azure_Logger::error('Backup: FAILED to create backup directory: ' . $backup_dir, 'Backup');
-                throw new Exception('Failed to create backup directory: ' . $backup_dir);
-            }
-            
-            Azure_Logger::info('Backup: Backup directory created successfully', 'Backup');
-            Azure_Logger::info('Backup: Directory exists: ' . (is_dir($backup_dir) ? 'YES' : 'NO'), 'Backup');
-            Azure_Logger::info('Backup: Directory writable: ' . (is_writable($backup_dir) ? 'YES' : 'NO'), 'Backup');
-            
-            // Process the backup
-            Azure_Logger::info('Backup: >>>>>> CALLING process_backup() >>>>>>', 'Backup');
-            $this->process_backup($job->id, $backup_id, $backup_types, $backup_dir);
-            
-            Azure_Logger::info('Backup: <<<<<< process_backup() COMPLETED <<<<<<', 'Backup');
-            Azure_Logger::info('Backup: ########## BACKGROUND PROCESS COMPLETED SUCCESSFULLY ##########', 'Backup');
-            
-        } catch (Exception $e) {
-            Azure_Logger::error('Backup: !!!!! EXCEPTION IN BACKGROUND PROCESS !!!!!', 'Backup');
-            Azure_Logger::error('Backup: Exception Message: ' . $e->getMessage(), 'Backup');
-            Azure_Logger::error('Backup: Exception File: ' . $e->getFile() . ':' . $e->getLine(), 'Backup');
-            Azure_Logger::error('Backup: Exception trace: ' . $e->getTraceAsString(), 'Backup');
-            $this->update_backup_progress($backup_id, 0, 'failed', 'Backup failed: ' . $e->getMessage());
-            
-            // Update job status
-            $wpdb->update(
-                $table,
-                array('status' => 'failed', 'error_message' => $e->getMessage()),
-                array('id' => $job->id),
-                array('%s', '%s'),
-                array('%d')
-            );
-        } catch (Error $e) {
-            Azure_Logger::error('Backup: !!!!! FATAL ERROR IN BACKGROUND PROCESS !!!!!', 'Backup');
-            Azure_Logger::error('Backup: Error Message: ' . $e->getMessage(), 'Backup');
-            Azure_Logger::error('Backup: Error File: ' . $e->getFile() . ':' . $e->getLine(), 'Backup');
-            Azure_Logger::error('Backup: Error trace: ' . $e->getTraceAsString(), 'Backup');
-            $this->update_backup_progress($backup_id, 0, 'failed', 'Fatal error: ' . $e->getMessage());
-            
-            // Update job status
-            $wpdb->update(
-                $table,
-                array('status' => 'failed', 'error_message' => 'Fatal error: ' . $e->getMessage()),
-                array('id' => $job->id),
-                array('%s', '%s'),
-                array('%d')
-            );
-        }
-        
-        Azure_Logger::info('Backup: ########## BACKGROUND PROCESS EXIT ##########', 'Backup');
-    }
-    
-    /**
-     * Update backup job progress
-     */
-    public function update_backup_progress($backup_id, $progress, $status = null, $message = null) {
-        global $wpdb;
-        
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            return false;
-        }
-        
-        $update_data = array(
-            'progress' => $progress,
-            'updated_at' => current_time('mysql')
-        );
-        
-        if ($status) {
-            $update_data['status'] = $status;
-        }
-        
-        if ($message) {
-            $update_data['message'] = $message;
-        }
-        
-        $wpdb->update(
-            $table,
-            $update_data,
-            array('backup_id' => $backup_id),
-            array('%d', '%s', '%s', '%s'),
-            array('%s')
-        );
-        
-        Azure_Logger::debug('Backup: Progress updated - ' . $backup_id . ' (' . $progress . '%): ' . $message, 'Backup');
-    }
-    
-    /**
-     * AJAX handler for getting backup progress
-     */
-    public function ajax_get_backup_progress() {
-        if (!current_user_can('manage_options') || !isset($_POST['backup_id'])) {
-            wp_send_json_error('Unauthorized or missing backup ID');
-        }
-        
-        global $wpdb;
-        $backup_id = sanitize_text_field($_POST['backup_id']);
-        
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            wp_send_json_error('Backup jobs table not found');
-        }
-        
-        $job = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE backup_id = %s",
-            $backup_id
-        ));
-        
-        if (!$job) {
-            wp_send_json_error('Backup job not found');
-        }
-        
-        // Check if backup is stuck in 'pending' status for more than 30 seconds
-        // This can happen if WordPress cron didn't trigger properly
-        if ($job->status === 'pending') {
-            $created_time = strtotime($job->created_at ?? $job->started_at);
-            $elapsed = time() - $created_time;
-            
-            if ($elapsed > 30) {
-                Azure_Logger::warning("Backup: Job {$backup_id} stuck in pending for {$elapsed}s, triggering directly", 'Backup');
-                
-                // Try to trigger the backup directly
-                // Use a non-blocking approach to avoid timeout
-                $this->trigger_backup_async($backup_id);
-                
-                // Return a message indicating we're retrying
-                wp_send_json_success(array(
-                    'backup_id' => $job->backup_id,
-                    'backup_name' => $job->job_name,
-                    'status' => 'pending',
-                    'progress' => 2,
-                    'message' => 'Backup is initializing... (retrying trigger)',
-                    'created_at' => $job->created_at,
-                    'updated_at' => isset($job->updated_at) ? $job->updated_at : $job->created_at
-                ));
-            }
-        }
-        
-        wp_send_json_success(array(
-            'backup_id' => $job->backup_id,
-            'backup_name' => $job->job_name,
-            'status' => $job->status,
-            'progress' => isset($job->progress) ? (int)$job->progress : 0,
-            'message' => isset($job->message) ? $job->message : 'Processing...',
-            'created_at' => $job->created_at,
-            'updated_at' => isset($job->updated_at) ? $job->updated_at : $job->created_at
-        ));
-    }
-    
-    /**
-     * Trigger backup processing asynchronously
-     */
-    private function trigger_backup_async($backup_id) {
-        // Check if we've already tried to trigger this backup recently
-        $trigger_key = 'azure_backup_trigger_' . $backup_id;
-        if (get_transient($trigger_key)) {
-            Azure_Logger::debug("Backup: Already attempted to trigger {$backup_id} recently, skipping", 'Backup');
-            return;
-        }
-        
-        // Set a transient to prevent multiple triggers
-        set_transient($trigger_key, true, 60); // 1 minute cooldown
-        
-        // Try spawning cron again
-        $this->spawn_backup_cron($backup_id);
-        
-        // Also try a direct loopback request to trigger the backup
-        $trigger_url = admin_url('admin-ajax.php');
-        
-        $args = array(
-            'timeout'   => 0.01,
-            'blocking'  => false,
-            'sslverify' => apply_filters('https_local_ssl_verify', false),
-            'body'      => array(
-                'action'    => 'azure_trigger_backup_process',
-                'backup_id' => $backup_id,
-                'nonce'     => wp_create_nonce('azure_plugin_nonce')
-            )
-        );
-        
-        wp_remote_post($trigger_url, $args);
-        Azure_Logger::debug("Backup: Sent async trigger request for {$backup_id}", 'Backup');
-    }
-    
-    /**
-     * AJAX handler to cancel all running backups
-     */
-    public function ajax_cancel_all_backups() {
-        if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
-            wp_send_json_error('Unauthorized');
-        }
-        
-        global $wpdb;
-        $table = Azure_Database::get_table_name('backup_jobs');
-        
-        if (!$table) {
-            wp_send_json_error('Backup jobs table not found');
-        }
-        
-        // Get count of running AND pending backups (pending shows as "Initializing")
-        $stalled_count = $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE status IN ('running', 'pending')");
-        
-        if ($stalled_count == 0) {
-            wp_send_json_success(array(
-                'cancelled' => 0,
-                'message' => 'No running or pending backups to cancel'
-            ));
-        }
-        
-        // Update all running backups to 'cancelled' status
-        $updated = $wpdb->update(
-            $table,
-            array(
-                'status' => 'cancelled',
-                'error_message' => 'Cancelled by administrator',
-                'message' => 'Backup cancelled by administrator',
-                'progress' => 0
-            ),
-            array('status' => 'running'),
-            array('%s', '%s', '%s', '%d'),
-            array('%s')
-        );
-        
-        // Also cancel any 'pending' backups (these show as "Initializing" in UI)
-        $pending_updated = $wpdb->update(
-            $table,
-            array(
-                'status' => 'cancelled',
-                'error_message' => 'Cancelled by administrator - backup was stuck in pending/initializing state',
-                'message' => 'Backup cancelled by administrator'
-            ),
-            array('status' => 'pending'),
-            array('%s', '%s', '%s'),
-            array('%s')
-        );
-        
-        // Clear any scheduled backup events for these jobs
-        $pending_jobs = $wpdb->get_results("SELECT backup_id FROM {$table} WHERE status = 'cancelled'");
-        foreach ($pending_jobs as $job) {
-            wp_clear_scheduled_hook('azure_backup_process', array($job->backup_id));
-        }
-        
-        // Reset the backup in progress flag
-        self::$backup_in_progress = false;
-        self::$current_backup_id = null;
-        
-        // Clean up any temp backup directories
-        $this->cleanup_stale_temp_directories();
-        
-        $total_cancelled = ($updated !== false ? $updated : 0) + ($pending_updated !== false ? $pending_updated : 0);
-        
-        Azure_Logger::info("Backup: Cancelled {$total_cancelled} backup jobs by administrator", 'Backup');
-        
-        wp_send_json_success(array(
-            'cancelled' => $total_cancelled,
-            'message' => "Successfully cancelled {$total_cancelled} backup job(s)"
-        ));
-    }
-    
-    /**
-     * Clean up stale temporary backup directories and orphaned zip files
-     * 
-     * @param bool $force_all If true, removes all temp files regardless of age (used when cancelling backups)
-     */
-    private function cleanup_stale_temp_directories($force_all = false) {
-        $backups_dir = AZURE_PLUGIN_PATH . 'backups/';
-        
-        if (!is_dir($backups_dir)) {
-            return;
-        }
-        
-        try {
-            $items = @scandir($backups_dir);
-            if ($items === false) {
-                return;
-            }
-            
-            $cleaned_count = 0;
-            
-            foreach ($items as $item) {
-                if ($item === '.' || $item === '..' || $item === '.htaccess') {
+            foreach ($entity_state as $entity => &$state) {
+                if ($state['status'] === 'completed') {
                     continue;
                 }
-                
-                $path = $backups_dir . $item;
-                
-                // Remove temp directories (they start with "temp_")
-                if (is_dir($path) && strpos($item, 'temp_') === 0) {
-                    Azure_Logger::info("Backup: Cleaning up stale temp directory: {$item}", 'Backup');
-                    $this->remove_directory($path);
-                    $cleaned_count++;
-                }
-                
-                // Remove orphaned zip files
-                if (is_file($path) && pathinfo($path, PATHINFO_EXTENSION) === 'zip') {
-                    $file_age = time() - filemtime($path);
-                    // Remove if older than 1 hour (reduced from 24 hours) or if force_all is true
-                    if ($force_all || $file_age > 3600) { // 1 hour
-                        $file_size = @filesize($path);
-                        Azure_Logger::info("Backup: Removing orphaned zip file: {$item} (age: " . round($file_age / 60) . " minutes, size: " . $this->format_bytes($file_size ?: 0) . ")", 'Backup');
-                        $deleted = @unlink($path);
-                        if ($deleted) {
-                            $cleaned_count++;
-                        } else {
-                            Azure_Logger::warning("Backup: Failed to delete orphaned zip: {$item}", 'Backup');
+
+                $pct = 5 + intval(85 * $done_entities / max($total_entities, 1));
+                $this->update_backup_progress($backup_id, $pct, 'running', "Processing: {$entity}...");
+                $state['status'] = 'in_progress';
+                $this->update_job_state($backup_id, $entity_state);
+
+                $archive_paths = $this->run_entity_backup($engine, $entity, $job_meta, $backup_dir);
+
+                // Upload each archive to Azure and record blob names + sizes
+                $blob_names = array();
+                $blob_sizes = array();
+                if ($storage && !empty($archive_paths)) {
+                    foreach ($archive_paths as $apath) {
+                        clearstatcache(true, $apath);
+                        if (!file_exists($apath) || filesize($apath) === 0) {
+                            Azure_Logger::warning("Backup: Skipping missing or empty archive '" . basename($apath) . "' — the zip may have failed to compress. The backup will continue with remaining components.", 'Backup');
+                            @unlink($apath);
+                            continue;
                         }
+                        $asize = filesize($apath);
+                        $blob = $this->upload_component($storage, $apath, $backup_id);
+                        if ($blob) {
+                            $blob_names[] = $blob;
+                            $blob_sizes[] = $asize;
+                        }
+                        @unlink($apath);
                     }
                 }
+
+                if (empty($blob_names)) {
+                    $empty_entities[] = $entity;
+                }
+
+                $state['status'] = 'completed';
+                $state['files'] = $blob_names;
+                $state['sizes'] = $blob_sizes;
+                $done_entities++;
+                $this->update_job_state($backup_id, $entity_state);
+
+                Azure_Logger::info("Backup: Entity '{$entity}' completed - " . count($blob_names) . " blob(s)", 'Backup');
             }
-            
-            if ($cleaned_count > 0) {
-                Azure_Logger::info("Backup: Cleaned up {$cleaned_count} stale files/directories", 'Backup');
+            unset($state);
+
+            // Upload manifest
+            $manifest_path = $engine->generate_manifest($entity_state);
+            if ($storage && file_exists($manifest_path)) {
+                $manifest_blob = $this->upload_component($storage, $manifest_path, $backup_id, 'application/json');
+                @unlink($manifest_path);
+                $this->update_blob_info($job->id, $manifest_blob, $this->calc_total_size($entity_state));
             }
-        } catch (Exception $e) {
-            Azure_Logger::warning("Backup: Error cleaning up temp directories: " . $e->getMessage(), 'Backup');
+
+            // Cleanup temp directory
+            $this->remove_directory($backup_dir);
+
+            // Post-backup validation: verify all blobs exist in Azure
+            $this->update_backup_progress($backup_id, 95, 'running', 'Validating backup in Azure Storage...');
+            $validation = $this->validate_backup($storage, $manifest_blob ?? null, $entity_state);
+
+            $this->update_status($job->id, 'completed');
+
+            $msg = 'Backup completed';
+            $warnings = array();
+            if (!empty($empty_entities)) {
+                $warnings[] = 'no files archived for ' . implode(', ', $empty_entities);
+            }
+            if (!$validation['passed']) {
+                $warnings[] = 'validation issues: ' . $validation['summary'];
+            }
+
+            if (empty($warnings)) {
+                $msg .= ' and verified successfully!';
+            } else {
+                $msg .= ' with warnings: ' . implode('; ', $warnings) . '. Check System Logs for details.';
+            }
+
+            $entity_state['_validation'] = $validation;
+            $this->update_job_state($backup_id, $entity_state);
+            $this->update_backup_progress($backup_id, 100, 'completed', $msg);
+            delete_transient('azure_backup_meta_' . $backup_id);
+
+            Azure_Logger::info("Backup: Job {$backup_id} COMPLETED — validation: " . ($validation['passed'] ? 'PASSED' : 'ISSUES FOUND'), 'Backup');
+
+            if ($this->settings['backup_email_notifications'] ?? false) {
+                $this->send_notification($job->id, true, $msg);
+            }
+        } catch (\Throwable $e) {
+            Azure_Logger::error("Backup: Job {$backup_id} FAILED: " . $e->getMessage(), 'Backup');
+            $this->update_status($job->id, 'failed', $e->getMessage());
+            $this->update_backup_progress($backup_id, 0, 'failed', 'Backup failed: ' . $e->getMessage());
+            $this->remove_directory($backup_dir);
         }
     }
-    
-    /**
-     * Public method to clean up orphaned backup files (can be called from admin)
-     */
-    public function cleanup_orphaned_backups() {
-        Azure_Logger::info('Backup: Manual cleanup of orphaned backup files requested', 'Backup');
-        $this->cleanup_stale_temp_directories(true);
-        return true;
+
+    private function run_entity_backup($engine, $entity, $job_meta, $backup_dir) {
+        switch ($entity) {
+            case 'database':
+                $path = $engine->backup_database();
+                return $path ? array($path) : array();
+
+            case 'plugins':
+                $selected = $job_meta['selected_plugins'] ?? array();
+                return $engine->backup_entity('plugins', WP_PLUGIN_DIR, Azure_Backup_Engine::get_plugin_exclusions(), $selected);
+
+            case 'themes':
+                $selected = $job_meta['selected_themes'] ?? array();
+                return $engine->backup_entity('themes', get_theme_root(), array(), $selected);
+
+            case 'uploads':
+            case 'media':
+                $uploads = wp_upload_dir();
+                return $engine->backup_entity('uploads', $uploads['basedir']);
+
+            case 'mu-plugins':
+                $mu_dir = defined('WPMU_PLUGIN_DIR') ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins';
+                if (is_dir($mu_dir)) {
+                    return $engine->backup_entity('mu-plugins', $mu_dir);
+                }
+                return array();
+
+            case 'content':
+            case 'others':
+                return $engine->backup_entity('others', WP_CONTENT_DIR, Azure_Backup_Engine::get_others_exclusions());
+
+            default:
+                Azure_Logger::warning("Backup: Unknown entity type: {$entity}", 'Backup');
+                return array();
+        }
     }
-    
+
+    private function upload_component($storage, $file_path, $backup_id, $content_type = 'application/zip') {
+        $date = date('Y/m/d');
+        $site_name = sanitize_title(get_bloginfo('name'));
+        $filename = basename($file_path);
+        $blob_name = "{$site_name}/{$date}/{$backup_id}/{$filename}";
+
+        Azure_Logger::info("Backup: Uploading {$filename} to Azure...", 'Backup');
+        $self = $this;
+        $cur_id = $backup_id;
+
+        $result = $storage->upload_backup($file_path, $blob_name, function ($pct) use ($self, $cur_id, $filename) {
+            $self->update_backup_progress($cur_id, null, 'running', "Uploading {$filename}: {$pct}%");
+        });
+
+        return $result ?: $blob_name;
+    }
+
+    private function calc_total_size($entity_state) {
+        $total = 0;
+        foreach ($entity_state as $state) {
+            foreach ($state['sizes'] ?? array() as $s) {
+                $total += (int) $s;
+            }
+        }
+        return $total;
+    }
+
+    // ------------------------------------------------------------------
+    // Post-backup validation
+    // ------------------------------------------------------------------
+
     /**
-     * AJAX handler to manually trigger backup process (fallback)
+     * Verify the backup in Azure Storage is complete and restorable.
+     * Uses HEAD requests (no downloads) for efficiency.
      */
+    private function validate_backup($storage, $manifest_blob, $entity_state) {
+        $result = array(
+            'passed'     => true,
+            'manifest'   => false,
+            'components' => array(),
+            'summary'    => '',
+            'timestamp'  => gmdate('c'),
+        );
+
+        if (!$storage) {
+            $result['passed'] = false;
+            $result['summary'] = 'Storage not available';
+            Azure_Logger::warning('Backup Validation: Skipped — storage not available', 'Backup');
+            return $result;
+        }
+
+        $issues = array();
+
+        // 1. Verify manifest blob exists
+        if ($manifest_blob) {
+            $props = $storage->get_blob_properties($manifest_blob);
+            if ($props && $props['size'] > 0) {
+                $result['manifest'] = true;
+                Azure_Logger::info("Backup Validation: Manifest OK — {$manifest_blob} ({$props['size']} bytes)", 'Backup');
+            } else {
+                $result['passed'] = false;
+                $issues[] = 'manifest missing';
+                Azure_Logger::error("Backup Validation: Manifest MISSING — {$manifest_blob}", 'Backup');
+            }
+        } else {
+            $result['passed'] = false;
+            $issues[] = 'no manifest uploaded';
+            Azure_Logger::error('Backup Validation: No manifest blob recorded', 'Backup');
+        }
+
+        // 2. Verify each component blob
+        $total_blobs = 0;
+        $verified_blobs = 0;
+
+        foreach ($entity_state as $entity => $state) {
+            if (strpos($entity, '_') === 0) continue; // skip meta keys like _validation
+
+            $files = $state['files'] ?? array();
+            $sizes = $state['sizes'] ?? array();
+            $comp = array('entity' => $entity, 'expected' => count($files), 'verified' => 0, 'issues' => array());
+
+            if (empty($files)) {
+                $comp['issues'][] = 'no files';
+                $issues[] = "{$entity}: no files";
+            }
+
+            foreach ($files as $i => $blob) {
+                $total_blobs++;
+                $expected_size = isset($sizes[$i]) ? (int) $sizes[$i] : 0;
+                $props = $storage->get_blob_properties($blob);
+
+                if (!$props) {
+                    $comp['issues'][] = basename($blob) . ' not found';
+                    $issues[] = "{$entity}: " . basename($blob) . ' missing from Azure';
+                    Azure_Logger::error("Backup Validation: MISSING blob — {$blob}", 'Backup');
+                    continue;
+                }
+
+                if ($expected_size > 0 && abs($props['size'] - $expected_size) > 1024) {
+                    $comp['issues'][] = basename($blob) . " size mismatch (expected " . size_format($expected_size) . ", got " . size_format($props['size']) . ")";
+                    Azure_Logger::warning("Backup Validation: Size mismatch — {$blob} (expected {$expected_size}, got {$props['size']})", 'Backup');
+                }
+
+                $comp['verified']++;
+                $verified_blobs++;
+            }
+
+            $result['components'][$entity] = $comp;
+        }
+
+        if ($total_blobs > 0 && $verified_blobs < $total_blobs) {
+            $result['passed'] = false;
+            $missing = $total_blobs - $verified_blobs;
+            $issues[] = "{$missing} of {$total_blobs} blob(s) could not be verified";
+        }
+
+        $result['summary'] = empty($issues) ? 'All components verified' : implode('; ', array_slice($issues, 0, 3));
+        $label = $result['passed'] ? 'PASSED' : 'FAILED';
+        Azure_Logger::info("Backup Validation: {$label} — {$verified_blobs}/{$total_blobs} blobs verified" . (empty($issues) ? '' : ' — ' . $result['summary']), 'Backup');
+
+        return $result;
+    }
+
+    // ------------------------------------------------------------------
+    // Scheduling and spawning
+    // ------------------------------------------------------------------
+
+    private function schedule_next_resume($backup_id, $delay = 5) {
+        wp_schedule_single_event(time() + $delay, 'azure_backup_resume', array($backup_id));
+        $this->spawn_cron();
+    }
+
+    private function spawn_cron() {
+        $url = site_url('wp-cron.php');
+        wp_remote_post($url, array(
+            'timeout'   => 0.01,
+            'blocking'  => false,
+            'sslverify' => false,
+            'body'      => array('doing_wp_cron' => sprintf('%.22F', microtime(true))),
+        ));
+    }
+
+    private function get_backup_directory($backup_id) {
+        return AZURE_PLUGIN_PATH . 'backups/temp_' . $backup_id;
+    }
+
+    // ------------------------------------------------------------------
+    // AJAX handlers
+    // ------------------------------------------------------------------
+
+    public function ajax_start_backup() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        try {
+            $backup_types = Azure_Settings::get_setting('backup_types', array('database', 'mu-plugins', 'plugins', 'themes', 'content'));
+            $backup_name = 'Manual Backup - ' . date('Y-m-d H:i:s');
+            $backup_id = 'backup_' . time() . '_' . wp_generate_password(8, false);
+
+            $job_meta = array();
+            if (!empty($_POST['selected_plugins']) && is_array($_POST['selected_plugins'])) {
+                $job_meta['selected_plugins'] = array_map('sanitize_text_field', $_POST['selected_plugins']);
+            }
+            if (!empty($_POST['selected_themes']) && is_array($_POST['selected_themes'])) {
+                $job_meta['selected_themes'] = array_map('sanitize_text_field', $_POST['selected_themes']);
+            }
+            if (!empty($job_meta)) {
+                set_transient('azure_backup_meta_' . $backup_id, $job_meta, 3600);
+            }
+
+            $job_id = $this->create_backup_job($backup_id, $backup_name, $backup_types, false);
+            if (!$job_id) {
+                throw new Exception('Failed to create backup job record');
+            }
+
+            Azure_Logger::info("Backup: Job created: {$backup_id}", 'Backup');
+
+            // Schedule the first resumption
+            $this->schedule_next_resume($backup_id, 1);
+
+            wp_send_json_success(array(
+                'message'           => 'Backup started',
+                'backup_id'         => $backup_id,
+                'requires_progress' => true,
+            ));
+        } catch (\Throwable $e) {
+            Azure_Logger::error('Backup: Start failed: ' . $e->getMessage(), 'Backup');
+            wp_send_json_error('Backup failed: ' . $e->getMessage());
+        }
+    }
+
+    public function ajax_get_backup_progress() {
+        if (!current_user_can('manage_options') || !isset($_POST['backup_id'])) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $backup_id = sanitize_text_field($_POST['backup_id']);
+        $job = $this->get_job($backup_id);
+        if (!$job) {
+            wp_send_json_error('Job not found');
+        }
+
+        $data = array(
+            'backup_id'   => $job->backup_id,
+            'backup_name' => $job->job_name,
+            'status'      => $job->status,
+            'progress'    => intval($job->progress),
+            'message'     => $job->message ?: 'Processing...',
+            'created_at'  => $job->created_at,
+            'updated_at'  => $job->updated_at ?? $job->created_at,
+        );
+
+        // If stuck pending for >15s or stale running for >15min, trigger direct run
+        if ($job->status === 'pending') {
+            $elapsed = time() - strtotime($job->created_at ?? $job->started_at);
+            if ($elapsed > 15) {
+                $data['needs_direct_run'] = true;
+                $data['message'] = 'Backup is initializing...';
+            }
+        } elseif ($job->status === 'running') {
+            $last = strtotime($job->updated_at ?? $job->created_at);
+            if ((time() - $last) > 900) {
+                $data['needs_direct_run'] = true;
+                $data['message'] = 'Backup process appears stalled, restarting...';
+                Azure_Logger::warning("Backup: Job {$backup_id} stale, signaling direct run", 'Backup');
+            }
+        }
+
+        wp_send_json_success($data);
+    }
+
+    public function ajax_run_backup_now() {
+        if (!current_user_can('manage_options') || !isset($_POST['backup_id']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $backup_id = sanitize_text_field($_POST['backup_id']);
+        $job = $this->get_job($backup_id);
+        if (!$job || !in_array($job->status, array('pending', 'running'))) {
+            wp_send_json_success('Backup already ' . ($job ? $job->status : 'not found'));
+            return;
+        }
+
+        $lock = 'azure_backup_direct_' . $backup_id;
+        if (get_transient($lock)) {
+            wp_send_json_success('Already executing');
+            return;
+        }
+        set_transient($lock, true, 3600);
+
+        @ignore_user_abort(true);
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        // Close HTTP connection early
+        if (function_exists('fastcgi_finish_request')) {
+            wp_send_json_success('Backup started');
+            fastcgi_finish_request();
+        } else {
+            while (ob_get_level() > 0) @ob_end_clean();
+            header('Content-Type: application/json');
+            header('Connection: close');
+            $resp = json_encode(array('success' => true, 'data' => 'Backup started'));
+            header('Content-Length: ' . strlen($resp));
+            echo $resp;
+            flush();
+            if (session_id()) session_write_close();
+        }
+
+        $this->backup_resume($backup_id);
+        delete_transient($lock);
+    }
+
     public function ajax_trigger_backup_process() {
         if (!current_user_can('manage_options') || !isset($_POST['backup_id']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
             wp_send_json_error('Unauthorized');
         }
-        
         $backup_id = sanitize_text_field($_POST['backup_id']);
-        Azure_Logger::info('Backup: Manual trigger requested for backup ID: ' . $backup_id, 'Backup');
-        
-        // Check if backup is still pending
-        global $wpdb;
-        $table = Azure_Database::get_table_name('backup_jobs');
-        if (!$table) {
-            wp_send_json_error('Backup jobs table not found');
-        }
-        
-        $job = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE backup_id = %s",
-            $backup_id
-        ));
-        
-        if (!$job) {
-            wp_send_json_error('Backup job not found');
-        }
-        
-        if ($job->status === 'pending') {
-            // Trigger the backup process immediately
-            $this->process_background_backup($backup_id);
-            wp_send_json_success('Backup process triggered');
-        } else {
-            wp_send_json_success('Backup already ' . $job->status);
-        }
+        $this->schedule_next_resume($backup_id, 1);
+        wp_send_json_success('Triggered');
     }
-    
-    /**
-     * AJAX handler to clean up orphaned backup files
-     */
-    public function ajax_cleanup_backup_files() {
-        if (!current_user_can('manage_options') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+
+    public function ajax_cancel_all_backups() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
             wp_send_json_error('Unauthorized');
         }
-        
-        Azure_Logger::info('Backup: Admin requested cleanup of orphaned backup files', 'Backup');
-        
-        $backups_dir = AZURE_PLUGIN_PATH . 'backups/';
-        $before_files = array();
-        
-        // Count files before cleanup
-        if (is_dir($backups_dir)) {
-            $items = @scandir($backups_dir);
-            if ($items) {
-                foreach ($items as $item) {
-                    if ($item !== '.' && $item !== '..' && $item !== '.htaccess') {
-                        $path = $backups_dir . $item;
-                        $before_files[] = array(
-                            'name' => $item,
-                            'type' => is_dir($path) ? 'directory' : 'file',
-                            'size' => is_file($path) ? filesize($path) : 0
-                        );
-                    }
-                }
-            }
+
+        global $wpdb;
+        $table = $this->get_table();
+        if (!$table) wp_send_json_error('Table not found');
+
+        $cancel_data = array('status' => 'cancelled', 'error_message' => 'Cancelled by administrator', 'message' => 'Cancelled', 'progress' => 0);
+        $running = $wpdb->update($table, $cancel_data, array('status' => 'running'));
+        $pending = $wpdb->update($table, $cancel_data, array('status' => 'pending'));
+
+        $ids = $wpdb->get_col("SELECT backup_id FROM {$table} WHERE status = 'cancelled'");
+        foreach ($ids as $id) {
+            wp_clear_scheduled_hook('azure_backup_resume', array($id));
+            wp_clear_scheduled_hook('azure_backup_process', array($id));
         }
-        
-        // Run cleanup with force_all = true
+
         $this->cleanup_stale_temp_directories(true);
-        
-        // Count files after cleanup
-        $after_count = 0;
-        if (is_dir($backups_dir)) {
-            $items = @scandir($backups_dir);
-            if ($items) {
-                foreach ($items as $item) {
-                    if ($item !== '.' && $item !== '..' && $item !== '.htaccess') {
-                        $after_count++;
-                    }
-                }
-            }
+
+        $total = ($running ?: 0) + ($pending ?: 0);
+        Azure_Logger::info("Backup: Cancelled {$total} jobs", 'Backup');
+        wp_send_json_success(array('cancelled' => $total, 'message' => "Cancelled {$total} job(s)"));
+    }
+
+    public function ajax_cleanup_backup_files() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
         }
-        
-        $cleaned = count($before_files) - $after_count;
-        
+
+        $dir = AZURE_PLUGIN_PATH . 'backups/';
+        $before = $this->count_items($dir);
+        $this->cleanup_stale_temp_directories(true);
+        $after = $this->count_items($dir);
+        $cleaned = $before - $after;
+
         wp_send_json_success(array(
-            'before_count' => count($before_files),
-            'after_count' => $after_count,
-            'cleaned' => $cleaned,
-            'files_found' => $before_files,
-            'message' => $cleaned > 0 
-                ? "Cleaned up {$cleaned} orphaned file(s)/directory(ies)" 
-                : 'No orphaned files found to clean up'
+            'before_count' => $before,
+            'after_count'  => $after,
+            'cleaned'      => $cleaned,
+            'message'      => $cleaned > 0 ? "Cleaned {$cleaned} item(s)" : 'Nothing to clean',
         ));
     }
-    
-    /**
-     * AJAX handler for getting backup jobs
-     */
+
     public function ajax_get_backup_jobs() {
         if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
-            wp_die('Unauthorized access');
+            wp_die('Unauthorized');
         }
-        
+
         global $wpdb;
-        $table = Azure_Database::get_table_name('backup_jobs');
-        
-        if (!$table) {
-            wp_send_json_error('Database table not found');
-            return;
-        }
-        
+        $table = $this->get_table();
+        if (!$table) { wp_send_json_error('Table not found'); return; }
+
         $jobs = $wpdb->get_results("SELECT * FROM {$table} ORDER BY created_at DESC LIMIT 10");
-        
         ob_start();
         foreach ($jobs as $job) {
-            $status_class = $job->status === 'completed' ? 'success' : ($job->status === 'failed' ? 'error' : 'warning');
-            echo '<tr>';
+            $has_entities = !empty($job->entity_state) && $job->entity_state !== '{}';
+            $is_completed = $job->status === 'completed' && !empty($job->azure_blob_name);
+            $cls = $job->status === 'completed' ? 'success' : ($job->status === 'failed' ? 'error' : 'warning');
+
+            $entity_data = json_decode($job->entity_state ?? '{}', true);
+            $validation = $entity_data['_validation'] ?? null;
+
+            echo '<tr class="backup-parent-row" data-job-id="' . $job->id . '">';
+            echo '<td style="text-align:center;">';
+            if ($is_completed && $has_entities) {
+                echo '<button class="button button-link toggle-backup-details" data-job-id="' . $job->id . '" title="Show files" style="padding:0;min-height:0;font-size:16px;line-height:1;cursor:pointer;">';
+                echo '<span class="dashicons dashicons-arrow-right-alt2" style="transition:transform 0.2s;"></span></button>';
+            }
+            echo '</td>';
             echo '<td>' . esc_html($job->job_name) . '</td>';
-            echo '<td><span class="status-indicator ' . $status_class . '">' . esc_html($job->status) . '</span></td>';
+            echo '<td><span class="status-indicator ' . $cls . '">' . esc_html(ucfirst($job->status)) . '</span>';
+            if ($is_completed && $validation) {
+                if ($validation['passed']) {
+                    echo ' <span title="Backup verified in Azure Storage" style="color:#46b450;font-size:16px;vertical-align:middle;cursor:help;">&#10003;</span>';
+                } else {
+                    echo ' <span title="' . esc_attr($validation['summary']) . '" style="color:#dc3232;font-size:14px;vertical-align:middle;cursor:help;">&#9888;</span>';
+                }
+            }
+            echo '</td>';
             echo '<td>' . esc_html($job->created_at) . '</td>';
             echo '<td>' . ($job->file_size ? size_format($job->file_size) : '-') . '</td>';
             echo '<td>';
-            if ($job->status === 'completed' && $job->azure_blob_name) {
-                echo '<button class="button restore-backup" data-backup-id="' . $job->id . '">Restore</button>';
+            if ($is_completed) {
+                echo '<button class="button button-small restore-backup" data-backup-id="' . $job->id . '" data-has-entities="' . ($has_entities ? '1' : '0') . '">Restore</button> ';
             }
-            echo '</td>';
-            echo '</tr>';
+            if ($job->status === 'failed' && !empty($job->error_message)) {
+                echo '<button class="button button-small view-error" data-error="' . esc_attr($job->error_message) . '">View Error</button> ';
+            }
+            if (in_array($job->status, array('completed', 'failed', 'cancelled'))) {
+                echo '<button class="button button-small delete-backup" data-backup-id="' . $job->id . '">Delete</button>';
+            }
+            echo '</td></tr>';
+
+            echo '<tr class="backup-detail-row" data-job-id="' . $job->id . '" style="display:none;">';
+            echo '<td colspan="6" style="padding:0;"><div class="backup-detail-content" style="padding:8px 12px 12px 40px;background:#f9f9f9;">';
+            echo '<div class="backup-detail-loading" style="color:#666;"><span class="spinner is-active" style="float:none;margin:0 6px 0 0;"></span> Loading...</div>';
+            echo '<div class="backup-detail-table" style="display:none;"></div>';
+            echo '</div></td></tr>';
         }
-        $output = ob_get_clean();
-        
-        wp_send_json_success($output);
+        wp_send_json_success(ob_get_clean());
+    }
+
+    // ------------------------------------------------------------------
+    // Component details & download
+    // ------------------------------------------------------------------
+
+    public function ajax_get_backup_components() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'] ?? '', 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $job_id = intval($_POST['backup_id'] ?? 0);
+        if (!$job_id) {
+            wp_send_json_error('Missing backup ID');
+        }
+
+        global $wpdb;
+        $table = $this->get_table();
+        $job = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $job_id));
+        if (!$job) {
+            wp_send_json_error('Job not found');
+        }
+
+        $entity_state = json_decode($job->entity_state ?? '{}', true);
+        $components = array();
+
+        foreach ($entity_state as $entity => $state) {
+            $files = $state['files'] ?? array();
+            $sizes = $state['sizes'] ?? array();
+            foreach ($files as $i => $blob) {
+                $components[] = array(
+                    'entity'   => $entity,
+                    'blob'     => $blob,
+                    'filename' => basename($blob),
+                    'size'     => isset($sizes[$i]) ? (int) $sizes[$i] : 0,
+                    'size_fmt' => isset($sizes[$i]) ? size_format((int) $sizes[$i]) : '-',
+                );
+            }
+        }
+
+        wp_send_json_success(array(
+            'components' => $components,
+            'total_size' => $job->file_size ? size_format($job->file_size) : '-',
+        ));
+    }
+
+    public function ajax_download_backup_blob() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_GET['nonce'] ?? '', 'azure_plugin_nonce')) {
+            wp_die('Unauthorized');
+        }
+
+        $blob_name = sanitize_text_field($_GET['blob'] ?? '');
+        if (empty($blob_name)) {
+            wp_die('Missing blob name');
+        }
+
+        if (!class_exists('Azure_Backup_Storage')) {
+            wp_die('Storage class not available');
+        }
+
+        try {
+            $storage = new Azure_Backup_Storage();
+            $tmp = wp_tempnam(basename($blob_name));
+            $storage->download_backup($blob_name, $tmp);
+
+            $filename = basename($blob_name);
+            $size = @filesize($tmp);
+
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            if ($size) {
+                header('Content-Length: ' . $size);
+            }
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Pragma: no-cache');
+
+            readfile($tmp);
+            @unlink($tmp);
+            exit;
+        } catch (Exception $e) {
+            wp_die('Download failed: ' . esc_html($e->getMessage()));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Heartbeat API (P3)
+    // ------------------------------------------------------------------
+
+    public function heartbeat_received($response, $data) {
+        if (!empty($data['azure_backup_id'])) {
+            $job = $this->get_job(sanitize_text_field($data['azure_backup_id']));
+            if ($job) {
+                $response['azure_backup'] = array(
+                    'status'   => $job->status,
+                    'progress' => intval($job->progress),
+                    'message'  => $job->message,
+                );
+            }
+        }
+        return $response;
+    }
+
+    // ------------------------------------------------------------------
+    // Scheduled backup
+    // ------------------------------------------------------------------
+
+    public function run_scheduled_backup() {
+        if (!Azure_Settings::get_setting('backup_schedule_enabled', false)) return;
+
+        $types = Azure_Settings::get_setting('backup_types', array('database', 'mu-plugins', 'plugins', 'themes', 'content'));
+        $name = 'Scheduled Backup - ' . date('Y-m-d H:i:s');
+        $backup_id = 'backup_' . time() . '_' . wp_generate_password(8, false);
+
+        $job_id = $this->create_backup_job($backup_id, $name, $types, true);
+        if ($job_id) {
+            $this->schedule_next_resume($backup_id, 1);
+            Azure_Logger::info("Backup: Scheduled backup created: {$backup_id}", 'Backup');
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Utilities
+    // ------------------------------------------------------------------
+
+    private function cleanup_stale_temp_directories($force = false) {
+        $dir = AZURE_PLUGIN_PATH . 'backups/';
+        if (!is_dir($dir)) return;
+
+        $items = @scandir($dir);
+        if (!$items) return;
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..' || $item === '.htaccess') continue;
+            $path = $dir . $item;
+
+            if (is_dir($path) && strpos($item, 'temp_') === 0) {
+                $this->remove_directory($path);
+            }
+            if (is_file($path) && preg_match('/\.(zip|gz)$/i', $item)) {
+                if ($force || (time() - filemtime($path)) > 3600) {
+                    @unlink($path);
+                }
+            }
+        }
+    }
+
+    private function remove_directory($dir) {
+        if (!is_dir($dir)) return;
+        $items = @scandir($dir);
+        if (!$items) return;
+        foreach (array_diff($items, array('.', '..')) as $f) {
+            $p = $dir . DIRECTORY_SEPARATOR . $f;
+            is_dir($p) ? $this->remove_directory($p) : @unlink($p);
+        }
+        @rmdir($dir);
+    }
+
+    private function count_items($dir) {
+        if (!is_dir($dir)) return 0;
+        $items = @scandir($dir);
+        return $items ? count(array_diff($items, array('.', '..', '.htaccess'))) : 0;
+    }
+
+    private function send_notification($job_id, $success, $message) {
+        $email = $this->settings['backup_notification_email'] ?? get_option('admin_email');
+        if (empty($email)) return;
+
+        $subject = ($success ? 'Backup Completed' : 'Backup Failed') . ' - ' . get_bloginfo('name');
+        $body = "Status: " . ($success ? 'Success' : 'Failed') . "\n"
+              . "Message: {$message}\nTime: " . current_time('mysql') . "\nSite: " . get_site_url() . "\n";
+        wp_mail($email, $subject, $body);
+    }
+
+    private function format_bytes($bytes) {
+        $units = array('B', 'KB', 'MB', 'GB');
+        for ($i = 0; $bytes > 1024 && $i < 3; $i++) $bytes /= 1024;
+        return round($bytes, 2) . ' ' . $units[$i];
+    }
+
+    /**
+     * Legacy method for backward compat with other classes
+     */
+    public function process_background_backup($backup_id) {
+        $this->backup_resume($backup_id);
     }
 }

@@ -27,20 +27,22 @@ if (class_exists('WooCommerce')) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap azure-auction-page">
     <h1>
         <span class="dashicons dashicons-hammer"></span>
         <?php _e('Auction Module', 'azure-plugin'); ?>
     </h1>
+<?php else: ?>
+<div class="azure-auction-page">
+<?php endif; ?>
 
-    <div class="azure-module-header">
-        <div class="module-status <?php echo $auction_enabled ? 'enabled' : 'disabled'; ?>">
-            <span class="status-indicator"></span>
-            <span class="status-text">
-                <?php echo $auction_enabled ? __('Module Enabled', 'azure-plugin') : __('Module Disabled', 'azure-plugin'); ?>
-            </span>
-        </div>
+    <?php if (!$auction_enabled): ?>
+    <div class="notice notice-warning" style="margin: 15px 0;">
+        <p><?php _e('The Auction module is currently disabled.', 'azure-plugin'); ?>
+        <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>"><?php _e('Enable it on the main settings page.', 'azure-plugin'); ?></a></p>
     </div>
+    <?php endif; ?>
 
     <?php if (!class_exists('WooCommerce')) : ?>
     <div class="notice notice-error">
@@ -50,35 +52,27 @@ if (class_exists('WooCommerce')) {
     <?php endif; ?>
 
     <?php if ($auction_enabled && class_exists('WooCommerce')) : ?>
-    <div class="azure-dashboard-grid">
-        <div class="dashboard-card stats-card">
-            <h2><?php _e('Quick Stats', 'azure-plugin'); ?></h2>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <span class="stat-value"><?php echo (int) $active_auctions; ?></span>
-                    <span class="stat-label"><?php _e('Active Auctions', 'azure-plugin'); ?></span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value"><?php echo (int) $total_bids; ?></span>
-                    <span class="stat-label"><?php _e('Total Bids', 'azure-plugin'); ?></span>
-                </div>
+    <div class="azure-module-content">
+        <div class="azure-stat-row">
+            <div class="azure-stat-box">
+                <span class="azure-stat-number"><?php echo (int) $active_auctions; ?></span>
+                <span class="azure-stat-label"><?php _e('Active Auctions', 'azure-plugin'); ?></span>
+            </div>
+            <div class="azure-stat-box">
+                <span class="azure-stat-number"><?php echo (int) $total_bids; ?></span>
+                <span class="azure-stat-label"><?php _e('Total Bids', 'azure-plugin'); ?></span>
             </div>
         </div>
 
-        <div class="dashboard-card actions-card">
-            <h2><?php _e('Quick Actions', 'azure-plugin'); ?></h2>
-            <div class="action-buttons">
-                <a href="<?php echo admin_url('post-new.php?post_type=product'); ?>" class="button button-primary">
-                    <span class="dashicons dashicons-plus-alt"></span>
-                    <?php _e('Add New Product', 'azure-plugin'); ?>
-                </a>
-                <a href="<?php echo admin_url('edit.php?post_type=product'); ?>" class="button">
-                    <span class="dashicons dashicons-list-view"></span>
-                    <?php _e('View All Products', 'azure-plugin'); ?>
-                </a>
-            </div>
-            <p class="description"><?php _e('Create a product and select "Auction" as the product type. Set bidding end date/time, optional Buy It Now price, and require immediate payment.', 'azure-plugin'); ?></p>
+        <div class="azure-action-row">
+            <a href="<?php echo admin_url('post-new.php?post_type=product'); ?>" class="button button-primary">
+                <span class="dashicons dashicons-plus-alt"></span> <?php _e('Add New Product', 'azure-plugin'); ?>
+            </a>
+            <a href="<?php echo admin_url('edit.php?post_type=product'); ?>" class="button">
+                <span class="dashicons dashicons-list-view"></span> <?php _e('View All Products', 'azure-plugin'); ?>
+            </a>
         </div>
+        <p class="description"><?php _e('Create a product and select "Auction" as the product type. Set bidding end date/time, optional Buy It Now price, and require immediate payment.', 'azure-plugin'); ?></p>
     </div>
     <?php endif; ?>
 </div>

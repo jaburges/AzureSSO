@@ -90,15 +90,48 @@ $has_auth = !empty($authorized_users);
         </div>
     </div>
     
-    <!-- Quick Sync Action -->
+    <!-- Import & Sync Actions -->
     <?php if ($has_auth): ?>
     <div class="onedrive-media-quick-sync">
-        <h2>Manual Sync</h2>
-        <button type="button" class="button button-primary sync-from-onedrive-btn">
-            <span class="dashicons dashicons-update"></span>
-            Sync from OneDrive Now
+        <h2>Import from OneDrive</h2>
+        <p>One-time import that copies files from OneDrive/SharePoint into <code>wp-content/uploads/</code>, preserving the exact year/month folder structure. Processes one folder at a time.</p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+            <div>
+                <button type="button" class="button button-primary import-from-onedrive-btn">
+                    <span class="dashicons dashicons-download"></span>
+                    Import from OneDrive
+                </button>
+                <p class="description">Scans folders, then imports one year/folder at a time</p>
+            </div>
+        </div>
+
+        <!-- Import progress panel -->
+        <div id="onedrive-import-panel" style="display: none; margin-top: 15px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px 20px;">
+            <h3 style="margin-top:0;">Import Progress</h3>
+            <div id="import-overall-bar" style="background: #e0e0e0; border-radius: 4px; height: 24px; margin-bottom: 10px; overflow: hidden;">
+                <div id="import-overall-fill" style="background: #2271b1; height: 100%; width: 0%; transition: width 0.4s ease; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; min-width: 40px;">0%</div>
+            </div>
+            <div id="import-status-text" style="margin-bottom: 12px; font-size: 13px; color: #50575e;">Scanning OneDrive folders...</div>
+            <table id="import-folder-table" class="widefat fixed" style="display:none;">
+                <thead><tr><th>Folder</th><th style="width:70px;">Files</th><th style="width:200px;">Progress</th><th style="width:110px;">Result</th><th style="width:80px;">Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <div id="import-totals" style="display:none; margin-top: 12px; padding: 10px 14px; background: #ecf7ed; border: 1px solid #46b450; border-radius: 4px; color: #2e6b33; font-weight: 600;"></div>
+            <button type="button" id="import-cancel-btn" class="button" style="margin-top: 10px; display:none;">Cancel Import</button>
+        </div>
+
+        <div id="onedrive-sync-result" style="display: none; margin-top: 15px; padding: 12px 16px; border-radius: 4px;"></div>
+    </div>
+
+    <!-- Repair Media URLs -->
+    <div class="onedrive-media-quick-sync" style="margin-top: 20px;">
+        <h2>Repair Media URLs</h2>
+        <p>Scans for media attachments whose File URL still points to SharePoint/OneDrive instead of the local <code>wp-content/uploads/</code> path, and fixes them.</p>
+        <button type="button" id="repair-guids-btn" class="button">
+            <span class="dashicons dashicons-admin-tools"></span>
+            Repair SharePoint URLs
         </button>
-        <p class="description">Manually trigger a sync to import files from OneDrive to WordPress Media Library</p>
+        <span id="repair-guids-result" style="margin-left: 10px;"></span>
     </div>
     <?php endif; ?>
     
@@ -314,14 +347,14 @@ $has_auth = !empty($authorized_users);
                         <td>
                             <label>
                                 <input type="checkbox" name="onedrive_media_use_year_folders" id="onedrive_media_use_year_folders" <?php checked(Azure_Settings::get_setting('onedrive_media_use_year_folders', true)); ?> />
-                                <strong>Use year-based subfolders</strong> (Before 2024, 2024, 2025, etc.)
+                                <strong>Use year-based subfolders</strong> (2018, 2019, ..., current year)
                             </label>
                             <p class="description">Organize media files in year-based subfolders for better management</p>
                             
                             <button type="button" class="button create-year-folders-btn" <?php echo !$has_auth ? 'disabled' : ''; ?> style="margin-top: 10px;">
                                 <span class="dashicons dashicons-category"></span> Create Year Folders
                             </button>
-                            <p class="description">Create "Before 2024", "2024", "2025"... up to current year folders in the base folder above</p>
+                            <p class="description">Create a folder for each year found in WordPress uploads (e.g. 2018, 2019, ...) up to the current year</p>
                         </td>
                     </tr>
                 </table>
@@ -429,11 +462,7 @@ $has_auth = !empty($authorized_users);
                     <tr>
                         <th scope="row">Local Storage</th>
                         <td>
-                            <label>
-                                <input type="checkbox" name="onedrive_media_keep_local_copies" <?php checked(Azure_Settings::get_setting('onedrive_media_keep_local_copies', false)); ?> />
-                                Keep local copies of files (uses more server storage)
-                            </label>
-                            <p class="description">By default, files are deleted locally after upload to OneDrive to save server space</p>
+                            <p>Local copies are always kept. WordPress serves media from <code>/wp-content/uploads/</code>; OneDrive is used as a sync backup.</p>
                         </td>
                     </tr>
                 </table>
@@ -887,30 +916,223 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Sync from OneDrive
-    $('.sync-from-onedrive-btn').click(function() {
+    function showSyncResult(message, isError) {
+        var $box = $('#onedrive-sync-result');
+        $box.css({
+            background: isError ? '#fcf0f0' : '#ecf7ed',
+            border: '1px solid ' + (isError ? '#dc3232' : '#46b450'),
+            color: isError ? '#8b0000' : '#2e6b33'
+        }).html(message).slideDown();
+    }
+
+    // Import from OneDrive — chunked, ~20 files per request
+    var importCancelled = false;
+    var spinIcon = '<span class="dashicons dashicons-update" style="animation: rotation 2s infinite linear;"></span>';
+
+    $('.import-from-onedrive-btn').click(function() {
+        if (!confirm('This will scan OneDrive and import files in small batches into wp-content/uploads/, preserving the year/month structure.\n\nContinue?')) {
+            return;
+        }
+
         var $btn = $(this);
         var originalHtml = $btn.html();
-        $btn.prop('disabled', true).html('<span class="dashicons dashicons-update" style="animation: rotation 2s infinite linear;"></span> Syncing...');
-        
-        $.post(ajaxurl, {
-            action: 'onedrive_media_sync_from_onedrive',
-            nonce: azure_plugin_ajax.nonce
-        }, function(response) {
-            $btn.prop('disabled', false).html(originalHtml);
-            
-            if (response.success) {
-                alert('Sync completed: ' + response.data.message);
-                location.reload();
-            } else {
-                alert('Sync failed: ' + (response.data || 'Unknown error'));
+        $btn.prop('disabled', true).html(spinIcon + ' Scanning...');
+        $('#onedrive-sync-result').slideUp();
+        importCancelled = false;
+
+        var $panel = $('#onedrive-import-panel');
+        var $status = $('#import-status-text');
+        var $fill = $('#import-overall-fill');
+        var $tbody = $('#import-folder-table tbody');
+        var $table = $('#import-folder-table');
+        var $totals = $('#import-totals');
+        var $cancel = $('#import-cancel-btn');
+
+        $panel.slideDown();
+        $tbody.empty();
+        $totals.hide();
+        $fill.css('width', '0%').text('0%');
+        $status.text('Scanning OneDrive folders...');
+        $cancel.show().prop('disabled', false);
+
+        $cancel.off('click').on('click', function() {
+            importCancelled = true;
+            $status.text('Cancelling after current chunk completes...');
+            $(this).prop('disabled', true);
+        });
+
+        // Step 1: Scan
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            timeout: 120000,
+            data: { action: 'onedrive_media_import_from_onedrive', mode: 'scan', nonce: azure_plugin_ajax.nonce },
+            success: function(response) {
+                if (!response.success) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    $status.text('Scan failed: ' + (response.data || 'Unknown error'));
+                    $cancel.hide();
+                    return;
+                }
+
+                var batches = response.data.batches;
+                var totalFiles = response.data.total_files;
+
+                if (!batches.length) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    $status.text('No folders found to import.');
+                    $cancel.hide();
+                    return;
+                }
+
+                // Build the folder table with progress bar per row
+                $table.show();
+                $.each(batches, function(i, b) {
+                    var label = b.folder === '__root__' ? '(root files)' : b.folder;
+                    $tbody.append(
+                        '<tr id="import-row-' + i + '">' +
+                        '<td>' + $('<span>').text(label).html() + '</td>' +
+                        '<td>' + b.file_count + '</td>' +
+                        '<td class="import-progress-cell">' +
+                            '<div style="display:flex; align-items:center; gap:8px;">' +
+                                '<div style="flex:1; background:#e0e0e0; border-radius:3px; height:16px; overflow:hidden;">' +
+                                    '<div class="folder-bar" style="background:#2271b1; height:100%; width:0%; transition:width 0.3s;"></div>' +
+                                '</div>' +
+                                '<span class="folder-counter" style="font-size:12px; white-space:nowrap; min-width:60px;">0 / ' + b.file_count + '</span>' +
+                            '</div>' +
+                        '</td>' +
+                        '<td class="import-result" style="font-size:12px;">—</td>' +
+                        '<td class="import-status"><span style="color:#999;">Pending</span></td>' +
+                        '</tr>'
+                    );
+                });
+
+                $btn.html(spinIcon + ' Importing...');
+
+                // Step 2: Process folders sequentially, each folder in chunks
+                var batchIndex = 0;
+                var overallProcessed = 0;
+                var totalImported = 0, totalSkipped = 0, totalErrors = 0;
+
+                function processNextFolder() {
+                    if (importCancelled || batchIndex >= batches.length) {
+                        var pct = totalFiles > 0 ? Math.round((overallProcessed / totalFiles) * 100) : 100;
+                        $fill.css('width', pct + '%').text(pct + '%');
+                        $btn.prop('disabled', false).html(originalHtml);
+                        $cancel.hide();
+
+                        var summary = 'Imported: ' + totalImported + ' | Skipped: ' + totalSkipped + ' | Errors: ' + totalErrors;
+                        $status.html(importCancelled ? '<strong>Import cancelled.</strong> ' + summary : '<strong>Import complete!</strong> ' + summary);
+                        $totals.html(summary).show();
+                        return;
+                    }
+
+                    var batch = batches[batchIndex];
+                    var $row = $('#import-row-' + batchIndex);
+                    var label = batch.folder === '__root__' ? '(root files)' : batch.folder;
+                    var folderImported = 0, folderSkipped = 0, folderErrors = 0, folderProcessed = 0;
+
+                    $row.find('.import-status').html(spinIcon.replace('color: #2271b1;', '') + ' <span style="color:#2271b1;">Importing</span>');
+
+                    function processChunk(offset) {
+                        if (importCancelled) {
+                            $row.find('.import-status').html('<span style="color:#dba617;">⏸ Cancelled</span>');
+                            overallProcessed += (batch.file_count - folderProcessed);
+                            batchIndex++;
+                            processNextFolder();
+                            return;
+                        }
+
+                        $status.text('Importing ' + label + ': file ' + folderProcessed + ' of ' + batch.file_count + '...');
+
+                        $.ajax({
+                            url: ajaxurl,
+                            type: 'POST',
+                            timeout: 120000,
+                            data: {
+                                action: 'onedrive_media_import_from_onedrive',
+                                mode: 'batch',
+                                folder: batch.folder,
+                                offset: offset,
+                                nonce: azure_plugin_ajax.nonce
+                            },
+                            success: function(resp) {
+                                if (!resp.success) {
+                                    folderErrors += batch.file_count - folderProcessed;
+                                    overallProcessed += batch.file_count - folderProcessed;
+                                    folderProcessed = batch.file_count;
+                                    finishFolder(true);
+                                    return;
+                                }
+
+                                var d = resp.data;
+                                folderImported += d.imported || 0;
+                                folderSkipped += d.skipped || 0;
+                                folderErrors += d.errors || 0;
+
+                                var chunkSize = (d.next_offset || 0) - (d.offset || 0);
+                                folderProcessed += chunkSize;
+                                overallProcessed += chunkSize;
+
+                                // Update per-folder progress
+                                var folderPct = batch.file_count > 0 ? Math.round((folderProcessed / batch.file_count) * 100) : 100;
+                                $row.find('.folder-bar').css('width', folderPct + '%');
+                                $row.find('.folder-counter').text(folderProcessed + ' / ' + batch.file_count);
+                                $row.find('.import-result').text(folderImported + ' new, ' + folderSkipped + ' skip' + (folderErrors ? ', ' + folderErrors + ' err' : ''));
+
+                                // Update overall progress
+                                var overallPct = totalFiles > 0 ? Math.round((overallProcessed / totalFiles) * 100) : 0;
+                                $fill.css('width', overallPct + '%').text(overallPct + '%');
+
+                                if (d.has_more) {
+                                    processChunk(d.next_offset);
+                                } else {
+                                    finishFolder(false);
+                                }
+                            },
+                            error: function() {
+                                folderErrors += batch.file_count - folderProcessed;
+                                overallProcessed += batch.file_count - folderProcessed;
+                                folderProcessed = batch.file_count;
+                                finishFolder(true);
+                            }
+                        });
+                    }
+
+                    function finishFolder(failed) {
+                        totalImported += folderImported;
+                        totalSkipped += folderSkipped;
+                        totalErrors += folderErrors;
+
+                        $row.find('.folder-bar').css('width', '100%');
+                        $row.find('.folder-counter').text(folderProcessed + ' / ' + batch.file_count);
+
+                        if (failed) {
+                            $row.find('.import-status').html('<span style="color:#b32d2e;">✗ Failed</span>');
+                        } else if (folderErrors > 0) {
+                            $row.find('.import-status').html('<span style="color:#dba617;">⚠ ' + folderErrors + ' errors</span>');
+                        } else {
+                            $row.find('.import-status').html('<span style="color:#46b450;">✓ Done</span>');
+                            $row.find('.folder-bar').css('background', '#46b450');
+                        }
+
+                        batchIndex++;
+                        processNextFolder();
+                    }
+
+                    processChunk(0);
+                }
+
+                processNextFolder();
+            },
+            error: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+                $status.text('Failed to scan OneDrive folders. Check your connection and try again.');
+                $cancel.hide();
             }
-        }).fail(function() {
-            $btn.prop('disabled', false).html(originalHtml);
-            alert('Sync request failed. Please try again.');
         });
     });
-    
+
     // Test connection
     $('.test-onedrive-connection').click(function() {
         var $btn = $(this);
@@ -1025,7 +1247,7 @@ jQuery(document).ready(function($) {
     
     // Create year folders
     $('.create-year-folders-btn').click(function() {
-        if (!confirm('This will create year folders (Before 2024, 2024, 2025, etc.) in the base folder. Continue?')) {
+        if (!confirm('This will create year folders for each year found in your WordPress uploads. Continue?')) {
             return;
         }
         
@@ -1072,6 +1294,31 @@ jQuery(document).ready(function($) {
                 alert('Failed to revoke token: ' + (response.data || 'Unknown error'));
                 $btn.prop('disabled', false);
             }
+        });
+    });
+
+    // Repair SharePoint URLs in attachment guids
+    $('#repair-guids-btn').on('click', function() {
+        var $btn = $(this);
+        var $result = $('#repair-guids-result');
+        $btn.prop('disabled', true).html('<span class="dashicons dashicons-update" style="animation: rotation 2s infinite linear;"></span> Scanning...');
+        $result.text('');
+
+        $.post(ajaxurl, {
+            action: 'onedrive_media_repair_guids',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            $btn.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools"></span> Repair SharePoint URLs');
+            if (response.success) {
+                var d = response.data;
+                $result.html('<span style="color:#46b450; font-weight:600;">' + d.message + '</span>' +
+                    (d.total > 0 ? ' (' + d.fixed + ' fixed, ' + d.skipped + ' skipped of ' + d.total + ' found)' : ''));
+            } else {
+                $result.html('<span style="color:#dc3232;">' + (response.data || 'Error') + '</span>');
+            }
+        }).fail(function() {
+            $btn.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools"></span> Repair SharePoint URLs');
+            $result.html('<span style="color:#dc3232;">Request failed</span>');
         });
     });
 });

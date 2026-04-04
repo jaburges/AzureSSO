@@ -42,8 +42,12 @@ class Azure_Auction_Product_Type {
 
     public function add_product_data_panels() {
         global $post;
+        if (!$post) {
+            return;
+        }
         $product_id = $post->ID;
 
+        $starting_bid = get_post_meta($product_id, '_regular_price', true);
         $bidding_end = get_post_meta($product_id, '_auction_bidding_end', true);
         $end_date = '';
         $end_time = '';
@@ -58,6 +62,11 @@ class Azure_Auction_Product_Type {
         ?>
         <div id="auction_data" class="panel woocommerce_options_panel">
             <div class="options_group">
+                <p class="form-field _auction_starting_bid_field">
+                    <label for="_auction_starting_bid"><?php _e('Starting Bid ($)', 'azure-plugin'); ?></label>
+                    <input type="number" id="_auction_starting_bid" name="_auction_starting_bid" value="<?php echo esc_attr($starting_bid); ?>" min="0" step="0.01" style="width: 120px;" />
+                    <span class="woocommerce-help-tip" data-tip="<?php esc_attr_e('The opening bid price. This is stored as the regular price.', 'azure-plugin'); ?>"></span>
+                </p>
                 <p class="form-field _auction_bidding_end_date_field">
                     <label for="_auction_bidding_end_date"><?php _e('Bidding End Date', 'azure-plugin'); ?></label>
                     <input type="date" id="_auction_bidding_end_date" name="_auction_bidding_end_date" value="<?php echo esc_attr($end_date); ?>" style="width: 160px;" />
@@ -94,6 +103,11 @@ class Azure_Auction_Product_Type {
             return;
         }
 
+        if (isset($_POST['_auction_starting_bid'])) {
+            update_post_meta($product_id, '_regular_price', wc_clean(wp_unslash($_POST['_auction_starting_bid'])));
+            update_post_meta($product_id, '_price', wc_clean(wp_unslash($_POST['_auction_starting_bid'])));
+        }
+
         $end_date = isset($_POST['_auction_bidding_end_date']) ? sanitize_text_field($_POST['_auction_bidding_end_date']) : '';
         $end_time = isset($_POST['_auction_bidding_end_time']) ? sanitize_text_field($_POST['_auction_bidding_end_time']) : '';
         if ($end_date && $end_time) {
@@ -122,8 +136,10 @@ class Azure_Auction_Product_Type {
                 var t = $('#product-type').val();
                 if (t === 'auction') {
                     $('.show_if_auction').show();
+                    $('.pricing').closest('.options_group').hide();
                 } else {
                     $('.show_if_auction').hide();
+                    $('.pricing').closest('.options_group').show();
                 }
             }
             toggleAuctionTabs();

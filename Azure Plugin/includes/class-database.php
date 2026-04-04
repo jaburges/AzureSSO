@@ -38,6 +38,7 @@ class Azure_Database {
             backup_id varchar(255) NOT NULL,
             job_name varchar(255) NOT NULL,
             backup_types longtext,
+            entity_state longtext,
             status varchar(50) DEFAULT 'pending',
             progress int(11) DEFAULT 0,
             message longtext,
@@ -372,6 +373,150 @@ class Azure_Database {
             KEY created_at (created_at)
         ) $charset_collate;";
         
+        // Product Fields tables
+        $table_pf_groups = $wpdb->prefix . 'azure_product_field_groups';
+        $sql_pf_groups = "CREATE TABLE $table_pf_groups (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            description text,
+            sort_order int(11) DEFAULT 0,
+            is_active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+
+        $table_pf_fields = $wpdb->prefix . 'azure_product_fields';
+        $sql_pf_fields = "CREATE TABLE $table_pf_fields (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            group_id bigint(20) UNSIGNED NOT NULL,
+            label varchar(255) NOT NULL,
+            field_type varchar(50) NOT NULL DEFAULT 'text',
+            placeholder varchar(255) DEFAULT '',
+            options_json longtext,
+            required tinyint(1) DEFAULT 0,
+            save_to_profile tinyint(1) DEFAULT 0,
+            user_meta_key varchar(255) DEFAULT '',
+            sort_order int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY group_id (group_id)
+        ) $charset_collate;";
+
+        $table_pf_categories = $wpdb->prefix . 'azure_product_field_categories';
+        $sql_pf_categories = "CREATE TABLE $table_pf_categories (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            group_id bigint(20) UNSIGNED NOT NULL,
+            term_id bigint(20) UNSIGNED NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY group_category (group_id, term_id),
+            KEY term_id (term_id)
+        ) $charset_collate;";
+
+        // Donation Campaigns table
+        $table_donation_campaigns = $wpdb->prefix . 'azure_donation_campaigns';
+        $sql_donation_campaigns = "CREATE TABLE $table_donation_campaigns (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name varchar(255) NOT NULL,
+            description text,
+            goal_amount decimal(10,2) DEFAULT 0,
+            raised_amount decimal(10,2) DEFAULT 0,
+            is_active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+
+        // User Children table (parent → child profiles)
+        $table_user_children = $wpdb->prefix . 'azure_user_children';
+        $sql_user_children = "CREATE TABLE $table_user_children (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) UNSIGNED NOT NULL,
+            child_name varchar(255) NOT NULL,
+            date_of_birth date DEFAULT NULL,
+            is_active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY user_id (user_id)
+        ) $charset_collate;";
+
+        // User Children Meta table (flexible key-value for child fields)
+        $table_user_children_meta = $wpdb->prefix . 'azure_user_children_meta';
+        $sql_user_children_meta = "CREATE TABLE $table_user_children_meta (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            child_id bigint(20) UNSIGNED NOT NULL,
+            meta_key varchar(255) NOT NULL,
+            meta_value longtext,
+            PRIMARY KEY (id),
+            KEY child_id (child_id),
+            KEY meta_key (meta_key(191))
+        ) $charset_collate;";
+
+        // Volunteer Sheets table (links to TEC event or standalone)
+        $table_volunteer_sheets = $wpdb->prefix . 'azure_volunteer_sheets';
+        $sql_volunteer_sheets = "CREATE TABLE $table_volunteer_sheets (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            title varchar(255) NOT NULL,
+            description text,
+            tec_event_id bigint(20) UNSIGNED DEFAULT 0,
+            event_date datetime DEFAULT NULL,
+            event_location varchar(500) DEFAULT '',
+            status varchar(20) DEFAULT 'open',
+            created_by bigint(20) UNSIGNED DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY tec_event_id (tec_event_id),
+            KEY status (status)
+        ) $charset_collate;";
+
+        // Volunteer Activities table (roles/slots within a sheet)
+        $table_volunteer_activities = $wpdb->prefix . 'azure_volunteer_activities';
+        $sql_volunteer_activities = "CREATE TABLE $table_volunteer_activities (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            sheet_id bigint(20) UNSIGNED NOT NULL,
+            name varchar(255) NOT NULL,
+            description text,
+            spots_needed int(11) NOT NULL DEFAULT 1,
+            sort_order int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY sheet_id (sheet_id)
+        ) $charset_collate;";
+
+        // Volunteer Signups table (user commitments)
+        $table_volunteer_signups = $wpdb->prefix . 'azure_volunteer_signups';
+        $sql_volunteer_signups = "CREATE TABLE $table_volunteer_signups (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            activity_id bigint(20) UNSIGNED NOT NULL,
+            user_id bigint(20) UNSIGNED NOT NULL,
+            signed_up_at datetime DEFAULT CURRENT_TIMESTAMP,
+            reminder_sent tinyint(1) DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY activity_user (activity_id, user_id),
+            KEY user_id (user_id),
+            KEY reminder_sent (reminder_sent)
+        ) $charset_collate;";
+
+        // Donation Records table
+        $table_donation_records = $wpdb->prefix . 'azure_donation_records';
+        $sql_donation_records = "CREATE TABLE $table_donation_records (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            campaign_id bigint(20) UNSIGNED DEFAULT 0,
+            order_id bigint(20) UNSIGNED DEFAULT 0,
+            user_id bigint(20) UNSIGNED DEFAULT 0,
+            amount decimal(10,2) NOT NULL,
+            donation_type varchar(50) NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY campaign_id (campaign_id),
+            KEY order_id (order_id),
+            KEY user_id (user_id),
+            KEY donation_type (donation_type),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
         // Create all tables
@@ -392,6 +537,16 @@ class Azure_Database {
         dbDelta($sql_onedrive_sync_queue);
         dbDelta($sql_onedrive_tokens);
         dbDelta($sql_auction_bids);
+        dbDelta($sql_pf_groups);
+        dbDelta($sql_pf_fields);
+        dbDelta($sql_pf_categories);
+        dbDelta($sql_user_children);
+        dbDelta($sql_user_children_meta);
+        dbDelta($sql_volunteer_sheets);
+        dbDelta($sql_volunteer_activities);
+        dbDelta($sql_volunteer_signups);
+        dbDelta($sql_donation_campaigns);
+        dbDelta($sql_donation_records);
         
         // Log successful table creation
         Azure_Logger::info('Azure Plugin database tables created successfully');
@@ -425,7 +580,17 @@ class Azure_Database {
             'newsletter_list_members' => $wpdb->prefix . 'azure_newsletter_list_members',
             'newsletter_bounces' => $wpdb->prefix . 'azure_newsletter_bounces',
             'newsletter_templates' => $wpdb->prefix . 'azure_newsletter_templates',
-            'newsletter_sending_config' => $wpdb->prefix . 'azure_newsletter_sending_config'
+            'newsletter_sending_config' => $wpdb->prefix . 'azure_newsletter_sending_config',
+            'product_field_groups' => $wpdb->prefix . 'azure_product_field_groups',
+            'product_fields' => $wpdb->prefix . 'azure_product_fields',
+            'product_field_categories' => $wpdb->prefix . 'azure_product_field_categories',
+            'user_children' => $wpdb->prefix . 'azure_user_children',
+            'user_children_meta' => $wpdb->prefix . 'azure_user_children_meta',
+            'volunteer_sheets' => $wpdb->prefix . 'azure_volunteer_sheets',
+            'volunteer_activities' => $wpdb->prefix . 'azure_volunteer_activities',
+            'volunteer_signups' => $wpdb->prefix . 'azure_volunteer_signups',
+            'donation_campaigns' => $wpdb->prefix . 'azure_donation_campaigns',
+            'donation_records' => $wpdb->prefix . 'azure_donation_records'
         );
         
         return isset($tables[$table]) ? $tables[$table] : false;

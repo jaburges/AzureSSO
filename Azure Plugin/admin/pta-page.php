@@ -1969,6 +1969,15 @@ jQuery(document).ready(function($) {
                                     <th>Description</th>
                                     <td><textarea name="description" class="large-text">${role.description || ''}</textarea></td>
                                 </tr>
+                                <tr>
+                                    <th>O365 Group</th>
+                                    <td>
+                                        <select name="o365_group_id" id="edit-role-o365-group" style="min-width: 250px;">
+                                            <option value="">-- Loading groups... --</option>
+                                        </select>
+                                        <p class="description">Assign an O365 group email to this role (for Treasurer, Secretary, etc.)</p>
+                                    </td>
+                                </tr>
                             </table>
                             <p class="submit" style="display: flex; gap: 10px;">
                                 <button type="button" id="save-role-btn" class="button button-primary" style="min-width: 120px;">Save Changes</button>
@@ -1985,6 +1994,42 @@ jQuery(document).ready(function($) {
         
         $('body').append(formHtml);
         
+        // Load O365 groups and current role mapping into dropdown
+        var $groupSelect = $('#edit-role-o365-group');
+        var currentGroupId = '';
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'pta_get_role_group_mapping',
+            role_id: role.id,
+            nonce: azure_plugin_ajax.nonce
+        }, function(resp) {
+            if (resp.success && resp.data) {
+                currentGroupId = resp.data.group_id || '';
+            }
+            loadO365GroupsForRole();
+        }).fail(function() {
+            loadO365GroupsForRole();
+        });
+
+        function loadO365GroupsForRole() {
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_get_o365_groups',
+                nonce: azure_plugin_ajax.nonce
+            }, function(resp) {
+                var opts = '<option value="">-- None --</option>';
+                if (resp.success && resp.data) {
+                    resp.data.forEach(function(g) {
+                        var sel = (g.group_id === currentGroupId) ? 'selected' : '';
+                        var label = g.display_name + (g.mail ? ' (' + g.mail + ')' : '');
+                        opts += '<option value="' + g.group_id + '" ' + sel + '>' + label + '</option>';
+                    });
+                }
+                $groupSelect.html(opts);
+            }).fail(function() {
+                $groupSelect.html('<option value="">-- Failed to load groups --</option>');
+            });
+        }
+
         // Handle "Create New Department" option
         $('#edit-role-department').on('change', function() {
             if ($(this).val() === 'new') {
@@ -2092,14 +2137,27 @@ jQuery(document).ready(function($) {
                 
             $.post(azure_plugin_ajax.ajax_url, formData, function(updateResponse) {
                 console.log('Update response:', updateResponse);
-                if (updateResponse.success) {
-                    alert('✅ Role updated successfully!');
-                    $modal.remove();
-                    loadRolesList(); // Refresh the roles list
-                } else {
+                if (!updateResponse.success) {
                     $btn.prop('disabled', false).text('Save Changes');
                     alert('❌ Failed to update role: ' + (updateResponse.data || 'Unknown error'));
+                    return;
                 }
+
+                var selectedGroup = $form.find('[name="o365_group_id"]').val();
+                $.post(azure_plugin_ajax.ajax_url, {
+                    action: 'pta_set_role_group',
+                    nonce: azure_plugin_ajax.nonce,
+                    role_id: roleId,
+                    o365_group_id: selectedGroup || ''
+                }, function() {
+                    alert('✅ Role updated successfully!');
+                    $modal.remove();
+                    loadRolesList();
+                }).fail(function() {
+                    alert('✅ Role updated but O365 group mapping may not have saved.');
+                    $modal.remove();
+                    loadRolesList();
+                });
             }).fail(function(xhr, status, error) {
                 $btn.prop('disabled', false).text('Save Changes');
                 console.error('Edit role AJAX error:', xhr, status, error);
@@ -2254,6 +2312,15 @@ jQuery(document).ready(function($) {
                                         <th>VP (Vice President)</th>
                                         <td><select name="vp_user_id" id="edit-dept-vp"></select></td>
                                     </tr>
+                                    <tr>
+                                        <th>O365 Group</th>
+                                        <td>
+                                            <select name="o365_group_id" id="edit-dept-o365-group">
+                                                <option value="">-- No O365 Group --</option>
+                                            </select>
+                                            <p class="description">Assign an Office 365 group email to this department.</p>
+                                        </td>
+                                    </tr>
                                 </table>
                                 <p class="submit">
                                     <button type="submit" class="button button-primary">Save Changes</button>
@@ -2281,7 +2348,33 @@ jQuery(document).ready(function($) {
                     });
                 }
             });
-            
+
+            // Load O365 groups and current department mapping in parallel
+            var currentGroupId = '';
+            $.post(azure_plugin_ajax.ajax_url, {
+                action: 'pta_get_department_group_mapping',
+                nonce: azure_plugin_ajax.nonce,
+                dept_id: deptId
+            }, function(mappingResponse) {
+                if (mappingResponse.success && mappingResponse.data) {
+                    currentGroupId = mappingResponse.data.group_id || '';
+                }
+                // Now load all O365 groups and pre-select the current one
+                $.post(azure_plugin_ajax.ajax_url, {
+                    action: 'pta_get_o365_groups',
+                    nonce: azure_plugin_ajax.nonce
+                }, function(groupsResponse) {
+                    if (groupsResponse.success) {
+                        var groupSelect = $('#edit-dept-o365-group');
+                        groupsResponse.data.forEach(function(group) {
+                            var selected = (currentGroupId === group.group_id) ? 'selected' : '';
+                            var label = group.display_name + (group.mail ? ' (' + group.mail + ')' : '');
+                            groupSelect.append('<option value="' + group.group_id + '" ' + selected + '>' + label + '</option>');
+                        });
+                    }
+                });
+            });
+
             $('#edit-dept-form-modal').show();
             
             // Bind close handler
@@ -2292,6 +2385,8 @@ jQuery(document).ready(function($) {
             // Bind form submit
             $('#edit-dept-form').on('submit', function(e) {
                 e.preventDefault();
+
+                var selectedGroupId = $(this).find('[name="o365_group_id"]').val();
                 
                 var formData = {
                     action: 'pta_update_department',
@@ -2302,13 +2397,25 @@ jQuery(document).ready(function($) {
                 };
                 
                 $.post(azure_plugin_ajax.ajax_url, formData, function(updateResponse) {
-                    if (updateResponse.success) {
-                        alert('✅ Department updated successfully!');
-                        $('#edit-dept-form-modal').remove();
-                        location.reload(); // Refresh page to show updates
-                    } else {
+                    if (!updateResponse.success) {
                         alert('❌ Failed to update department: ' + (updateResponse.data || 'Unknown error'));
+                        return;
                     }
+                    // Save O365 group mapping
+                    $.post(azure_plugin_ajax.ajax_url, {
+                        action: 'pta_set_department_group',
+                        nonce: azure_plugin_ajax.nonce,
+                        dept_id: deptId,
+                        o365_group_id: selectedGroupId || ''
+                    }, function(groupResponse) {
+                        if (groupResponse.success) {
+                            alert('✅ Department updated successfully!');
+                        } else {
+                            alert('✅ Department saved but O365 group update failed: ' + (groupResponse.data || 'Unknown error'));
+                        }
+                        $('#edit-dept-form-modal').remove();
+                        location.reload();
+                    });
                 });
             });
         });

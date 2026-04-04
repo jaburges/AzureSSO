@@ -543,7 +543,32 @@ sso_debug_log('last_sync_results: ' . json_encode($last_sync_results));
         <div class="sso-exclusion-section">
             <h2><span class="dashicons dashicons-dismiss"></span> Do Not Sync - Exclusion List</h2>
             <p class="description">Exclude service accounts, shared mailboxes, and other non-user accounts from syncing to WordPress and from SSO login. These accounts will be blocked from authentication.</p>
-            
+
+            <?php
+            $exclude_external = Azure_Settings::get_setting('sso_exclude_external_domains', false);
+            $org_domain = Azure_Settings::get_setting('org_domain', '');
+            ?>
+            <table class="form-table" style="margin-bottom: 0;">
+                <tr>
+                    <th scope="row">Exclude External Domains</th>
+                    <td>
+                        <label>
+                            <input type="checkbox" id="sso_exclude_external_domains" name="sso_exclude_external_domains" value="1"
+                                <?php checked($exclude_external); ?> />
+                            Do not sync or allow login from accounts outside the organization domain
+                        </label>
+                        <?php if (!empty($org_domain)): ?>
+                        <p class="description">Only accounts with <strong>@<?php echo esc_html($org_domain); ?></strong> email addresses will be synced and allowed to log in. All other domains (e.g., gmail.com, outlook.com, yahoo.com) will be automatically excluded.</p>
+                        <?php else: ?>
+                        <p class="description" style="color: #dc3232;">
+                            <span class="dashicons dashicons-warning" style="font-size: 16px; vertical-align: text-bottom;"></span>
+                            Organization domain is not configured. Please set it in <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>">PTA Tools &rarr; Main Settings</a> or the Setup Wizard before enabling this option.
+                        </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </table>
+
             <div class="exclusion-add-section">
                 <h4>Add Account to Exclusion List</h4>
                 <div class="exclusion-add-form">
@@ -885,16 +910,49 @@ jQuery(document).ready(function($) {
         }, function(response) {
             button.prop('disabled', false).html('<span class="dashicons dashicons-admin-users"></span> Test SSO Connection');
             
-            if (response.success) {
-                alert('✅ SSO connection successful!');
-            } else {
-                alert('❌ SSO connection failed: ' + (response.data || 'Unknown error'));
-            }
+            var data = response.data || {};
+            var checks = data.checks || [];
+            var message = (typeof data === 'string') ? data : (data.message || 'Unknown result');
+
+            showSSOTestResults(response.success, message, checks);
         }).fail(function() {
             button.prop('disabled', false).html('<span class="dashicons dashicons-admin-users"></span> Test SSO Connection');
-            alert('❌ Network error occurred');
+            showSSOTestResults(false, 'Network error occurred', []);
         });
     });
+
+    function showSSOTestResults(success, message, checks) {
+        $('#sso-test-modal').remove();
+
+        var html = '<div id="sso-test-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;">';
+        html += '<div style="background:#fff;border-radius:8px;max-width:520px;width:90%;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,0.3);">';
+        html += '<h3 style="margin:0 0 16px;">' + (success ? '✅' : '❌') + ' SSO Connection Test</h3>';
+
+        if (checks.length) {
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">';
+            html += '<thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:2px solid #ddd;">Check</th><th style="text-align:left;padding:6px 8px;border-bottom:2px solid #ddd;">Status</th></tr></thead><tbody>';
+            for (var i = 0; i < checks.length; i++) {
+                var c = checks[i];
+                var icon = c.pass ? '✅' : '❌';
+                var rowColor = c.pass ? 'inherit' : '#fef0f0';
+                html += '<tr style="background:' + rowColor + ';">';
+                html += '<td style="padding:8px;border-bottom:1px solid #eee;"><strong>' + c.name + '</strong></td>';
+                html += '<td style="padding:8px;border-bottom:1px solid #eee;">' + icon + '</td>';
+                html += '</tr>';
+                if (c.detail) {
+                    html += '<tr style="background:' + rowColor + ';"><td colspan="2" style="padding:4px 8px 10px;color:#666;font-size:12px;">' + c.detail + '</td></tr>';
+                }
+            }
+            html += '</tbody></table>';
+        }
+
+        html += '<p style="margin:0 0 16px;font-weight:600;">' + message + '</p>';
+        html += '<button class="button button-primary" onclick="jQuery(\'#sso-test-modal\').remove();">Close</button>';
+        html += '</div></div>';
+
+        $('body').append(html);
+        $('#sso-test-modal').on('click', function(e) { if (e.target === this) $(this).remove(); });
+    }
     
     // Handle module toggle
     $('.sso-module-toggle').change(function() {
@@ -953,7 +1011,21 @@ jQuery(document).ready(function($) {
     <?php endif; ?>
     
     // ===== Do Not Sync Exclusion List Handlers =====
-    
+
+    // Save "Exclude External Domains" checkbox via AJAX
+    $('#sso_exclude_external_domains').on('change', function() {
+        var enabled = $(this).is(':checked');
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_save_exclude_external_domains',
+            enabled: enabled,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            if (!response.success) {
+                alert('Failed to save setting');
+            }
+        });
+    });
+
     // Load Azure AD Users into dropdown
     $('#load-azure-users').click(function() {
         var button = $(this);

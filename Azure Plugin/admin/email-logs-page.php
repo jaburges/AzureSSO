@@ -4,8 +4,10 @@ if (!defined('ABSPATH')) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap">
     <h1>PTA Tools - Email Logs</h1>
+<?php endif; ?>
     
     <div class="azure-email-logs-dashboard">
         <!-- Email Statistics -->
@@ -228,7 +230,9 @@ if (!defined('ABSPATH')) {
             </form>
         </div>
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <!-- Email Preview Modal -->
 <div id="email-preview-modal" class="modal" style="display: none;">

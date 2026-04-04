@@ -30,10 +30,14 @@ if ($activity_table) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap">
     <h1>PTA Tools - Logs & Activity</h1>
+<?php endif; ?>
     
     <div class="azure-logs-dashboard">
+
+    <?php if (empty($GLOBALS['azure_system_tab']) || $GLOBALS['azure_system_tab'] === 'logs'): ?>
         <!-- Activity Statistics -->
         <?php if (!empty($activity_stats)): ?>
         <div class="activity-stats-section">
@@ -86,6 +90,25 @@ if ($activity_table) {
             </p>
         </div>
         
+        <!-- Diagnostics API Key -->
+        <?php if (class_exists('Azure_Diagnostics_API')): ?>
+        <div class="diagnostics-api-section" style="margin-bottom: 30px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+            <h2><span class="dashicons dashicons-rest-api" style="margin-right: 8px;"></span>Diagnostics API</h2>
+            <p class="description">Remote read-only API for monitoring this site. Endpoints are at <code>/wp-json/pta-tools/v1/diagnostics/...</code></p>
+            <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label style="font-weight: 600;">API Key:</label>
+                <input type="text" id="diag-api-key" value="<?php echo esc_attr(Azure_Diagnostics_API::get_api_key()); ?>" readonly
+                       style="width: 420px; font-family: monospace; font-size: 13px; background: #f6f7f7;" />
+                <button type="button" class="button" onclick="navigator.clipboard.writeText(document.getElementById('diag-api-key').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
+                <button type="button" class="button" id="regen-diag-key">Regenerate</button>
+            </div>
+            <p class="description" style="margin-top: 10px;">
+                Pass this key as the <code>X-Diag-Key</code> header or <code>?key=</code> query param. Available endpoints:
+                <code>/health</code>, <code>/logs</code>, <code>/php-errors</code>, <code>/cron</code>, <code>/options</code>, <code>/modules</code>, <code>/tables</code>
+            </p>
+        </div>
+        <?php endif; ?>
+
         <!-- Log Controls -->
         <div class="log-controls-section">
             <h2>Log Management</h2>
@@ -311,8 +334,76 @@ if ($activity_table) {
                 </div>
             </div>
         </div>
+
+    <?php endif; // end logs tab ?>
+
+    <?php if (empty($GLOBALS['azure_system_tab']) || $GLOBALS['azure_system_tab'] === 'critical'): ?>
+        <!-- Organization Settings -->
+        <?php
+        $org_domain = Azure_Settings::get_setting('org_domain', '');
+        $org_name = Azure_Settings::get_setting('org_name', '');
+        $org_team_name = Azure_Settings::get_setting('org_team_name', '');
+        $org_admin_email = Azure_Settings::get_setting('org_admin_email', '');
+        $raw_org_domain = Azure_Settings::get_all_settings()['org_domain'] ?? '';
+        ?>
+        <div style="margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+            <h2 style="margin: 0 0 15px; display: flex; align-items: center; gap: 8px;">
+                <span class="dashicons dashicons-admin-site-alt3"></span> Organization Settings
+            </h2>
+            <p class="description">These are typically set during the Setup Wizard. You can update them here if needed (e.g. after a site restore).</p>
+            <table class="form-table" style="margin-top: 10px;">
+                <tr>
+                    <th scope="row"><label for="org_domain">Organization Domain</label></th>
+                    <td>
+                        <input type="text" id="org_domain" class="regular-text org-setting-field" value="<?php echo esc_attr($org_domain); ?>" placeholder="e.g. yourptsa.net" />
+                        <?php if (empty($raw_org_domain) && !empty($org_domain)): ?>
+                            <p class="description"><em>Auto-derived from site URL. Save to make it explicit.</em></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="org_name">Organization Name</label></th>
+                    <td><input type="text" id="org_name" class="regular-text org-setting-field" value="<?php echo esc_attr($org_name); ?>" placeholder="e.g. Wilder PTSA" /></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="org_team_name">Team Name</label></th>
+                    <td><input type="text" id="org_team_name" class="regular-text org-setting-field" value="<?php echo esc_attr($org_team_name); ?>" placeholder="e.g. Wilder PTSA Team" /></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="org_admin_email">Admin Email (FROM address)</label></th>
+                    <td><input type="email" id="org_admin_email" class="regular-text org-setting-field" value="<?php echo esc_attr($org_admin_email); ?>" placeholder="e.g. admin@yourptsa.net" /></td>
+                </tr>
+            </table>
+            <button type="button" class="button button-primary save-org-settings" style="margin-top: 10px;">
+                <span class="dashicons dashicons-saved" style="vertical-align: middle; line-height: 1; margin-right: 4px;"></span>
+                Save Organization Settings
+            </button>
+            <span id="org-settings-result" style="display: none; margin-left: 10px;"></span>
+        </div>
+
+        <!-- Danger Zone -->
+        <div style="margin-top: 30px; padding: 20px; background: #fff; border: 2px solid #d63638; border-radius: 4px;">
+            <h2 style="color: #d63638; margin: 0 0 15px; display: flex; align-items: center; gap: 8px;">
+                <span class="dashicons dashicons-warning"></span> Danger Zone
+            </h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                <div style="flex: 1; min-width: 250px;">
+                    <h4 style="margin: 0 0 5px;">Clear Media Library</h4>
+                    <p class="description" style="margin: 0 0 10px;">Deletes ALL WordPress media attachments, their local files, and OneDrive mappings. Use before restoring a backup to start from a clean state.</p>
+                    <button type="button" class="button clear-media-library-btn" style="background-color: #d63638; border-color: #d63638; color: white;">
+                        <span class="dashicons dashicons-trash" style="vertical-align: middle; line-height: 1; margin-right: 4px;"></span>
+                        Clear Entire Media Library
+                    </button>
+                    <span id="clear-media-result" style="display: none; margin-left: 10px;"></span>
+                </div>
+            </div>
+        </div>
+    <?php endif; // end critical tab ?>
+
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <script>
 jQuery(document).ready(function($) {
@@ -868,6 +959,101 @@ jQuery(document).ready(function($) {
             button.prop('disabled', false).html(originalHtml);
             alert('❌ Reimport failed due to network error:\n\n' + (xhr.responseJSON ? xhr.responseJSON.data : 'Unknown error'));
             console.error('Reimport AJAX error:', xhr);
+        });
+    });
+
+    // Clear Media Library
+    $('.clear-media-library-btn').click(function() {
+        if (!confirm('WARNING: This will permanently delete ALL media attachments, their local files, and OneDrive mappings.\n\nThis CANNOT be undone!\n\nAre you sure?')) {
+            return;
+        }
+        if (!confirm('FINAL CONFIRMATION: ALL media will be deleted. Click OK to proceed.')) {
+            return;
+        }
+
+        var $btn = $(this);
+        var originalHtml = $btn.html();
+        var $result = $('#clear-media-result');
+        $btn.prop('disabled', true).html('<span class="dashicons dashicons-update" style="animation: rotation 2s infinite linear; vertical-align: middle; line-height: 1; margin-right: 4px;"></span> Clearing...');
+        $result.hide();
+
+        function clearBatch() {
+            $.ajax({
+                url: azure_plugin_ajax.ajax_url,
+                type: 'POST',
+                timeout: 120000,
+                data: { action: 'azure_clear_media_library', nonce: azure_plugin_ajax.nonce },
+                success: function(response) {
+                    if (!response.success) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        $result.css('color', '#d63638').text('Failed: ' + (response.data || 'Unknown error')).show();
+                        return;
+                    }
+                    var d = response.data;
+                    $result.css('color', '#2271b1').text(d.message).show();
+                    if (!d.done) {
+                        clearBatch();
+                    } else {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        $result.css('color', '#00a32a');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    $result.css('color', '#d63638').text('Request failed or timed out.').show();
+                }
+            });
+        }
+
+        clearBatch();
+    });
+
+    // Save Organization Settings
+    $('.save-org-settings').click(function() {
+        var $btn = $(this);
+        var $result = $('#org-settings-result');
+        var originalHtml = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0 5px 0 0;"></span> Saving...');
+        $result.hide();
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_save_org_settings',
+            nonce: azure_plugin_ajax.nonce,
+            org_domain: $('#org_domain').val(),
+            org_name: $('#org_name').val(),
+            org_team_name: $('#org_team_name').val(),
+            org_admin_email: $('#org_admin_email').val()
+        }, function(response) {
+            $btn.prop('disabled', false).html(originalHtml);
+            if (response.success) {
+                $result.css('color', '#00a32a').text('Settings saved.').show();
+                setTimeout(function() { $result.fadeOut(); }, 3000);
+            } else {
+                $result.css('color', '#d63638').text('Failed: ' + (response.data || 'Unknown error')).show();
+            }
+        }).fail(function() {
+            $btn.prop('disabled', false).html(originalHtml);
+            $result.css('color', '#d63638').text('Network error.').show();
+        });
+    });
+
+    // Regenerate Diagnostics API key
+    $('#regen-diag-key').on('click', function() {
+        if (!confirm('Regenerate the Diagnostics API key? Any existing integrations using the old key will stop working.')) return;
+        var $btn = $(this);
+        $btn.prop('disabled', true).text('Regenerating...');
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_regen_diag_key',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            $btn.prop('disabled', false).text('Regenerate');
+            if (response.success) {
+                $('#diag-api-key').val(response.data.key);
+            } else {
+                alert('Failed: ' + (response.data || 'Unknown error'));
+            }
+        }).fail(function() {
+            $btn.prop('disabled', false).text('Regenerate');
         });
     });
 });

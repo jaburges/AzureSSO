@@ -274,7 +274,23 @@ class Azure_OneDrive_Media_GraphAPI {
         
         $data = json_decode($response_body, true);
         $items = $data['value'] ?? array();
-        
+
+        // Follow pagination (@odata.nextLink) to get all items
+        while (!empty($data['@odata.nextLink'])) {
+            $next_response = wp_remote_get($data['@odata.nextLink'], array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $access_token,
+                    'Content-Type'  => 'application/json'
+                ),
+                'timeout' => 30
+            ));
+            if (is_wp_error($next_response) || wp_remote_retrieve_response_code($next_response) !== 200) {
+                break;
+            }
+            $data = json_decode(wp_remote_retrieve_body($next_response), true);
+            $items = array_merge($items, $data['value'] ?? array());
+        }
+
         $formatted_items = array();
         foreach ($items as $item) {
             $formatted_items[] = $this->format_file_data($item);

@@ -422,28 +422,43 @@ class Azure_Calendar_Shortcode {
     }
     
     /**
-     * Enqueue frontend assets
+     * Enqueue frontend assets only when a calendar shortcode is present.
      */
     public function enqueue_frontend_assets() {
-        // Always enqueue on frontend - it's better to load when not needed than to miss it when needed
-        // The library is loaded from CDN so it won't impact server resources
-        if (!is_admin()) {
-            // Enqueue FullCalendar
-            wp_enqueue_script(
-                'fullcalendar',
-                'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
-                array(),
-                '6.1.8',
-                true
-            );
-            
-            // Enqueue calendar styles
-            wp_enqueue_style(
-                'azure-calendar-frontend',
-                AZURE_PLUGIN_URL . 'css/calendar-frontend.css',
-                array(),
-                AZURE_PLUGIN_VERSION
-            );
+        if (is_admin()) {
+            return;
         }
+
+        global $post;
+        if (!is_a($post, 'WP_Post')) {
+            return;
+        }
+
+        $shortcodes = array('azure_calendar', 'azure_calendar_events', 'azure_calendar_event');
+        $found = false;
+        foreach ($shortcodes as $sc) {
+            if (has_shortcode($post->post_content, $sc)) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            return;
+        }
+
+        wp_enqueue_script(
+            'fullcalendar',
+            'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
+            array(),
+            '6.1.8',
+            true
+        );
+        
+        wp_enqueue_style(
+            'azure-calendar-frontend',
+            AZURE_PLUGIN_URL . 'css/calendar-frontend.css',
+            array(),
+            AZURE_PLUGIN_VERSION
+        );
     }
 }

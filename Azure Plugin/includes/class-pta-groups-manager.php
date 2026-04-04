@@ -23,6 +23,10 @@ class Azure_PTA_Groups_Manager {
         add_action('wp_ajax_pta_sync_user_group_memberships', array($this, 'ajax_sync_user_group_memberships'));
         add_action('wp_ajax_pta_test_group_access', array($this, 'ajax_test_group_access'));
         add_action('wp_ajax_pta_get_unmapped_groups', array($this, 'ajax_get_unmapped_groups'));
+        add_action('wp_ajax_pta_get_department_group_mapping', array($this, 'ajax_get_department_group_mapping'));
+        add_action('wp_ajax_pta_set_department_group', array($this, 'ajax_set_department_group'));
+        add_action('wp_ajax_pta_get_role_group_mapping', array($this, 'ajax_get_role_group_mapping'));
+        add_action('wp_ajax_pta_set_role_group', array($this, 'ajax_set_role_group'));
         
         // Scheduled sync
         add_action('init', array($this, 'schedule_group_sync'));
@@ -885,6 +889,103 @@ class Azure_PTA_Groups_Manager {
         }
     }
     
+    public function ajax_get_department_group_mapping() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+        if (!$dept_id) {
+            wp_send_json_error('Department ID is required');
+        }
+
+        $mappings = $this->get_group_mappings('department', $dept_id);
+        $mapping = !empty($mappings) ? $mappings[0] : null;
+
+        wp_send_json_success($mapping);
+    }
+
+    /**
+     * Set or replace the O365 group for a department (single group per department).
+     * Removes any existing department mapping before creating the new one.
+     */
+    public function ajax_set_department_group() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+        $o365_group_id = sanitize_text_field($_POST['o365_group_id'] ?? '');
+
+        if (!$dept_id) {
+            wp_send_json_error('Department ID is required');
+        }
+
+        try {
+            $existing_mappings = $this->get_group_mappings('department', $dept_id);
+            foreach ($existing_mappings as $mapping) {
+                $this->delete_group_mapping($mapping->id);
+            }
+
+            if (!empty($o365_group_id)) {
+                $mapping_id = $this->create_group_mapping('department', $dept_id, $o365_group_id, true);
+                wp_send_json_success(array('message' => 'Department group updated', 'mapping_id' => $mapping_id));
+            } else {
+                wp_send_json_success(array('message' => 'Department group cleared'));
+            }
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+    }
+
+    public function ajax_get_role_group_mapping() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $role_id = intval($_POST['role_id'] ?? 0);
+        if (!$role_id) {
+            wp_send_json_error('Role ID is required');
+        }
+
+        $mappings = $this->get_group_mappings('role', $role_id);
+        $mapping = !empty($mappings) ? $mappings[0] : null;
+
+        wp_send_json_success($mapping);
+    }
+
+    /**
+     * Set or replace the O365 group for a role (single group per role).
+     */
+    public function ajax_set_role_group() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $role_id = intval($_POST['role_id'] ?? 0);
+        $o365_group_id = sanitize_text_field($_POST['o365_group_id'] ?? '');
+
+        if (!$role_id) {
+            wp_send_json_error('Role ID is required');
+        }
+
+        try {
+            $existing_mappings = $this->get_group_mappings('role', $role_id);
+            foreach ($existing_mappings as $mapping) {
+                $this->delete_group_mapping($mapping->id);
+            }
+
+            if (!empty($o365_group_id)) {
+                $mapping_id = $this->create_group_mapping('role', $role_id, $o365_group_id, true);
+                wp_send_json_success(array('message' => 'Role group updated', 'mapping_id' => $mapping_id));
+            } else {
+                wp_send_json_success(array('message' => 'Role group cleared'));
+            }
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+    }
+
     public function ajax_sync_user_group_memberships() {
         if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
             wp_send_json_error('Unauthorized');

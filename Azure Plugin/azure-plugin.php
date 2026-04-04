@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/jaburges/PTATools
  * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.39
+ * Version: 3.46
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.39');
+define('AZURE_PLUGIN_VERSION', '3.46');
 
 // Auto-update from GitHub Releases (Update URI header must match hostname: github.com)
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
@@ -147,6 +147,7 @@ class AzurePlugin {
                 'class-user-account-shortcode.php' => 'User Account Shortcode class',
                 
                 // Backup functionality
+                'class-backup-engine.php' => 'Backup Engine class',
                 'class-backup.php' => 'Backup class',
                 'class-backup-restore.php' => 'Backup Restore class',
                 'class-backup-azure-storage.php' => 'Backup Azure Storage class',
@@ -182,6 +183,7 @@ class AzurePlugin {
                 'class-pta-sync-engine.php' => 'PTA Sync Engine class',
                 'class-pta-groups-manager.php' => 'PTA Groups Manager class',
                 'class-pta-shortcode.php' => 'PTA Shortcode class',
+                'class-pta-forminator.php' => 'PTA Forminator Integration class',
                 'class-pta-beaver-builder.php' => 'PTA Beaver Builder class',
                 
                 // OneDrive Media functionality
@@ -201,8 +203,24 @@ class AzurePlugin {
                 // Auction functionality
                 'class-auction-module.php' => 'Auction Module class',
                 
+                // Product Fields functionality
+                'class-product-fields-module.php' => 'Product Fields Module class',
+                'class-user-children.php' => 'User Children Profiles class',
+                
+                // Donations functionality
+                'class-donations-module.php' => 'Donations Module class',
+                
+                // Volunteer Sign Up functionality
+                'class-volunteer-signup.php' => 'Volunteer Sign Up Module class',
+                
                 // Setup Wizard
-                'class-setup-wizard.php' => 'Setup Wizard class'
+                'class-setup-wizard.php' => 'Setup Wizard class',
+                
+                // Restore Wizard
+                'class-restore-wizard.php' => 'Restore Wizard class',
+                
+                // Diagnostics REST API
+                'class-diagnostics-api.php' => 'Diagnostics REST API class'
             );
             
             // Load critical files first - these must succeed
@@ -270,10 +288,7 @@ class AzurePlugin {
                 Azure_Logger::init();
             }
             
-            // Register scheduled log cleanup
-            if (!wp_next_scheduled('azure_plugin_cleanup_logs')) {
-                wp_schedule_event(time(), 'daily', 'azure_plugin_cleanup_logs');
-            }
+            // Register scheduled log cleanup hook (scheduling is done during activation)
             add_action('azure_plugin_cleanup_logs', array('Azure_Logger', 'scheduled_cleanup'));
             
             // Load plugin textdomain
@@ -284,9 +299,24 @@ class AzurePlugin {
                 Azure_Settings::get_instance();
             }
             
+            // Run DB migrations on version change (dbDelta is safe to re-run)
+            $stored_version = get_option('azure_plugin_db_version', '0');
+            if (version_compare($stored_version, AZURE_PLUGIN_VERSION, '<')) {
+                if (class_exists('Azure_Database')) {
+                    Azure_Database::create_tables();
+                }
+                flush_rewrite_rules();
+                update_option('azure_plugin_db_version', AZURE_PLUGIN_VERSION);
+            }
+            
             // Initialize admin components
             if (is_admin() && class_exists('Azure_Admin')) {
                 Azure_Admin::get_instance();
+            }
+            
+            // Diagnostics REST API (always active for remote monitoring)
+            if (class_exists('Azure_Diagnostics_API')) {
+                Azure_Diagnostics_API::get_instance();
             }
             
             // Get settings for module initialization
@@ -343,6 +373,18 @@ class AzurePlugin {
             
             if (!empty($settings['enable_auction'])) {
                 $this->init_auction_components();
+            }
+            
+            if (!empty($settings['enable_product_fields'])) {
+                $this->init_product_fields_components();
+            }
+            
+            if (!empty($settings['enable_donations']) || is_admin()) {
+                $this->init_donations_components();
+            }
+            
+            if (!empty($settings['enable_volunteer'])) {
+                $this->init_volunteer_components();
             }
             
         } catch (Exception $e) {
@@ -549,6 +591,11 @@ class AzurePlugin {
                 new Azure_PTA_BeaverBuilder();
                 Azure_Logger::debug_module('PTA', 'Azure_PTA_BeaverBuilder initialized successfully');
             }
+
+            if (class_exists('Azure_PTA_Forminator')) {
+                Azure_PTA_Forminator::get_instance();
+                Azure_Logger::debug_module('PTA', 'Azure_PTA_Forminator initialized successfully');
+            }
             
             Azure_Logger::debug_module('PTA', 'All PTA components initialized successfully');
             
@@ -719,6 +766,58 @@ class AzurePlugin {
                 'line' => $e->getLine()
             ));
             error_log('Azure Plugin: Auction init error - ' . $e->getMessage());
+        }
+    }
+    
+    private function init_product_fields_components() {
+        try {
+            if (class_exists('Azure_Product_Fields_Module')) {
+                Azure_Product_Fields_Module::get_instance();
+                Azure_Logger::debug_module('ProductFields', 'Product Fields Module initialized successfully');
+            }
+            if (class_exists('Azure_User_Children')) {
+                Azure_User_Children::get_instance();
+                Azure_Logger::debug_module('ProductFields', 'User Children Profiles initialized');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Product Fields init failed: ' . $e->getMessage(), array(
+                'module' => 'ProductFields',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Product Fields init error - ' . $e->getMessage());
+        }
+    }
+    
+    private function init_donations_components() {
+        try {
+            if (class_exists('Azure_Donations_Module')) {
+                Azure_Donations_Module::get_instance();
+                Azure_Logger::debug_module('Donations', 'Donations Module initialized successfully');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Donations init failed: ' . $e->getMessage(), array(
+                'module' => 'Donations',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Donations init error - ' . $e->getMessage());
+        }
+    }
+    
+    private function init_volunteer_components() {
+        try {
+            if (class_exists('Azure_Volunteer_Signup')) {
+                Azure_Volunteer_Signup::get_instance();
+                Azure_Logger::debug_module('Volunteer', 'Volunteer Sign Up Module initialized successfully');
+            }
+        } catch (Exception $e) {
+            Azure_Logger::error('Volunteer init failed: ' . $e->getMessage(), array(
+                'module' => 'Volunteer',
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            error_log('Azure Plugin: Volunteer init error - ' . $e->getMessage());
         }
     }
     
@@ -1004,6 +1103,7 @@ class AzurePlugin {
         wp_clear_scheduled_hook('azure_calendar_sync_events');
         wp_clear_scheduled_hook('azure_mail_token_refresh');
         wp_clear_scheduled_hook('azure_sso_scheduled_sync');
+        wp_clear_scheduled_hook('azure_volunteer_send_reminders');
         
         // Flush rewrite rules
         flush_rewrite_rules();

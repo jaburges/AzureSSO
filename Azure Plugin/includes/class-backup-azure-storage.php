@@ -53,23 +53,34 @@ class Azure_Backup_Storage {
     }
     
     /**
-     * Upload backup file to Azure Blob Storage
+     * Upload backup file to Azure Blob Storage.
+     *
+     * @param string   $file_path         Local file to upload.
+     * @param string   $blob_name_or_id   Full blob path or a backup_id (legacy).
+     * @param callable $progress_callback Optional progress callback.
+     * @return string  The blob name on success.
      */
-    public function upload_backup($file_path, $backup_id) {
+    public function upload_backup($file_path, $blob_name_or_id, $progress_callback = null) {
         if (!$this->is_configured()) {
             throw new Exception('Azure Storage is not properly configured');
         }
-        
+
         if (!file_exists($file_path)) {
             throw new Exception('Backup file does not exist: ' . $file_path);
         }
-        
-        $blob_name = $this->generate_blob_name($backup_id, basename($file_path));
-        
+
+        // If it looks like a full blob path (contains /) use it directly;
+        // otherwise generate one from the ID (legacy compatibility).
+        if (strpos($blob_name_or_id, '/') !== false) {
+            $blob_name = $blob_name_or_id;
+        } else {
+            $blob_name = $this->generate_blob_name($blob_name_or_id, basename($file_path));
+        }
+
         try {
-            Azure_Logger::info('Backup Storage: Uploading backup to Azure: ' . $blob_name);
-            
-            $result = $this->upload_blob($blob_name, $file_path);
+            Azure_Logger::info('Backup Storage: Uploading to Azure: ' . $blob_name);
+
+            $result = $this->upload_blob($blob_name, $file_path, $progress_callback);
             
             if ($result) {
                 Azure_Logger::info('Backup Storage: Successfully uploaded: ' . $blob_name);
@@ -140,6 +151,36 @@ class Azure_Backup_Storage {
     }
     
     /**
+     * Get blob properties via HEAD request (no download).
+     * Returns array with 'size' and 'content_type', or false if blob not found.
+     */
+    public function get_blob_properties($blob_name) {
+        if (!$this->is_configured()) return false;
+
+        $url = $this->get_blob_url($blob_name);
+        $headers = array(
+            'x-ms-version' => '2020-04-08',
+            'x-ms-date'    => gmdate('D, d M Y H:i:s T'),
+        );
+        $auth = $this->generate_auth_header('HEAD', $blob_name, $headers);
+        $headers['Authorization'] = $auth;
+
+        $response = wp_remote_request($url, array(
+            'method'  => 'HEAD',
+            'headers' => $headers,
+            'timeout' => 15,
+        ));
+
+        if (is_wp_error($response)) return false;
+        if (wp_remote_retrieve_response_code($response) !== 200) return false;
+
+        return array(
+            'size'         => (int) wp_remote_retrieve_header($response, 'content-length'),
+            'content_type' => wp_remote_retrieve_header($response, 'content-type'),
+        );
+    }
+
+    /**
      * Delete backup from Azure Storage
      */
     public function delete_backup($blob_name) {
@@ -166,49 +207,191 @@ class Azure_Backup_Storage {
     }
     
     /**
-     * Upload blob to Azure Storage
+     * Upload blob to Azure Storage.
+     * Files <= 4 MB are uploaded in a single PUT (simple BlockBlob).
+     * Larger files use the Block Blob chunked API (Put Block + Put Block List)
+     * to avoid loading the entire file into PHP memory.
      */
-    private function upload_blob($blob_name, $file_path) {
-        $url = $this->get_blob_url($blob_name);
+    private function upload_blob($blob_name, $file_path, $progress_callback = null) {
         $file_size = filesize($file_path);
+        $chunk_size = 4 * 1024 * 1024; // 4 MB per block
+
+        if ($file_size <= $chunk_size) {
+            return $this->upload_blob_single($blob_name, $file_path, $file_size);
+        }
+
+        return $this->upload_blob_chunked($blob_name, $file_path, $file_size, $chunk_size, $progress_callback);
+    }
+
+    /**
+     * Single-request upload for small files (<= 4 MB).
+     */
+    private function upload_blob_single($blob_name, $file_path, $file_size) {
+        $url = $this->get_blob_url($blob_name);
         $file_content = file_get_contents($file_path);
-        
+
         if ($file_content === false) {
             throw new Exception('Failed to read backup file');
         }
-        
+
+        $content_type = $this->detect_content_type($file_path);
+
         $headers = array(
             'x-ms-blob-type' => 'BlockBlob',
             'x-ms-version' => '2020-04-08',
             'x-ms-date' => gmdate('D, d M Y H:i:s T'),
             'Content-Length' => $file_size,
-            'Content-Type' => 'application/zip'
+            'Content-Type' => $content_type
         );
-        
-        // Generate authorization header
+
         $auth_header = $this->generate_auth_header('PUT', $blob_name, $headers, $file_size);
         $headers['Authorization'] = $auth_header;
-        
-        $args = array(
+
+        $response = wp_remote_request($url, array(
             'method' => 'PUT',
             'headers' => $headers,
             'body' => $file_content,
-            'timeout' => 300 // 5 minutes timeout for large files
-        );
-        
-        $response = wp_remote_request($url, $args);
-        
+            'timeout' => 300
+        ));
+
         if (is_wp_error($response)) {
             throw new Exception('HTTP request failed: ' . $response->get_error_message());
         }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        
-        if ($response_code !== 201) {
-            $response_body = wp_remote_retrieve_body($response);
-            throw new Exception('Upload failed with status ' . $response_code . ': ' . $response_body);
+
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 201) {
+            throw new Exception('Upload failed with status ' . $code . ': ' . wp_remote_retrieve_body($response));
         }
-        
+
+        return true;
+    }
+
+    /**
+     * Chunked upload using Azure Block Blob API (Put Block + Put Block List).
+     * Reads the file in chunks so PHP memory stays bounded.
+     */
+    private function upload_blob_chunked($blob_name, $file_path, $file_size, $chunk_size, $progress_callback = null) {
+        $content_type = $this->detect_content_type($file_path);
+        $url = $this->get_blob_url($blob_name);
+        $handle = fopen($file_path, 'rb');
+
+        if (!$handle) {
+            throw new Exception('Failed to open backup file for reading');
+        }
+
+        $block_ids = array();
+        $block_index = 0;
+        $max_retries = 3;
+
+        try {
+            while (!feof($handle)) {
+                $chunk = fread($handle, $chunk_size);
+                if ($chunk === false || strlen($chunk) === 0) {
+                    break;
+                }
+
+                $block_id = base64_encode(str_pad($block_index, 6, '0', STR_PAD_LEFT));
+                $block_ids[] = $block_id;
+                $chunk_len = strlen($chunk);
+
+                $block_url = $url . '?comp=block&blockid=' . urlencode($block_id);
+
+                $success = false;
+                for ($attempt = 1; $attempt <= $max_retries; $attempt++) {
+                    $headers = array(
+                        'x-ms-version' => '2020-04-08',
+                        'x-ms-date' => gmdate('D, d M Y H:i:s T'),
+                        'Content-Length' => $chunk_len,
+                        'Content-Type' => 'application/octet-stream'
+                    );
+
+                    $auth = $this->generate_auth_header('PUT', $blob_name, $headers, $chunk_len, $block_url);
+                    $headers['Authorization'] = $auth;
+
+                    $response = wp_remote_request($block_url, array(
+                        'method' => 'PUT',
+                        'headers' => $headers,
+                        'body' => $chunk,
+                        'timeout' => 120
+                    ));
+
+                    if (is_wp_error($response)) {
+                        Azure_Logger::warning("Backup Storage: Block {$block_index} attempt {$attempt} failed: " . $response->get_error_message());
+                        if ($attempt === $max_retries) {
+                            throw new Exception('Put Block failed after ' . $max_retries . ' attempts: ' . $response->get_error_message());
+                        }
+                        sleep(2 * $attempt);
+                        continue;
+                    }
+
+                    $code = wp_remote_retrieve_response_code($response);
+                    if ($code === 201) {
+                        $success = true;
+                        break;
+                    }
+
+                    Azure_Logger::warning("Backup Storage: Block {$block_index} attempt {$attempt} HTTP {$code}");
+                    if ($attempt === $max_retries) {
+                        throw new Exception('Put Block failed with status ' . $code . ': ' . wp_remote_retrieve_body($response));
+                    }
+                    sleep(2 * $attempt);
+                }
+
+                $block_index++;
+                @set_time_limit(120);
+
+                if ($block_index % 10 === 0) {
+                    $uploaded = min($block_index * $chunk_size, $file_size);
+                    $pct = round($uploaded / $file_size * 100);
+                    Azure_Logger::info("Backup Storage: Uploaded {$pct}% ({$block_index} blocks)");
+
+                    if (is_callable($progress_callback)) {
+                        call_user_func($progress_callback, $pct, $block_index);
+                    }
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        // Commit all blocks with Put Block List
+        $xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<BlockList>\n";
+        foreach ($block_ids as $id) {
+            $xml .= "  <Latest>{$id}</Latest>\n";
+        }
+        $xml .= "</BlockList>";
+
+        $commit_url = $url . '?comp=blocklist';
+        $commit_len = strlen($xml);
+
+        $headers = array(
+            'x-ms-version' => '2020-04-08',
+            'x-ms-date' => gmdate('D, d M Y H:i:s T'),
+            'Content-Length' => $commit_len,
+            'Content-Type' => 'application/xml',
+            'x-ms-blob-content-type' => $content_type
+        );
+
+        $auth = $this->generate_auth_header('PUT', $blob_name, $headers, $commit_len, $commit_url);
+        $headers['Authorization'] = $auth;
+
+        $response = wp_remote_request($commit_url, array(
+            'method' => 'PUT',
+            'headers' => $headers,
+            'body' => $xml,
+            'timeout' => 60
+        ));
+
+        if (is_wp_error($response)) {
+            throw new Exception('Put Block List failed: ' . $response->get_error_message());
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 201) {
+            throw new Exception('Put Block List failed with status ' . $code . ': ' . wp_remote_retrieve_body($response));
+        }
+
+        Azure_Logger::info("Backup Storage: Chunked upload complete - {$block_index} blocks committed");
         return true;
     }
     
@@ -217,41 +400,48 @@ class Azure_Backup_Storage {
      */
     private function download_blob($blob_name, $destination_path) {
         $url = $this->get_blob_url($blob_name);
-        
+
         $headers = array(
             'x-ms-version' => '2020-04-08',
             'x-ms-date' => gmdate('D, d M Y H:i:s T')
         );
-        
-        // Generate authorization header
+
         $auth_header = $this->generate_auth_header('GET', $blob_name, $headers);
         $headers['Authorization'] = $auth_header;
-        
+
         $args = array(
-            'method' => 'GET',
-            'headers' => $headers,
-            'timeout' => 300
+            'method'   => 'GET',
+            'headers'  => $headers,
+            'timeout'  => 600,
+            'stream'   => true,
+            'filename' => $destination_path,
         );
-        
+
+        @set_time_limit(600);
+
         $response = wp_remote_request($url, $args);
-        
+
         if (is_wp_error($response)) {
+            @unlink($destination_path);
             throw new Exception('HTTP request failed: ' . $response->get_error_message());
         }
-        
+
         $response_code = wp_remote_retrieve_response_code($response);
-        
+
         if ($response_code !== 200) {
-            $response_body = wp_remote_retrieve_body($response);
-            throw new Exception('Download failed with status ' . $response_code . ': ' . $response_body);
+            $error_body = '';
+            if (file_exists($destination_path)) {
+                $error_body = file_get_contents($destination_path, false, null, 0, 1024);
+                @unlink($destination_path);
+            }
+            throw new Exception('Download failed with status ' . $response_code . ': ' . $error_body);
         }
-        
-        $file_content = wp_remote_retrieve_body($response);
-        
-        if (file_put_contents($destination_path, $file_content) === false) {
-            throw new Exception('Failed to write downloaded file');
+
+        if (!file_exists($destination_path) || filesize($destination_path) === 0) {
+            @unlink($destination_path);
+            throw new Exception('Downloaded file is empty or missing');
         }
-        
+
         return true;
     }
     
@@ -515,6 +705,20 @@ class Azure_Backup_Storage {
     }
     
     /**
+     * Detect content type from file extension.
+     */
+    private function detect_content_type($file_path) {
+        $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        $map = array(
+            'zip'  => 'application/zip',
+            'gz'   => 'application/gzip',
+            'json' => 'application/json',
+            'sql'  => 'text/plain',
+        );
+        return isset($map[$ext]) ? $map[$ext] : 'application/octet-stream';
+    }
+
+    /**
      * Check if storage is properly configured
      */
     private function is_configured() {
@@ -698,7 +902,6 @@ class Azure_Backup_Storage {
             $headers = array(
                 'x-ms-version' => '2020-04-08',
                 'x-ms-date' => gmdate('D, d M Y H:i:s T'),
-                'x-ms-blob-public-access' => 'container' // Allow read access for easier testing
             );
             
             $auth_header = $this->generate_auth_header_for_test('PUT', '', $headers, 0, $url, $storage_account, $storage_key);

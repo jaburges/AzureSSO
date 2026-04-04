@@ -41,27 +41,22 @@ foreach ($class_products as $product) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap azure-classes-page">
     <h1>
         <span class="dashicons dashicons-welcome-learn-more"></span>
         <?php _e('Classes Module', 'azure-plugin'); ?>
     </h1>
+<?php else: ?>
+<div class="azure-classes-page">
+<?php endif; ?>
     
-    <div class="azure-module-header">
-        <div class="module-status <?php echo $classes_enabled ? 'enabled' : 'disabled'; ?>">
-            <span class="status-indicator"></span>
-            <span class="status-text">
-                <?php echo $classes_enabled ? __('Module Enabled', 'azure-plugin') : __('Module Disabled', 'azure-plugin'); ?>
-            </span>
-        </div>
-        
-        <div class="module-toggle">
-            <label class="switch">
-                <input type="checkbox" id="enable-classes-module" <?php checked($classes_enabled); ?> />
-                <span class="slider"></span>
-            </label>
-        </div>
+    <?php if (!$classes_enabled): ?>
+    <div class="notice notice-warning" style="margin: 15px 0;">
+        <p><?php _e('The Classes module is currently disabled.', 'azure-plugin'); ?>
+        <a href="<?php echo admin_url('admin.php?page=azure-plugin'); ?>"><?php _e('Enable it on the main settings page.', 'azure-plugin'); ?></a></p>
     </div>
+    <?php endif; ?>
     
     <?php if (!class_exists('WooCommerce')) : ?>
     <div class="notice notice-error">

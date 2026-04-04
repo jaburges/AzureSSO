@@ -11,21 +11,91 @@
     });
     
     function initPTAShortcodes() {
-        // Initialize any interactive elements
         initRoleCards();
         initOrgCharts();
+        initSignupModal();
     }
     
     function initRoleCards() {
-        $('.pta-role-item').on('click', function() {
+        $('.pta-role-item').on('click', function(e) {
+            if ($(e.target).hasClass('pta-signup-btn') || $(e.target).closest('.pta-signup-btn').length) {
+                return; // Let the signup button handler deal with it
+            }
             $(this).toggleClass('expanded');
         });
     }
     
     function initOrgCharts() {
-        // This function will be called by individual org chart shortcodes
-        // when D3.js is available
+        // Placeholder - individual org chart shortcodes call renderPTAOrgChart directly
     }
+
+    // ── Signup Modal ──
+
+    function initSignupModal() {
+        if (typeof ptaSignupConfig === 'undefined' || !ptaSignupConfig.enabled) {
+            return;
+        }
+
+        $(document).on('click', '.pta-signup-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var roleName = $(this).data('role-name');
+            var deptName = $(this).data('department-name');
+            openSignupModal(roleName, deptName);
+        });
+    }
+
+    function openSignupModal(roleName, deptName) {
+        // Remove any existing modal
+        $('#pta-signup-modal').remove();
+
+        var modalHtml = '<div id="pta-signup-modal" class="pta-modal-overlay">'
+            + '<div class="pta-modal-content">'
+            + '<div class="pta-modal-header">'
+            + '<h3>Sign Up: ' + $('<span>').text(roleName).html() + '</h3>'
+            + '<button type="button" class="pta-modal-close">&times;</button>'
+            + '</div>'
+            + '<div class="pta-modal-body"><p>Loading form...</p></div>'
+            + '</div></div>';
+
+        $('body').append(modalHtml);
+        $('#pta-signup-modal').fadeIn(200);
+
+        // Close handlers
+        $('#pta-signup-modal .pta-modal-close, #pta-signup-modal').on('click', function(e) {
+            if (e.target === this) {
+                $('#pta-signup-modal').fadeOut(200, function() { $(this).remove(); });
+            }
+        });
+
+        // Load form via AJAX
+        $.post(ptaSignupConfig.ajax_url, {
+            action: 'pta_render_signup_form',
+            nonce: ptaSignupConfig.nonce,
+            role_name: roleName,
+            department_name: deptName
+        }, function(response) {
+            if (response.success && response.data && response.data.html) {
+                $('#pta-signup-modal .pta-modal-body').html(response.data.html);
+
+                // Re-init Forminator if its JS needs to bind to new form elements
+                if (typeof ForminatorFront !== 'undefined') {
+                    try { ForminatorFront.init(); } catch(err) { /* ignore */ }
+                }
+            } else {
+                $('#pta-signup-modal .pta-modal-body').html(
+                    '<p class="pta-error">Unable to load the signup form. Please try again later.</p>'
+                );
+            }
+        }).fail(function() {
+            $('#pta-signup-modal .pta-modal-body').html(
+                '<p class="pta-error">Unable to load the signup form. Please try again later.</p>'
+            );
+        });
+    }
+
+    // Expose globally so the D3 chart can call it
+    window.ptaOpenSignupModal = openSignupModal;
     
     // Global function for rendering org charts
     window.renderPTAOrgChart = function(containerId, data, options) {
@@ -103,11 +173,25 @@
             if (dept.vp) {
                 deptBox.append("text")
                     .attr("x", deptWidth / 2)
-                    .attr("y", 40)
+                    .attr("y", 35)
                     .attr("text-anchor", "middle")
                     .style("fill", "white")
                     .style("font-size", "10px")
                     .text("VP: " + dept.vp);
+            }
+            
+            if (dept.email) {
+                var emailLink = deptBox.append("a")
+                    .attr("href", "mailto:" + dept.email);
+                emailLink.append("text")
+                    .attr("x", deptWidth / 2)
+                    .attr("y", 50)
+                    .attr("text-anchor", "middle")
+                    .style("fill", "#cce5ff")
+                    .style("font-size", "9px")
+                    .style("cursor", "pointer")
+                    .style("text-decoration", "underline")
+                    .text(dept.email);
             }
             
             // Department roles
@@ -162,22 +246,36 @@
             });
         });
         
-        // Add interactivity
+        // Store role data on each role group for click handling
+        svg.selectAll(".role").each(function(d, i) {
+            var allRoles = [];
+            departments.forEach(function(dept) {
+                var deptRoles = roles.filter(function(r) { return r.department_id == dept.id; });
+                deptRoles.forEach(function(r) {
+                    allRoles.push({ name: r.name, dept: dept.name, assigned: r.assigned_count, max: r.max_occupants });
+                });
+            });
+            if (allRoles[i]) {
+                d3.select(this).datum(allRoles[i]);
+            }
+        });
+
         if (options.interactive) {
             svg.selectAll(".role")
                 .style("cursor", "pointer")
                 .on("click", function(event, d) {
-                    // Could add modal or tooltip here
-                    console.log("Role clicked", d);
+                    if (d && typeof window.ptaOpenSignupModal === 'function'
+                        && typeof ptaSignupConfig !== 'undefined' && ptaSignupConfig.enabled) {
+                        var openOnly = ptaSignupConfig.open_roles_only;
+                        if (!openOnly || d.assigned < d.max) {
+                            window.ptaOpenSignupModal(d.name, d.dept);
+                        }
+                    }
                 });
         }
     }
     
 })(jQuery);
-
-
-
-
 
 
 

@@ -104,6 +104,12 @@ $available_roles = $wp_roles->get_names();
                             <?php _e('Get Started', 'azure-plugin'); ?>
                             <span class="dashicons dashicons-arrow-right-alt"></span>
                         </button>
+                        <p style="margin-top:12px;">
+                            <a href="<?php echo admin_url('admin.php?page=azure-plugin-restore'); ?>" class="button" style="margin-right:8px;">
+                                <span class="dashicons dashicons-backup" style="margin-right:4px;"></span>
+                                <?php _e('Restore from Backup', 'azure-plugin'); ?>
+                            </a>
+                        </p>
                         <p><a href="#" id="skip-wizard" class="skip-link"><?php _e('Skip wizard and configure manually', 'azure-plugin'); ?></a></p>
                     </div>
                 </div>

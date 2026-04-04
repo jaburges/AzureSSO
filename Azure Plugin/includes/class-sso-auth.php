@@ -477,7 +477,6 @@ class Azure_SSO_Auth {
      * Test SSO connection with provided credentials
      */
     public function test_connection($client_id = null, $client_secret = null, $tenant_id = null) {
-        // Use provided credentials or fall back to instance credentials
         $test_client_id = $client_id ?: $this->credentials['client_id'];
         $test_client_secret = $client_secret ?: $this->credentials['client_secret'];
         $test_tenant_id = $tenant_id ?: ($this->credentials['tenant_id'] ?: 'common');
@@ -485,73 +484,104 @@ class Azure_SSO_Auth {
         if (empty($test_client_id) || empty($test_client_secret) || empty($test_tenant_id)) {
             return array(
                 'success' => false,
-                'message' => 'Missing required SSO credentials (Client ID, Client Secret, or Tenant ID)'
+                'message' => 'Missing required SSO credentials (Client ID, Client Secret, or Tenant ID)',
+                'checks' => array()
             );
         }
         
-        try {
-            // Test by attempting to get the OAuth authorization endpoint
-            $auth_url = "https://login.microsoftonline.com/{$test_tenant_id}/oauth2/v2.0/authorize";
-            
-            // Make a HEAD request to validate the tenant and endpoint
-            $response = wp_remote_head($auth_url, array(
-                'timeout' => 10,
-                'headers' => array(
-                    'User-Agent' => 'WordPress-Azure-Plugin/1.0'
-                )
-            ));
-            
-            if (is_wp_error($response)) {
-                return array(
-                    'success' => false,
-                    'message' => 'Failed to connect to Azure AD: ' . $response->get_error_message()
-                );
-            }
-            
-            $response_code = wp_remote_retrieve_response_code($response);
-            
-            // Azure AD authorization endpoint should return 200 for HEAD requests
-            if ($response_code === 200) {
-                // Additional validation: try to get tenant-specific metadata
-                $metadata_url = "https://login.microsoftonline.com/{$test_tenant_id}/v2.0/.well-known/openid_configuration";
-                $metadata_response = wp_remote_get($metadata_url, array(
-                    'timeout' => 10
-                ));
-                
-                if (!is_wp_error($metadata_response) && wp_remote_retrieve_response_code($metadata_response) === 200) {
-                    $metadata_body = wp_remote_retrieve_body($metadata_response);
-                    $metadata = json_decode($metadata_body, true);
-                    
-                    if ($metadata && isset($metadata['authorization_endpoint'])) {
-                        return array(
-                            'success' => true,
-                            'message' => 'SSO connection successful! Azure AD tenant "' . $test_tenant_id . '" is accessible and properly configured.'
-                        );
-                    }
-                }
-                
-                return array(
-                    'success' => true,
-                    'message' => 'SSO connection successful! Azure AD endpoint is accessible.'
-                );
-            } else if ($response_code === 404) {
-                return array(
-                    'success' => false,
-                    'message' => 'Invalid Tenant ID: "' . $test_tenant_id . '" not found. Please check your tenant ID configuration.'
-                );
-            } else {
-                return array(
-                    'success' => false,
-                    'message' => 'Azure AD connection failed with HTTP ' . $response_code . '. Please check your credentials and network connection.'
-                );
-            }
-            
-        } catch (Exception $e) {
-            return array(
-                'success' => false,
-                'message' => 'SSO test failed: ' . $e->getMessage()
-            );
+        $checks = array();
+        
+        // Step 1: Validate tenant exists via OpenID metadata
+        $metadata_url = "https://login.microsoftonline.com/{$test_tenant_id}/v2.0/.well-known/openid-configuration";
+        $metadata_response = wp_remote_get($metadata_url, array('timeout' => 10));
+        
+        if (is_wp_error($metadata_response)) {
+            $checks[] = array('name' => 'Tenant Reachable', 'pass' => false, 'detail' => $metadata_response->get_error_message());
+            return array('success' => false, 'message' => 'Cannot reach Azure AD. Check network connectivity.', 'checks' => $checks);
         }
+        
+        if (wp_remote_retrieve_response_code($metadata_response) !== 200) {
+            $checks[] = array('name' => 'Tenant Reachable', 'pass' => false, 'detail' => "Tenant \"{$test_tenant_id}\" not found (HTTP " . wp_remote_retrieve_response_code($metadata_response) . ')');
+            return array('success' => false, 'message' => 'Invalid Tenant ID.', 'checks' => $checks);
+        }
+        
+        $checks[] = array('name' => 'Tenant Reachable', 'pass' => true, 'detail' => "Tenant \"{$test_tenant_id}\" is valid");
+        
+        // Step 2: Authenticate with client credentials (validates client_id + client_secret)
+        $token_url = "https://login.microsoftonline.com/{$test_tenant_id}/oauth2/v2.0/token";
+        $token_response = wp_remote_post($token_url, array(
+            'timeout' => 15,
+            'body' => array(
+                'client_id'     => $test_client_id,
+                'client_secret' => $test_client_secret,
+                'scope'         => 'https://graph.microsoft.com/.default',
+                'grant_type'    => 'client_credentials'
+            )
+        ));
+        
+        if (is_wp_error($token_response)) {
+            $checks[] = array('name' => 'Client Authentication', 'pass' => false, 'detail' => $token_response->get_error_message());
+            return array('success' => false, 'message' => 'Failed to authenticate with Azure AD.', 'checks' => $checks);
+        }
+        
+        $token_data = json_decode(wp_remote_retrieve_body($token_response), true);
+        
+        if (isset($token_data['error'])) {
+            $error_detail = $token_data['error_description'] ?? $token_data['error'];
+            if (strpos($error_detail, 'AADSTS7000215') !== false) {
+                $checks[] = array('name' => 'Client Authentication', 'pass' => false, 'detail' => 'Client secret is invalid or expired. Generate a new secret in the Azure App Registration.');
+            } elseif (strpos($error_detail, 'AADSTS700016') !== false) {
+                $checks[] = array('name' => 'Client Authentication', 'pass' => false, 'detail' => 'Application (Client ID) not found in this tenant.');
+            } else {
+                $checks[] = array('name' => 'Client Authentication', 'pass' => false, 'detail' => $error_detail);
+            }
+            return array('success' => false, 'message' => 'Client authentication failed.', 'checks' => $checks);
+        }
+        
+        $access_token = $token_data['access_token'] ?? '';
+        if (empty($access_token)) {
+            $checks[] = array('name' => 'Client Authentication', 'pass' => false, 'detail' => 'No access token returned');
+            return array('success' => false, 'message' => 'Client authentication failed.', 'checks' => $checks);
+        }
+        
+        $checks[] = array('name' => 'Client Authentication', 'pass' => true, 'detail' => 'Client ID and secret are valid');
+        
+        // Step 3: Test User.Read.All permission by fetching a single user
+        $users_response = wp_remote_get('https://graph.microsoft.com/v1.0/users?$top=1&$select=id,displayName', array(
+            'timeout' => 15,
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $access_token,
+                'Content-Type'  => 'application/json'
+            )
+        ));
+        
+        if (is_wp_error($users_response)) {
+            $checks[] = array('name' => 'User.Read.All Permission', 'pass' => false, 'detail' => $users_response->get_error_message());
+            return array('success' => false, 'message' => 'Authentication works but Graph API call failed.', 'checks' => $checks);
+        }
+        
+        $users_code = wp_remote_retrieve_response_code($users_response);
+        $users_data = json_decode(wp_remote_retrieve_body($users_response), true);
+        
+        if ($users_code === 403 || (isset($users_data['error']['code']) && $users_data['error']['code'] === 'Authorization_RequestDenied')) {
+            $checks[] = array('name' => 'User.Read.All Permission', 'pass' => false, 'detail' => 'Missing User.Read.All Application permission or admin consent not granted. Go to Azure Portal → App Registrations → API Permissions.');
+            return array('success' => false, 'message' => 'Authentication works but the app lacks required API permissions.', 'checks' => $checks);
+        }
+        
+        if ($users_code !== 200 || isset($users_data['error'])) {
+            $api_error = $users_data['error']['message'] ?? "HTTP {$users_code}";
+            $checks[] = array('name' => 'User.Read.All Permission', 'pass' => false, 'detail' => $api_error);
+            return array('success' => false, 'message' => 'Graph API returned an error.', 'checks' => $checks);
+        }
+        
+        $user_count = isset($users_data['value']) ? count($users_data['value']) : 0;
+        $checks[] = array('name' => 'User.Read.All Permission', 'pass' => true, 'detail' => "Graph API accessible — can read directory users");
+        
+        return array(
+            'success' => true,
+            'message' => 'All checks passed. SSO is properly configured.',
+            'checks' => $checks
+        );
     }
     
     /**

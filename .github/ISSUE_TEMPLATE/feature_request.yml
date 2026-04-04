@@ -1,0 +1,97 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for PTA Tools
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like and why it would be useful.
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: PTA Tools Plugin Version
+      description: "Your current version (found on PTA Tools main settings page)"
+      placeholder: "e.g. 3.43"
+    validations:
+      required: true
+
+  - type: input
+    id: wordpress-version
+    attributes:
+      label: WordPress Version
+      placeholder: "e.g. 6.7.1"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      description: Which module does this feature relate to?
+      options:
+        - SSO (Single Sign-On)
+        - Backup
+        - Calendar (Embed)
+        - Calendar (Sync / TEC Integration)
+        - Emails
+        - PTA Roles
+        - OneDrive Media
+        - Classes
+        - Newsletter
+        - Event Tickets
+        - Auction
+        - Product Fields
+        - Donations
+        - System (Logs / Schedules)
+        - Dashboard / Main Settings
+        - New Module
+        - Multiple / General
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What problem does this feature solve? What's the use case?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature or enhancement you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Nice to have
+        - Important
+        - Critical for my use case
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, mockups, or examples that help explain the feature.
+    validations:
+      required: false

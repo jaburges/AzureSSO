@@ -40,8 +40,10 @@ if ($calendar_authenticated && !empty($calendar_user_email) && !empty($calendar_
 $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap">
     <h1>PTA Tools - Calendar Embed</h1>
+<?php endif; ?>
     
     <div class="azure-calendar-dashboard">
         <!-- Module Toggle Section -->
@@ -479,7 +481,9 @@ $show_auth_success = isset($_GET['auth']) && $_GET['auth'] === 'success';
             </div>
         </div>
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <script>
 jQuery(document).ready(function($) {

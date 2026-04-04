@@ -1,8 +1,8 @@
 # PTA Tools – WordPress Azure & WooCommerce Integration
 
-A comprehensive WordPress plugin that integrates Microsoft Azure/Microsoft 365 with WordPress and WooCommerce. Single sign-on, calendar sync, email, backups, PTA organizational management, OneDrive media, **Classes**, **Event Tickets**, **Newsletter**, and **Auction** modules—all from one unified plugin (also known as **Microsoft WP**).
+A comprehensive WordPress plugin that integrates Microsoft Azure/Microsoft 365 with WordPress and WooCommerce. Single sign-on, calendar sync, email, backups, PTA organizational management, OneDrive media, **Classes**, **Event Tickets**, **Newsletter**, **Auction**, **Product Fields**, **Donations**, and **Volunteer Sign Up** modules—all from one unified plugin (also known as **Microsoft WP**).
 
-**Recent:** Performance optimizations (30–40% faster), Auction module (bidding, Buy It Now, winner flow), Calendar manual sync, and sync history.
+**Current (v3.46):** UI polish — fixed dashicon alignment across all admin tabs and headings; donation shortcode buttons now display in a compact single row with visible text on all themes.
 
 ---
 
@@ -26,23 +26,27 @@ A comprehensive WordPress plugin that integrates Microsoft Azure/Microsoft 365 w
    - [Newsletter](#newsletter)
    - [Event Tickets](#event-tickets)
    - [Auction](#auction)
+   - [Product Fields](#product-fields)
+   - [Donations](#donations)
+   - [Volunteer Sign Up](#volunteer-sign-up)
 8. [Shortcodes Reference](#shortcodes-reference)
 9. [Performance & Optimization](#performance--optimization)
 10. [Troubleshooting](#troubleshooting)
-11. [Support & Documentation](#support--documentation)
+11. [Contributing](#contributing)
+12. [Support & Documentation](#support--documentation)
 
 ---
 
 ## 🎯 **Introduction**
 
-**PTA Tools** (Microsoft WP) is an all-in-one plugin that brings Microsoft Azure/Microsoft 365 and WooCommerce together. Use it for enterprise authentication, backups, calendar sync, email, PTA roles, OneDrive media, **Classes** (variable pricing, TEC events), **Event Tickets** (seating, QR, Apple Wallet), **Newsletter** (drag-drop editor, tracking), and **Auction** (bidding, Buy It Now, winner checkout).
+**PTA Tools** (Microsoft WP) is an all-in-one plugin that brings Microsoft Azure/Microsoft 365 and WooCommerce together. Use it for enterprise authentication, backups, calendar sync, email, PTA roles, OneDrive media, **Classes** (variable pricing, TEC events), **Event Tickets** (seating, QR, Apple Wallet), **Newsletter** (drag-drop editor, tracking), **Auction** (bidding, Buy It Now, winner checkout), **Product Fields** (custom checkout fields with children profiles), **Donations** (round-up at checkout, campaigns, shortcode), and **Volunteer Sign Up** (SignUpGenius-style event sign-up sheets).
 
 ### **Why PTA Tools?**
 
 - **Unified Management**: One plugin for Microsoft integrations and PTA/WooCommerce features
 - **Enterprise-Grade Security**: OAuth 2.0 with Azure AD
 - **Flexible Configuration**: Common or per-module Azure credentials
-- **Modular Design**: Enable only the modules you need (SSO, Backup, Calendar, Email, PTA, OneDrive, TEC Sync, Classes, Newsletter, Tickets, Auction)
+- **Modular Design**: Enable only the modules you need (SSO, Backup, Calendar, Email, PTA, OneDrive, TEC Sync, Classes, Newsletter, Tickets, Auction, Product Fields, Donations, Volunteer Sign Up)
 - **Professional Grade**: Built for reliability and ease of use
 
 ---
@@ -93,12 +97,16 @@ A comprehensive code review has been completed:
 - Automatic user provisioning
 - Custom button text and branding
 - Forced SSO mode for enhanced security
+- Exclusion list with domain-based filtering (block external domains from sync/login)
 
 ### **💾 Backup**
 - Automated backups to Azure Blob Storage
 - Database, files, media, plugins, and themes backup
+- Granular plugin/theme selection (choose individual items to back up)
 - Scheduled backups with customizable frequency
-- One-click restore functionality
+- Real-time progress bars for both backup and restore operations
+- Sync from Azure Storage to list and restore remote backups (useful on new instances)
+- Chunked uploads and streamed downloads to handle large sites without OOM
 - Email notifications
 
 ### **📅 Calendar Embed**
@@ -124,17 +132,21 @@ A comprehensive code review has been completed:
 
 ### **🏛️ PTA Roles Management**
 - Complete organizational structure management
-- Department and role hierarchy
+- Department and role hierarchy with interactive org chart
 - Azure AD user provisioning
-- Office 365 group sync
+- Office 365 group sync with department and role-level mappings
+- O365 group email display on org chart (mailto links)
+- Forminator integration for PTA role signup forms (modal popup from org chart)
+- Exec Board, Treasurer, Secretary support alongside VP roles
 - Audit trail and reporting
 
 ### **📁 OneDrive/SharePoint Media**
-- Browse and attach OneDrive files
-- SharePoint document library integration
-- Site and drive browsing
-- Folder organization
-- Year-based folder creation
+- Store WordPress media in OneDrive/SharePoint with automatic upload
+- SharePoint document library integration with site/drive browsing
+- Recursive sync into year-based subfolders
+- Repair Missing Media tool (re-downloads files missing locally after backup restore)
+- Sharing link and thumbnail URL generation
+- Optional local copy retention or cloud-only storage
 
 ### **📚 Classes**
 - WooCommerce “Class” product type with TEC event integration
@@ -157,9 +169,36 @@ A comprehensive code review has been completed:
 ### **🔨 Auction**
 - WooCommerce “Auction” product type
 - Bidding end date/time; optional Buy It Now with immediate payment
+- Live countdown timer on product page
 - Quick bid buttons (+$5, +$10, +$20) and max bid (auto-bid)
-- Masked bidder display (e.g. “Ja***”); full bid audit trail
+- Confirm-bid modal to prevent accidental bids
+- Instant bid history updates (no page refresh needed)
+- Masked bidder display (e.g. “Ja***”); full bid audit trail in dedicated database table
 - Winner order and checkout (Stripe via WooCommerce); “You won” email
+
+### **Product Fields**
+- Custom WooCommerce checkout fields (child’s name, allergies, etc.)
+- Children Profiles: parents manage multiple child profiles on their account
+- Field values auto-populate from saved profiles during checkout
+- Group fields and apply by product category
+- Saved to user accounts for auto-population on return visits
+- Admin management UI under Selling > Product Fields
+
+### **Donations**
+- Round-up to nearest dollar toggle at checkout
+- Quick-pick donation buttons ($1, $5, $10 or custom)
+- Campaign management with fundraising goals and progress tracking
+- `[pta-donate]` shortcode for standalone donation forms on any page
+- All donations recorded and linked to WooCommerce orders
+
+### **🙋 Volunteer Sign Up**
+- SignUpGenius-style volunteer sign-up sheets
+- Link sheets to The Events Calendar events (auto-populate date and location)
+- Define activities/roles with configurable volunteer spots
+- Users sign up from the frontend; guests prompted to log in or register
+- Confirmation email on sign-up; 1-day reminder email before the event
+- `[volunteer_signup id=“X”]` shortcode for any page
+- Admin management UI under Calendar > Volunteer Sign Up
 
 ---
 
@@ -171,7 +210,8 @@ A comprehensive code review has been completed:
 - **MySQL**: 5.6 or higher
 - **HTTPS**: Required for Azure authentication
 - **cURL Extension**: Required for API communications
-- **WooCommerce**: Required for Classes, Event Tickets, and Auction modules
+- **WooCommerce**: Required for Classes, Event Tickets, Auction, Product Fields, and Donations modules
+- **The Events Calendar**: Optional; required for Calendar Sync and Volunteer Sign Up TEC event linking
 
 ### **Recommended Requirements**
 - **WordPress**: 6.0 or higher
@@ -321,6 +361,9 @@ Enable or disable modules based on your needs:
    - **Newsletter** – Newsletter editor and sending
    - **Event Tickets** – Seating, QR tickets, check-in
    - **Auction** – Auction products with bidding and Buy It Now
+   - **Product Fields** – Custom WooCommerce checkout fields
+   - **Donations** – Round-up at checkout and campaign donations
+   - **Volunteer Sign Up** – SignUpGenius-style event volunteer sheets
 
 3. Click **Configure** next to any enabled module to access its settings
 
@@ -363,6 +406,11 @@ Enable secure authentication using Microsoft Azure AD. Users can sign in with th
 - **Enable User Sync**: Automatically sync user data from Azure AD
 - **Sync Frequency**: How often to sync users (hourly, daily, weekly)
 - **Preserve Local Data**: Keep local WordPress user data during sync
+
+#### **5. Exclusion List**
+
+- **Excluded Users**: Manually exclude specific usernames from sync
+- **Exclude External Domains**: Check "Do not sync accounts from outside domain" to block all email domains that don't match your organization domain (e.g., block gmail.com, outlook.com, yahoo.com while allowing wilderptsa.net). Applies to both sync and SSO login.
 
 ### **Testing SSO**
 
@@ -452,8 +500,9 @@ If not using common credentials:
   - ☑ Database
   - ☑ WordPress Content (`wp-content` folder)
   - ☑ Media Files (`wp-content/uploads`)
-  - ☑ Plugins
-  - ☑ Themes
+  - ☑ Plugins — expandable with individual plugin checkboxes
+  - ☑ Themes — expandable with individual theme checkboxes
+- Use **"select individually"** to expand plugins or themes and choose specific items
 
 - **Scheduled Backups**:
   - Enable automated backups
@@ -470,15 +519,21 @@ If not using common credentials:
 
 #### **3. Manual Backup**
 
-Click **Create Backup Now** to run an immediate backup.
+Click **Start Manual Backup** to run an immediate backup. A real-time progress bar tracks each phase (database, content, media, plugins, themes, archive creation, Azure upload).
 
 #### **4. Restore from Backup**
 
-1. Go to **Backup** → **Restore**
-2. Select a backup from the list
-3. Choose what to restore (database, files, etc.)
-4. Click **Restore**
-5. ⚠️ **Warning**: This will overwrite existing data!
+**From Recent Backup Jobs (local database):**
+1. Find the backup in **Recent Backup Jobs**
+2. Click **Restore** next to the backup
+3. A progress bar tracks the restore operation in real-time
+4. ⚠️ **Warning**: This will overwrite existing data!
+
+**From Azure Storage (remote / new instance):**
+1. Click **Sync from Azure** to list all backups stored in Azure Blob Storage
+2. The **Azure Storage Backups** table shows blob name, size, date, and whether a local job record exists
+3. Click **Restore** on any remote backup to download and restore it directly
+4. Progress is tracked in real-time during download, extraction, and restoration
 
 ### **No Shortcodes Available**
 
@@ -768,9 +823,18 @@ Complete organizational management system for PTAs and nonprofits. Manage depart
 1. Go to **PTA Roles** → **O365 Groups**
 2. Click **Sync O365 Groups** to import groups from tenant
 3. Create mappings:
-   - Map individual roles to groups
-   - Map entire departments to groups
+   - Map individual roles to groups (via Edit Role modal)
+   - Map departments to groups (via Edit Department modal)
 4. Group memberships automatically sync based on role assignments
+5. O365 group emails appear on the org chart as `mailto:` links (e.g., `president@wilderptsa.net`)
+
+#### **6. Forminator Integration (Signup Forms)**
+
+1. Go to **PTA Roles** → **Forminator Customization**
+2. Select a Forminator form to use as the PTA role signup form
+3. Map form fields to role name, department, first name, last name, email
+4. When visitors click a role on the org chart, a modal opens with the form pre-populated
+5. Logged-in users have their name and email pre-filled automatically
 
 #### **6. Monitoring**
 
@@ -888,7 +952,7 @@ Complete organizational management system for PTAs and nonprofits. Manage depart
 **Admin Page**: Azure Plugin → OneDrive Media
 
 ### **Overview**
-Browse and attach files from OneDrive or SharePoint document libraries. Organize media in year-based folders and integrate cloud storage with WordPress.
+Store WordPress media files in OneDrive or SharePoint with automatic upload, cloud-first serving, and full Media Library integration. Files uploaded through WordPress are sent to OneDrive/SharePoint and optionally removed locally to save server space.
 
 ### **Configuration Steps**
 
@@ -921,18 +985,24 @@ Choose your storage location:
 #### **3. Media Organization**
 
 - **Base Folder**: Root folder for media files
-- **Year-Based Folders**: Automatically organize media by year
+- **Year-Based Folders**: Automatically organize media by year (e.g., `WordPress Media/2025/`, `WordPress Media/2026/`)
 - **Create Year Folders**: Click to generate folder structure
 
-#### **4. Usage**
+#### **4. Sync & Repair**
 
-- **Browse Files**: View available files from OneDrive/SharePoint
-- **Attach to Posts**: Link cloud files to WordPress content
-- **Sync Files**: Keep local references updated
+- **Sync from OneDrive Now**: Import new files from OneDrive into the Media Library. Recursively walks all subfolders (including year-based folders) to find files not yet mapped.
+- **Repair Missing Media**: Re-download files that have OneDrive mappings but are missing locally. Essential after restoring a backup on a new server where the physical media files weren't included. Also refreshes stale sharing/thumbnail URLs.
+- **Auto-Sync**: Enable scheduled sync (hourly, twice daily, or daily) to automatically import new files.
+
+#### **5. Public Access & CDN**
+
+- **Sharing Links**: Anonymous or organization-only access links
+- **CDN Optimization**: Leverage Microsoft's global CDN for faster delivery
+- **Local Copies**: Optionally keep local copies or serve directly from OneDrive
 
 ### **No Shortcodes Available**
 
-Files are accessed through the WordPress media library interface.
+Files are accessed through the WordPress media library interface. OneDrive/SharePoint URLs are transparently served via `wp_get_attachment_url` filters.
 
 ---
 
@@ -1024,19 +1094,19 @@ WooCommerce “Auction” product type with timed bidding, optional Buy It Now, 
 1. Go to **Products** → **Add New** (or edit a product)
 2. Set **Product type** to **Auction**
 3. Open the **Auction** tab and set:
+   - **Starting Bid**: the opening bid amount (saved as Regular Price)
    - **Bidding End Date** and **Bidding End Time**
    - **Buy It Now**: checkbox and price (optional)
    - **Require immediate payment**: when checked, Buy It Now sends the customer to checkout immediately
 
-4. Set **Regular price** as the starting/minimum bid
-5. Publish the product
+4. Publish the product
 
 #### **3. How Bidding Works**
 
-- **Frontend**: Single product page shows current price, bid amount, quick buttons (+$5, +$10, +$20), and optional “Set max bid”. Recent bids show masked bidders (e.g. “Ja***”) and amounts.
+- **Frontend**: Single product page shows current/starting bid, live countdown timer, bid input with compact quick buttons (+$5, +$10, +$20), and optional “Set max bid”. A confirm-bid modal prevents accidental bids. Bid history updates instantly without page refresh.
 - **Login**: Users must be logged in to bid; others see “Register/Login to bid”.
 - **Max bid**: If set, the system auto-bids up to that amount in increments (e.g. $5) when outbid.
-- **Audit**: All bids and times are stored in the database for audit.
+- **Audit**: All bids, times, and IP addresses are stored in the `wp_azure_auction_bids` database table.
 
 #### **4. When the Auction Ends**
 
@@ -1059,6 +1129,159 @@ WooCommerce “Auction” product type with timed bidding, optional Buy It Now, 
 ### **No Shortcodes**
 
 Auction products are displayed and bid on via the standard WooCommerce single product page.
+
+---
+
+## 📝 **Product Fields**
+
+**Admin Page**: PTA Tools > Selling > Product Fields
+
+### **Overview**
+
+Custom WooCommerce checkout fields that are saved to user accounts and auto-populated on return visits. Create field groups (e.g. "Child Information") and apply them to specific product categories.
+
+### **Key Features**
+
+- **Field Groups**: Group related fields together (e.g. "Student Info", "Dietary Needs")
+- **Category Mapping**: Apply field groups to specific WooCommerce product categories
+- **User Meta Storage**: Field values saved to user accounts for auto-population
+- **Checkout Integration**: Fields appear on checkout for applicable products
+- **Order Meta**: Field values saved to order line items
+
+### **Configuration**
+
+1. Go to **PTA Tools** > **Selling** > **Product Fields**
+2. Create a **Field Group** (e.g. "Student Information")
+3. Add fields to the group (text, select, checkbox, etc.)
+4. Assign the group to product categories
+5. Fields automatically appear at checkout for matching products
+
+### **No Shortcodes**
+
+Product Fields are managed through the admin UI and appear automatically on WooCommerce checkout pages.
+
+---
+
+## 💝 **Donations**
+
+**Admin Page**: PTA Tools > Selling > Donations
+
+### **Overview**
+
+Accept donations at checkout with round-up and custom amount options. Create fundraising campaigns with goals and progress tracking. Place standalone donation forms on any page with the `[pta-donate]` shortcode.
+
+### **Configuration Steps**
+
+#### **1. Enable the Module**
+
+1. Go to **PTA Tools** > **Main Settings**
+2. Enable **Donations** under the Selling card
+3. Navigate to **PTA Tools** > **Selling** > **Donations**
+
+#### **2. Create a Campaign**
+
+1. Click **New Campaign**
+2. Enter name, description, and optional fundraising goal
+3. Save the campaign
+
+#### **3. Configure Settings**
+
+- **Enable Round-Up**: Show "Round up to nearest dollar" toggle at checkout
+- **Enable Custom Amount**: Show quick-pick donation buttons at checkout
+- **Quick Amounts**: Comma-separated dollar amounts (e.g. `1,5,10,25`)
+- **Default Campaign**: Which campaign receives donations
+
+### **Checkout Widget**
+
+When enabled, a donation widget appears before the Place Order button:
+- **Round-up toggle**: Rounds the cart total to the nearest dollar
+- **Quick-pick buttons**: Pre-set donation amounts ($1, $5, $10)
+- **Custom input**: Enter any amount
+- Donations are added as WooCommerce cart fees
+- Recorded and linked to campaigns after order completion
+
+### **Donations Shortcode**
+
+```
+[pta-donate]
+[pta-donate campaign_id="1" amounts="5,10,25,50" button_text="Support Us"]
+```
+
+**Parameters:**
+- `campaign_id` - Campaign to donate to (default: the default campaign)
+- `amounts` - Comma-separated dollar amounts (default: `5,10,25,50`)
+- `show_custom` - Show custom amount input: `yes` or `no` (default: `yes`)
+- `button_text` - Submit button text (default: "Donate Now")
+
+Displays a standalone donation form with:
+- Campaign name, description, and progress bar (if goal is set)
+- Amount selection buttons
+- Optional custom amount input
+- Adds donation to WooCommerce cart as a fee
+
+---
+
+## 🙋 **Volunteer Sign Up**
+
+**Admin Page**: PTA Tools > Calendar > Volunteer Sign Up
+
+### **Overview**
+
+A SignUpGenius-style volunteer coordination system. Create sign-up sheets for events, define activities with volunteer spots, and let users sign up from the frontend. Optionally link sheets to The Events Calendar events for automatic date/location population.
+
+### **Configuration Steps**
+
+#### **1. Enable the Module**
+
+1. Go to **PTA Tools** > **Main Settings**
+2. Enable **Volunteer Sign Up** under the Calendar module card
+3. Navigate to **PTA Tools** > **Calendar** > **Volunteer Sign Up** tab
+
+#### **2. Create a Sign-Up Sheet**
+
+1. Click **New Sign-Up Sheet**
+2. Enter a title, optional description
+3. Optionally link to a TEC event (auto-populates date and location)
+4. Set event date and location manually if not using TEC
+5. Set status to **Open** or **Closed**
+
+#### **3. Add Activities / Roles**
+
+1. In the sheet editor modal, add activities under **Activities / Roles**
+2. Each activity has:
+   - **Name**: e.g. "Concessions 4PM"
+   - **Description**: optional details
+   - **Spots Needed**: number of volunteers required
+3. Click **Save Sheet**
+
+#### **4. Display on the Frontend**
+
+Use the shortcode on any page or post:
+
+```
+[volunteer_signup id="1"]
+```
+
+The frontend displays:
+- Sheet title, description, and event meta (date, location)
+- Activity cards showing available spots and current volunteers
+- Logged-in users can check activities and click **Save** to sign up
+- Users can withdraw from activities they've signed up for
+- Guests see a login/register prompt
+
+#### **5. Emails and Reminders**
+
+- **Confirmation email**: Sent immediately after sign-up with event name, activities, date, and location
+- **Reminder email**: Sent automatically 1 day before the event date via a daily scheduled job
+
+### **Volunteer Sign Up Shortcode**
+
+```
+[volunteer_signup id="1"]
+```
+
+**Parameters:**
+- `id` - **Required**. The sign-up sheet ID (shown in the admin table shortcode column)
 
 ---
 
@@ -1088,6 +1311,9 @@ Auction products are displayed and bid on via the standard WooCommerce single pr
 | **Newsletter** | — | Configure in Newsletter module (lists/campaigns) |
 | **Event Tickets** | — | Product-based; seating on single product page |
 | **Auction** | — | Product-based; bid UI on single product page |
+| **Product Fields** | — | Auto-displayed on WooCommerce checkout |
+| **Donations** | `[pta-donate]` | Standalone donation form |
+| **Volunteer Sign Up** | `[volunteer_signup id="X"]` | Event volunteer sign-up sheet |
 
 ### **Shortcode Examples**
 
@@ -1228,6 +1454,16 @@ See `review.md` for complete optimization roadmap and priorities.
 - Ensure **Auction** module is enabled in Main Settings
 - Users must be logged in to bid; show “Register/Login to bid” if not
 - For Stripe: install WooCommerce Stripe Gateway; payment runs through checkout
+- Set a **Starting Bid** in the product's Auction tab (stored as Regular Price)
+
+#### **Volunteer Sign Up Sheet Not Displaying**
+- Ensure **Volunteer Sign Up** is enabled under Calendar on Main Settings
+- Verify the shortcode uses a valid sheet ID: `[volunteer_signup id="1"]`
+- The Events Calendar plugin is optional but required for TEC event linking
+
+#### **Donations Campaign Save Failed (400)**
+- Ensure **Donations** module is enabled in Main Settings under Selling
+- If the module was recently added, reload the main settings page after enabling
 
 ### **Debug Mode**
 
@@ -1303,6 +1539,64 @@ Each module has a **Test Connection** button to verify:
 - ✅ Added user-controlled debug mode
 - ✅ Added scheduled maintenance
 - ✅ **Result: 45-50% faster page loads**
+
+---
+
+## 🤝 **Contributing**
+
+Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, we appreciate your help.
+
+### **Getting Started**
+
+1. **Fork** the repository on GitHub
+2. **Clone** your fork locally:
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/PTATools.git
+   ```
+3. Create a **feature branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+4. Make your changes and **test thoroughly** on a WordPress test site
+5. **Commit** with a clear message:
+   ```bash
+   git commit -m "Add: brief description of your change"
+   ```
+6. **Push** to your fork and open a **Pull Request**
+
+### **Creating Issues**
+
+We use GitHub Issues to track bugs and feature requests. Please use one of the provided issue templates:
+
+- **Bug Report**: For reporting broken functionality or errors
+- **Feature Request**: For suggesting new features or enhancements
+
+When creating an issue, please include:
+- **WordPress version** and **PHP version**
+- **Plugin version** (found on the PTA Tools main settings page)
+- **Module affected** (SSO, Backup, Calendar, Email, PTA Roles, OneDrive, Classes, Newsletter, Tickets, Auction, Product Fields, Donations, Volunteer Sign Up, or System)
+- **Steps to reproduce** (for bugs) or **use case** (for features)
+
+[Create a new issue](https://github.com/jaburges/PTATools/issues/new/choose)
+
+### **Development Guidelines**
+
+- Follow existing code patterns and module architecture
+- Keep files under 500 lines; refactor if needed
+- Use WordPress coding standards for PHP
+- Add proper nonce verification and capability checks for all AJAX handlers
+- Use `Azure_Logger` for debug logging (not `error_log` in production paths)
+- Test with WooCommerce enabled and disabled if your changes touch selling modules
+- Database tables must be created via `dbDelta()` in `class-database.php`
+
+### **Module Architecture**
+
+Each module follows a consistent pattern:
+- **Class file**: `includes/class-{module}-module.php` (singleton with `get_instance()`)
+- **Admin page**: `admin/{module}-page.php` (included as a tab or standalone page)
+- **Frontend CSS**: `css/{module}-frontend.css` (conditionally enqueued)
+- **Initialization**: Wired in `azure-plugin.php` with an `init_{module}_components()` method
+- **Toggle**: Added to `valid_modules` array in `class-admin.php`
 
 ---
 
@@ -1393,48 +1687,72 @@ This plugin integrates and enhances functionality from multiple Microsoft servic
 
 ## 📊 **Version History**
 
-### **Version 3.35** (Current)
-- ✅ **Auction module**: WooCommerce Auction product type, bidding end date/time, Buy It Now, require immediate payment
-- ✅ Bidding: quick +$5/+$10/+$20, max bid (auto-bid), masked bidders (e.g. Ja***), full bid audit in database
-- ✅ Winner flow: end-of-auction order creation, checkout redirect, “You won” email
+### **Version 3.46** (Current — March 2026)
+- **UI**: Fixed dashicon alignment in admin tab bars, page headings, and action row buttons — removed conflicting CSS properties that fought with flex layout
+- **Donations**: Shortcode amount buttons now display in a compact single row with explicit text color, fixing invisible text on themes that override button styles
+
+### **Version 3.45** (March 2026)
+- **Volunteer Sign Up**: New module — SignUpGenius-style sign-up sheets linked to TEC events, with activities/spots, frontend sign-up, confirmation and reminder emails, `[volunteer_signup]` shortcode
+- **Auction**: Frontend overhaul — live countdown timer, confirm-bid modal, instant bid history updates (no page refresh), compact quick-bid button layout, dedicated Starting Bid admin field
+- **Product Fields**: Children Profiles — parents manage multiple child profiles on their account; auto-populated during checkout
+- **Donations**: Fixed admin AJAX handlers always registering so campaign management works regardless of frontend toggle
+
+### **Version 3.43** (March 2026)
+- **Donations**: New module with round-up at checkout, custom amounts, campaigns with goals/progress, and `[pta-donate]` shortcode
+- **Product Fields**: Custom WooCommerce checkout fields saved to user accounts, applied by product category
+- **UI Overhaul**: Consolidated admin into tabbed pages — Calendar (Embed/Sync/Upcoming), System (Logs/Schedules/Critical), Emails (Logs/Settings), Selling (Auction/Classes/Product Fields/Donations)
+- **System**: Scheduled Jobs dashboard for all plugin cron jobs with Run Now and monitoring
+- **OneDrive Media**: Replaced sync with one-time Import from OneDrive preserving folder structure; batched import with progress
+- **SSO**: Adjusted sync frequency to hourly (configurable)
+
+### **Version 3.40** (March 2026)
+- ✅ **Backup**: Granular plugin/theme selection with expandable checkboxes
+- ✅ **Backup**: Restore progress bar with real-time status tracking
+- ✅ **Backup**: Sync from Azure Storage — list and restore remote backups on new instances
+- ✅ **Backup**: Chunked Azure uploads, streamed downloads, streamed SQL restore (OOM prevention)
+- ✅ **Backup**: Async background processing, improved stale job detection, partial failure reporting
+- ✅ **OneDrive Media**: Recursive sync into year/month subfolders
+- ✅ **OneDrive Media**: Repair Missing Media tool for post-restore recovery
+- ✅ **PTA Roles**: Forminator integration — signup form in modal from org chart
+- ✅ **PTA Roles**: O365 group email display on org chart as mailto links
+- ✅ **PTA Roles**: Role-level O365 group mappings; Treasurer/Secretary support
+- ✅ **SSO**: External domain exclusion for sync and login
+- ✅ **Dashboard**: Plugin dependency badges link to WordPress plugin install page
+
+### **Version 3.35**
+- ✅ **Auction module**: WooCommerce Auction product type, bidding, Buy It Now, winner flow
 - ✅ Calendar: Manual Sync Now button; sync history for TEC Integration
 
 ### **Version 1.1**
 - ✅ Major performance optimization (45-50% faster)
-- ✅ Hot path and component init logging cleanup
 - ✅ User-controlled debug mode, log rotation, scheduled maintenance
 
 ### **Version 1.0**
 - Initial release with core modules
-- SSO, Backup, Calendar, Email, PTA, OneDrive; later Classes, Newsletter, Event Tickets, TEC Integration, Auction
 
 ---
 
 ## 🎯 **Development Status**
 
-**Current Focus:** Feature-complete modules (Auction, Calendar sync, etc.)
+**Current Focus:** UI polish, Volunteer Sign Up, Auction improvements, Children Profiles
 **Code Quality:** See `review.md` for details
 **Test Coverage:** Manual testing (automated tests planned)
-**Documentation:** README covers all modules; inline help in admin
+**Documentation:** README, GitHub Wiki, and inline admin help
 
-**Modules:** SSO, Backup, Calendar Embed, Calendar Sync (TEC), Email, PTA Roles, OneDrive Media, Classes, Newsletter, Event Tickets, Auction
-
-**Recent Achievements:**
-- ✅ Auction module (bidding, max bid, Buy It Now, winner flow)
-- ✅ Calendar manual sync and sync history
-- ✅ Performance optimizations and debug mode
+**Modules:** SSO, Backup, Calendar (Embed + Sync + Upcoming + Volunteer Sign Up), Emails (Logs + Settings), PTA Roles, OneDrive Media, Classes, Newsletter, Event Tickets, Auction, Product Fields, Donations, System (Logs + Schedules + Critical)
 
 **Planned Improvements:**
-- 🔄 Database query optimization, settings caching, CSS refactoring
-- 🔄 OAuth token handling consolidation
+- Database query optimization, settings caching, CSS refactoring
+- OAuth token handling consolidation
+- Automated testing
 
 See `review.md` for full roadmap and priorities.
 
 ---
 
-**Version**: 3.35  
+**Version**: 3.46  
 **Author**: Jamie Burgess  
-**Last Updated**: February 2026  
+**Last Updated**: March 2026  
 **Plugin URI**: https://github.com/jaburges/PTATools
 
 **Ready to get started?** Follow the [Initial Setup](#initial-setup--basic-configuration) guide above!

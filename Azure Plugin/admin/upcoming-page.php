@@ -18,11 +18,13 @@ if (class_exists('Azure_Upcoming_Module')) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap azure-admin-wrap">
     <h1>
         <span class="dashicons dashicons-calendar-alt" style="margin-right: 8px;"></span>
         <?php _e('Upcoming Events Shortcode', 'azure-plugin'); ?>
     </h1>
+<?php endif; ?>
     
     <div class="azure-admin-content">
         
@@ -177,7 +179,9 @@ if (class_exists('Azure_Upcoming_Module')) {
         </div>
         
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <style>
 .azure-admin-wrap .azure-card {

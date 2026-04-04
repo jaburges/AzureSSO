@@ -17,6 +17,7 @@ class Azure_SSO_Sync {
         add_action('wp_ajax_azure_get_all_ad_users', array($this, 'ajax_get_all_ad_users'));
         add_action('wp_ajax_azure_add_user_to_exclusion', array($this, 'ajax_add_user_to_exclusion'));
         add_action('wp_ajax_azure_remove_user_from_exclusion', array($this, 'ajax_remove_user_from_exclusion'));
+        add_action('wp_ajax_azure_save_exclude_external_domains', array($this, 'ajax_save_exclude_external_domains'));
         
         // Schedule sync if enabled
         $this->setup_scheduled_sync();
@@ -27,15 +28,21 @@ class Azure_SSO_Sync {
      */
     private function setup_scheduled_sync() {
         $sync_enabled = Azure_Settings::get_setting('sso_sync_enabled', false);
-        $sync_frequency = Azure_Settings::get_setting('sso_sync_frequency', 'daily');
-        
-        // Clear existing schedule
-        wp_clear_scheduled_hook('azure_sso_scheduled_sync');
-        
-        if ($sync_enabled) {
-            if (!wp_next_scheduled('azure_sso_scheduled_sync')) {
-                wp_schedule_event(time(), $sync_frequency, 'azure_sso_scheduled_sync');
+        $sync_frequency = Azure_Settings::get_setting('sso_sync_frequency', 'hourly');
+
+        $existing = wp_get_schedule('azure_sso_scheduled_sync');
+
+        if (!$sync_enabled) {
+            if ($existing) {
+                wp_clear_scheduled_hook('azure_sso_scheduled_sync');
             }
+            return;
+        }
+
+        // Only reschedule if the frequency changed or there's no schedule
+        if ($existing !== $sync_frequency) {
+            wp_clear_scheduled_hook('azure_sso_scheduled_sync');
+            wp_schedule_event(time() + 60, $sync_frequency, 'azure_sso_scheduled_sync');
         }
     }
     
@@ -690,8 +697,21 @@ class Azure_SSO_Sync {
         ));
     }
     
+    public function ajax_save_exclude_external_domains() {
+        if (!current_user_can('manage_options') || !wp_verify_nonce($_POST['nonce'], 'azure_plugin_nonce')) {
+            wp_send_json_error('Unauthorized access');
+        }
+
+        $enabled = ($_POST['enabled'] ?? '') === 'true';
+        Azure_Settings::update_setting('sso_exclude_external_domains', $enabled);
+
+        Azure_Logger::info('SSO: Exclude external domains ' . ($enabled ? 'enabled' : 'disabled') . ' by user ' . get_current_user_id());
+
+        wp_send_json_success(array('message' => 'Setting saved'));
+    }
+
     /**
-     * Check if a user is in the exclusion list
+     * Check if a user is in the exclusion list or belongs to an external domain.
      * 
      * @param string $azure_user_id The Azure AD user ID
      * @param string $email The user's email (fallback check)
@@ -713,7 +733,18 @@ class Azure_SSO_Sync {
                 }
             }
         }
-        
+
+        // Check external domain exclusion
+        if (!empty($email) && Azure_Settings::get_setting('sso_exclude_external_domains', false)) {
+            $org_domain = strtolower(Azure_Settings::get_setting('org_domain', ''));
+            if (!empty($org_domain)) {
+                $email_domain = strtolower(substr($email, strrpos($email, '@') + 1));
+                if ($email_domain !== $org_domain) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 }

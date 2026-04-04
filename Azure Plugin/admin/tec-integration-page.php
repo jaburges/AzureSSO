@@ -39,8 +39,10 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
 }
 ?>
 
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 <div class="wrap">
     <h1>PTA Tools - Calendar Sync</h1>
+<?php endif; ?>
     
     <!-- Module Toggle Section -->
     <div class="module-status-section">
@@ -444,7 +446,9 @@ if (class_exists('Azure_TEC_Calendar_Mapping_Manager')) {
             </form>
         </div>
     </div>
+<?php if (empty($GLOBALS['azure_tab_mode'])): ?>
 </div>
+<?php endif; ?>
 
 <link rel="stylesheet" href="<?php echo AZURE_PLUGIN_URL . 'css/admin.css'; ?>">
 

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/jaburges/PTATools/wiki
+    about: Check the wiki for setup guides, module documentation, and troubleshooting before opening an issue.

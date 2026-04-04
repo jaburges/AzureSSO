@@ -222,22 +222,75 @@ $settings = Azure_Settings::get_all_settings();
                         <th scope="row">Backup Types</th>
                         <td>
                             <?php
-                            $backup_types = $settings['backup_types'] ?? array('content', 'media', 'plugins', 'themes', 'database');
-                            $available_types = array(
-                                'database' => 'Database',
-                                'content' => 'Content Files',
-                                'media' => 'Media Files',
-                                'plugins' => 'Plugins',
-                                'themes' => 'Themes'
+                            $backup_types = $settings['backup_types'] ?? array('database', 'mu-plugins', 'plugins', 'themes', 'content');
+                            $selected_plugins = $settings['backup_selected_plugins'] ?? array();
+                            $selected_themes  = $settings['backup_selected_themes']  ?? array();
+
+                            $simple_types = array(
+                                'database'   => 'Database',
+                                'mu-plugins' => 'Must-Use Plugins',
+                                'content'    => 'Content Files',
                             );
+
+                            $all_plugins = get_plugins();
+                            $all_themes  = wp_get_themes();
                             ?>
-                            <?php foreach ($available_types as $type => $label): ?>
+                            <?php foreach ($simple_types as $type => $label): ?>
                             <label>
                                 <input type="checkbox" name="azure_plugin_settings[backup_types][]" value="<?php echo $type; ?>" <?php checked(in_array($type, $backup_types)); ?> />
                                 <?php echo $label; ?>
                             </label><br>
                             <?php endforeach; ?>
-                            <p class="description">Select which components to include in backups</p>
+
+                            <!-- Plugins expandable -->
+                            <div style="margin: 4px 0;">
+                                <label>
+                                    <input type="checkbox" name="azure_plugin_settings[backup_types][]" value="plugins" id="backup-type-plugins" <?php checked(in_array('plugins', $backup_types)); ?> />
+                                    Plugins
+                                </label>
+                                <a href="#" class="backup-expand-toggle" data-target="backup-plugins-list" style="margin-left: 6px; font-size: 12px; text-decoration: none;">[select individually ▾]</a>
+                                <div id="backup-plugins-list" style="display: none; margin: 6px 0 6px 24px; padding: 8px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto;">
+                                    <label style="display: block; margin-bottom: 4px; font-weight: bold;">
+                                        <input type="checkbox" class="backup-select-all" data-group="backup-plugin-item" checked /> Select All
+                                    </label>
+                                    <hr style="margin: 4px 0;">
+                                    <?php foreach ($all_plugins as $plugin_file => $plugin_data):
+                                        $slug = dirname($plugin_file);
+                                        if ($slug === '.') $slug = basename($plugin_file, '.php');
+                                        $is_checked = empty($selected_plugins) || in_array($slug, $selected_plugins);
+                                    ?>
+                                    <label style="display: block; margin: 2px 0;">
+                                        <input type="checkbox" class="backup-plugin-item" name="azure_plugin_settings[backup_selected_plugins][]" value="<?php echo esc_attr($slug); ?>" <?php checked($is_checked); ?> />
+                                        <?php echo esc_html($plugin_data['Name']); ?>
+                                        <span style="color: #888; font-size: 11px;">(<?php echo esc_html($slug); ?>)</span>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                            <!-- Themes expandable -->
+                            <div style="margin: 4px 0;">
+                                <label>
+                                    <input type="checkbox" name="azure_plugin_settings[backup_types][]" value="themes" id="backup-type-themes" <?php checked(in_array('themes', $backup_types)); ?> />
+                                    Themes
+                                </label>
+                                <a href="#" class="backup-expand-toggle" data-target="backup-themes-list" style="margin-left: 6px; font-size: 12px; text-decoration: none;">[select individually ▾]</a>
+                                <div id="backup-themes-list" style="display: none; margin: 6px 0 6px 24px; padding: 8px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto;">
+                                    <label style="display: block; margin-bottom: 4px; font-weight: bold;">
+                                        <input type="checkbox" class="backup-select-all" data-group="backup-theme-item" checked /> Select All
+                                    </label>
+                                    <hr style="margin: 4px 0;">
+                                    <?php foreach ($all_themes as $theme_slug => $theme_obj): ?>
+                                    <label style="display: block; margin: 2px 0;">
+                                        <input type="checkbox" class="backup-theme-item" name="azure_plugin_settings[backup_selected_themes][]" value="<?php echo esc_attr($theme_slug); ?>" <?php checked(empty($selected_themes) || in_array($theme_slug, $selected_themes)); ?> />
+                                        <?php echo esc_html($theme_obj->get('Name')); ?>
+                                        <span style="color: #888; font-size: 11px;">(<?php echo esc_html($theme_slug); ?>)</span>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                            <p class="description">Select which components to include in backups. Use "select individually" to choose specific plugins or themes.</p>
                         </td>
                     </tr>
                     <tr>
@@ -275,6 +328,13 @@ $settings = Azure_Settings::get_all_settings();
                             <p class="description">Number of days to keep backups (0 = forever)</p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">Archive Split Size (MB)</th>
+                        <td>
+                            <input type="number" name="azure_plugin_settings[backup_split_size]" value="<?php echo esc_attr($settings['backup_split_size'] ?? 400); ?>" min="25" max="2000" class="small-text" />
+                            <p class="description">Maximum size per archive file in MB. Large components (media) will be split into multiple files. Default: 400 MB.</p>
+                        </td>
+                    </tr>
                 </table>
             </div>
             
@@ -286,12 +346,19 @@ $settings = Azure_Settings::get_all_settings();
     
     <!-- Recent Backup Jobs -->
     <div class="backup-jobs-section">
-        <h2>Recent Backup Jobs</h2>
-        
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <h2 style="margin: 0;">Recent Backup Jobs</h2>
+            <button class="button button-secondary sync-remote-backups">
+                <span class="dashicons dashicons-cloud" style="vertical-align: middle; margin-right: 4px;"></span>
+                Sync from Azure
+            </button>
+        </div>
+
         <?php if (!empty($recent_jobs)): ?>
-        <table class="wp-list-table widefat fixed striped">
+        <table class="wp-list-table widefat fixed striped" id="backup-jobs-table">
             <thead>
                 <tr>
+                    <th style="width:30px;"></th>
                     <th>Job Name</th>
                     <th>Status</th>
                     <th>Created</th>
@@ -300,13 +367,21 @@ $settings = Azure_Settings::get_all_settings();
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($recent_jobs as $job): ?>
-                <tr>
+                <?php foreach ($recent_jobs as $job):
+                    $has_entities = !empty($job->entity_state) && $job->entity_state !== '{}';
+                    $is_completed = $job->status === 'completed' && !empty($job->azure_blob_name);
+                    $status_class = $job->status === 'completed' ? 'success' : ($job->status === 'failed' ? 'error' : 'warning');
+                ?>
+                <tr class="backup-parent-row" data-job-id="<?php echo $job->id; ?>">
+                    <td style="text-align:center;">
+                        <?php if ($is_completed && $has_entities): ?>
+                        <button class="button button-link toggle-backup-details" data-job-id="<?php echo $job->id; ?>" title="Show files" style="padding:0; min-height:0; font-size:16px; line-height:1; cursor:pointer;">
+                            <span class="dashicons dashicons-arrow-right-alt2" style="transition:transform 0.2s;"></span>
+                        </button>
+                        <?php endif; ?>
+                    </td>
                     <td><?php echo esc_html($job->job_name); ?></td>
                     <td>
-                        <?php
-                        $status_class = $job->status === 'completed' ? 'success' : ($job->status === 'failed' ? 'error' : 'warning');
-                        ?>
                         <span class="status-indicator <?php echo $status_class; ?>">
                             <?php echo esc_html(ucfirst($job->status)); ?>
                         </span>
@@ -314,20 +389,29 @@ $settings = Azure_Settings::get_all_settings();
                     <td><?php echo esc_html($job->created_at); ?></td>
                     <td><?php echo $job->file_size ? size_format($job->file_size) : '-'; ?></td>
                     <td>
-                        <?php if ($job->status === 'completed' && !empty($job->azure_blob_name)): ?>
-                        <button class="button button-small restore-backup" data-backup-id="<?php echo $job->id; ?>">
+                        <?php if ($is_completed): ?>
+                        <button class="button button-small restore-backup" data-backup-id="<?php echo $job->id; ?>" data-has-entities="<?php echo $has_entities ? '1' : '0'; ?>">
                             Restore
                         </button>
-                        <button class="button button-small delete-backup" data-backup-id="<?php echo $job->id; ?>">
-                            Delete
-                        </button>
                         <?php endif; ?>
-                        
                         <?php if ($job->status === 'failed' && !empty($job->error_message)): ?>
                         <button class="button button-small view-error" data-error="<?php echo esc_attr($job->error_message); ?>">
                             View Error
                         </button>
                         <?php endif; ?>
+                        <?php if (in_array($job->status, array('completed', 'failed', 'cancelled'))): ?>
+                        <button class="button button-small delete-backup" data-backup-id="<?php echo $job->id; ?>">
+                            Delete
+                        </button>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr class="backup-detail-row" data-job-id="<?php echo $job->id; ?>" style="display:none;">
+                    <td colspan="6" style="padding:0;">
+                        <div class="backup-detail-content" style="padding:8px 12px 12px 40px; background:#f9f9f9;">
+                            <div class="backup-detail-loading" style="color:#666;"><span class="spinner is-active" style="float:none; margin:0 6px 0 0;"></span> Loading component files...</div>
+                            <div class="backup-detail-table" style="display:none;"></div>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -337,10 +421,167 @@ $settings = Azure_Settings::get_all_settings();
         <p>No backup jobs found. <a href="#" class="start-backup">Create your first backup</a>.</p>
         <?php endif; ?>
     </div>
+
+    <!-- Restore Progress Section (Hidden by default) -->
+    <div id="restore-progress-section" style="display: none; margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 8px; border-left: 4px solid #2196f3;">
+        <h3 style="margin: 0 0 15px 0; color: #2196f3;">⏳ Restore in Progress</h3>
+        <div id="restore-progress-details" style="margin-bottom: 15px;">
+            <p id="restore-progress-status" style="margin: 5px 0; color: #666; font-size: 14px;">Status: Initializing...</p>
+        </div>
+        <div style="background: #e9ecef; border-radius: 10px; height: 28px; margin: 15px 0; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
+            <div id="restore-progress-bar" style="
+                background: linear-gradient(90deg, #2196f3 0%, #1769aa 100%);
+                height: 100%;
+                width: 0%;
+                transition: width 0.5s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                font-size: 14px;
+            ">
+                <span id="restore-progress-percent">0%</span>
+            </div>
+        </div>
+        <div id="restore-progress-message" style="margin: 15px 0 10px 0; padding: 12px; background: #fff; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; color: #555; font-family: monospace;"></div>
+        <div id="restore-progress-actions" style="text-align: right; margin-top: 15px; display: none;">
+            <button type="button" class="button" onclick="jQuery('#restore-progress-section').slideUp();">Hide</button>
+            <button type="button" class="button button-primary" onclick="location.reload();">Refresh Page</button>
+        </div>
+    </div>
+
+    <!-- Remote Azure Backups -->
+    <div id="remote-backups-section" class="backup-jobs-section" style="display: none; margin-top: 20px;">
+        <h2>Azure Storage Backups</h2>
+        <div id="remote-backups-loading" style="display: none;">
+            <span class="spinner is-active" style="float: none;"></span> Loading backups from Azure Storage...
+        </div>
+        <div id="remote-backups-content"></div>
+    </div>
+
+    <!-- Restore Component Selection Dialog -->
+    <div id="restore-component-dialog" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100000;">
+        <div style="background:#fff; max-width:480px; margin:10% auto; padding:24px; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+            <h3 style="margin:0 0 16px;">Select Components to Restore</h3>
+            <p style="color:#666; margin-bottom:12px;">Choose which parts of the backup to restore:</p>
+            <label style="display:block; margin:0 0 10px; padding-bottom:8px; border-bottom:1px solid #ddd; font-weight:600;">
+                <input type="checkbox" id="restore-select-all" checked /> Select All
+            </label>
+            <div id="restore-component-list" style="margin-bottom:16px;">
+                <label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="database" checked /> Database</label>
+                <label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="mu-plugins" checked /> Must-Use Plugins</label>
+                <label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="plugins" checked /> Plugins</label>
+                <label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="themes" checked /> Themes</label>
+                <label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="others" checked /> Other Content</label>
+                <p style="color:#666; font-size:12px; margin:8px 0 0;">Media is synced from SharePoint/OneDrive after restore.</p>
+            </div>
+            <div style="text-align:right;">
+                <button type="button" class="button" id="restore-dialog-cancel">Cancel</button>
+                <button type="button" class="button button-primary" id="restore-dialog-confirm" style="margin-left:8px;">Restore Selected</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 jQuery(document).ready(function($) {
+    // Expand/collapse toggle for plugin/theme lists
+    $('.backup-expand-toggle').click(function(e) {
+        e.preventDefault();
+        var target = $('#' + $(this).data('target'));
+        target.slideToggle(200);
+        var lbl = $(this).text().indexOf('▾') !== -1 ? '[select individually ▴]' : '[select individually ▾]';
+        $(this).text(lbl);
+    });
+
+    // "Select All" toggles
+    $('.backup-select-all').change(function() {
+        var group = $(this).data('group');
+        $('.' + group).prop('checked', $(this).is(':checked'));
+    });
+    // Keep "Select All" in sync when individual items change
+    $(document).on('change', '.backup-plugin-item, .backup-theme-item', function() {
+        var cls = $(this).hasClass('backup-plugin-item') ? 'backup-plugin-item' : 'backup-theme-item';
+        var all = $('.' + cls).length;
+        var checked = $('.' + cls + ':checked').length;
+        $(this).closest('div').find('.backup-select-all').prop('checked', all === checked);
+    });
+
+    // Expand/collapse backup detail rows
+    var loadedComponents = {};
+    $(document).on('click', '.toggle-backup-details', function(e) {
+        e.preventDefault();
+        var jobId = $(this).data('job-id');
+        var $detail = $('.backup-detail-row[data-job-id="' + jobId + '"]');
+        var $icon = $(this).find('.dashicons');
+        var visible = $detail.is(':visible');
+
+        if (visible) {
+            $detail.hide();
+            $icon.css('transform', 'rotate(0deg)');
+        } else {
+            $detail.show();
+            $icon.css('transform', 'rotate(90deg)');
+
+            if (!loadedComponents[jobId]) {
+                loadBackupComponents(jobId);
+            }
+        }
+    });
+
+    function loadBackupComponents(jobId) {
+        var $detail = $('.backup-detail-row[data-job-id="' + jobId + '"]');
+        var $loading = $detail.find('.backup-detail-loading');
+        var $table = $detail.find('.backup-detail-table');
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_get_backup_components',
+            backup_id: jobId,
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            $loading.hide();
+            if (!response.success || !response.data.components.length) {
+                $table.html('<p style="color:#999; margin:4px 0;">No component details available.</p>').show();
+                return;
+            }
+
+            var entityLabels = {database:'Database', plugins:'Plugins', themes:'Themes', uploads:'Media / Uploads', media:'Media / Uploads', content:'Other Content', others:'Other Content'};
+            var html = '<table class="widefat" style="margin:0; border:none; box-shadow:none;">';
+            html += '<thead><tr><th>Component</th><th>File</th><th>Size</th><th></th></tr></thead><tbody>';
+
+            var downloadBase = azure_plugin_ajax.ajax_url + '?action=azure_download_backup_blob&nonce=' + encodeURIComponent(azure_plugin_ajax.nonce) + '&blob=';
+
+            response.data.components.forEach(function(c) {
+                var label = entityLabels[c.entity] || c.entity;
+                html += '<tr>';
+                html += '<td>' + label + '</td>';
+                html += '<td style="font-family:monospace; font-size:12px; word-break:break-all;">' + c.filename + '</td>';
+                html += '<td>' + c.size_fmt + '</td>';
+                html += '<td><a href="' + downloadBase + encodeURIComponent(c.blob) + '" class="button button-small" title="Download this file"><span class="dashicons dashicons-download" style="vertical-align:middle;"></span></a></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+
+            $table.html(html).show();
+            loadedComponents[jobId] = true;
+        }).fail(function() {
+            $loading.hide();
+            $table.html('<p style="color:#dc3232;">Failed to load component details.</p>').show();
+        });
+    }
+
+    // Restore dialog: Select All toggle
+    $('#restore-select-all').change(function() {
+        $('.restore-comp').prop('checked', $(this).is(':checked'));
+    });
+    $(document).on('change', '.restore-comp', function() {
+        var all = $('.restore-comp').length;
+        var checked = $('.restore-comp:checked').length;
+        $('#restore-select-all').prop('checked', all === checked);
+    });
+
     // Handle backup actions
     $('.start-backup').click(function() {
         if (!confirm('Are you sure you want to start a manual backup? This may take several minutes.')) {
@@ -353,11 +594,31 @@ jQuery(document).ready(function($) {
     
     function startBackupWithProgress(button) {
         button.prop('disabled', true).html('<span class="spinner is-active"></span> Starting...');
-        
-        $.post(azure_plugin_ajax.ajax_url, {
+
+        var postData = {
             action: 'azure_start_backup',
             nonce: azure_plugin_ajax.nonce
-        }, function(response) {
+        };
+
+        // Collect selected plugins if the plugins type is checked
+        if ($('#backup-type-plugins').is(':checked')) {
+            var selPlugins = [];
+            $('.backup-plugin-item:checked').each(function() { selPlugins.push($(this).val()); });
+            if (selPlugins.length && selPlugins.length < $('.backup-plugin-item').length) {
+                postData.selected_plugins = selPlugins;
+            }
+        }
+
+        // Collect selected themes if the themes type is checked
+        if ($('#backup-type-themes').is(':checked')) {
+            var selThemes = [];
+            $('.backup-theme-item:checked').each(function() { selThemes.push($(this).val()); });
+            if (selThemes.length && selThemes.length < $('.backup-theme-item').length) {
+                postData.selected_themes = selThemes;
+            }
+        }
+
+        $.post(azure_plugin_ajax.ajax_url, postData, function(response) {
             // Parse JSON if response is a string
             if (typeof response === 'string') {
                 try {
@@ -401,33 +662,69 @@ jQuery(document).ready(function($) {
     }
     
     function trackBackupProgress(backupId) {
-        var progressInterval = setInterval(function() {
-            $.post(azure_plugin_ajax.ajax_url, {
-                action: 'azure_get_backup_progress',
-                backup_id: backupId
-            }, function(response) {
-                if (typeof response === 'string') {
-                    try {
-                        response = JSON.parse(response);
-                    } catch (e) {
-                        return;
+        var polling = false;
+        var stopped = false;
+        var directRunFired = false;
+
+        function fireDirectRun() {
+            if (directRunFired) return;
+            directRunFired = true;
+            updateProgressDisplay(3, 'running', 'Starting backup directly...');
+
+            $.ajax({
+                url: azure_plugin_ajax.ajax_url,
+                type: 'POST',
+                timeout: 1800000,
+                data: {
+                    action: 'azure_run_backup_now',
+                    backup_id: backupId,
+                    nonce: azure_plugin_ajax.nonce
+                },
+                success: function() {},
+                error: function() {}
+            });
+        }
+
+        function poll() {
+            if (polling || stopped) return;
+            polling = true;
+
+            $.ajax({
+                url: azure_plugin_ajax.ajax_url,
+                type: 'POST',
+                timeout: 30000,
+                data: { action: 'azure_get_backup_progress', backup_id: backupId },
+                success: function(response) {
+                    polling = false;
+                    if (typeof response === 'string') {
+                        try { response = JSON.parse(response); } catch (e) { return; }
                     }
-                }
-                
-                if (response && response.success) {
-                    var data = response.data;
-                    updateProgressDisplay(data.progress, data.status, data.message);
-                    
-                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'error') {
-                        clearInterval(progressInterval);
-                        showBackupComplete(data);
+                    if (response && response.success) {
+                        var data = response.data;
+                        updateProgressDisplay(data.progress, data.status, data.message);
+
+                        if (data.needs_direct_run) {
+                            fireDirectRun();
+                        }
+
+                        if (data.status === 'completed' || data.status === 'failed' || data.status === 'error' || data.status === 'cancelled') {
+                            stopped = true;
+                            showBackupComplete(data);
+                        }
                     }
+                },
+                error: function() {
+                    polling = false;
                 }
             });
-        }, 3000);
-        
+        }
+
+        var progressInterval = setInterval(poll, 3000);
+        poll();
+
         // Safety timeout - stop checking after 30 minutes
         setTimeout(function() {
+            stopped = true;
             clearInterval(progressInterval);
             $('#backup-progress-message').text('Backup is taking longer than expected. Please check the logs for status.');
             $('#backup-progress-actions').show();
@@ -452,12 +749,17 @@ jQuery(document).ready(function($) {
             $('#backup-progress-bar').css('background', 'linear-gradient(90deg, #46b450 0%, #399245 100%)');
             $('#backup-progress-percent').text('100%');
             $('#backup-progress-status').text('Status: Completed Successfully');
-            $('#backup-progress-message').text('✅ Backup completed successfully!');
+            $('#backup-progress-message').text('Backup completed successfully!');
+        } else if (data.status === 'cancelled') {
+            $('#backup-progress-bar').css('background', 'linear-gradient(90deg, #f0ad4e 0%, #d9963a 100%)');
+            $('#backup-progress-percent').text('Cancelled');
+            $('#backup-progress-status').text('Status: Cancelled');
+            $('#backup-progress-message').text('Backup was cancelled.');
         } else {
             $('#backup-progress-bar').css('background', 'linear-gradient(90deg, #dc3232 0%, #b32d2e 100%)');
             $('#backup-progress-percent').text('Error');
             $('#backup-progress-status').text('Status: Failed');
-            $('#backup-progress-message').text('❌ Backup failed: ' + (data.message || 'Unknown error'));
+            $('#backup-progress-message').text('Backup failed: ' + (data.message || 'Unknown error'));
         }
         
         $('#backup-progress-actions').show();
@@ -580,37 +882,144 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Handle restore
-    $('.restore-backup').click(function() {
+    // Handle restore (local backup) with component selection
+    var pendingLocalRestoreId = null;
+
+    var entityLabelsRestore = {
+        database: 'Database', plugins: 'Plugins', themes: 'Themes',
+        uploads: 'Media / Uploads', media: 'Media / Uploads',
+        content: 'Other Content', others: 'Other Content'
+    };
+
+    $(document).on('click', '.restore-backup', function() {
         var backupId = $(this).data('backup-id');
-        
-        if (!confirm('Are you sure you want to restore this backup? This will overwrite your current content and cannot be undone.')) {
+        var hasEntities = $(this).data('has-entities') === 1 || $(this).data('has-entities') === '1';
+
+        if (!confirm('Are you sure you want to restore this backup? This will overwrite selected content and cannot be undone.')) {
             return;
         }
-        
-        var button = $(this);
-        button.prop('disabled', true).text('Restoring...');
-        
+
+        pendingLocalRestoreId = backupId;
+        pendingRestoreBlob = null;
+
+        if (hasEntities) {
+            populateRestoreDialog(backupId, function() {
+                $('#restore-component-dialog').show();
+            });
+        } else {
+            resetRestoreDialog();
+            $('#restore-component-dialog').show();
+        }
+    });
+
+    function populateRestoreDialog(backupId, callback) {
+        var $list = $('#restore-component-list');
+        $list.html('<p style="color:#666;"><span class="spinner is-active" style="float:none; margin:0 6px 0 0;"></span> Loading components...</p>');
+        $('#restore-component-dialog').show();
+
         $.post(azure_plugin_ajax.ajax_url, {
-            action: 'azure_restore_backup',
+            action: 'azure_get_backup_components',
             backup_id: backupId,
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
-            if (response.success) {
-                alert('Restore completed successfully!');
-                location.reload();
-            } else {
-                alert('Restore failed: ' + (response.data || 'Unknown error'));
-                button.prop('disabled', false).text('Restore');
+            if (!response.success) {
+                resetRestoreDialog();
+                if (callback) callback();
+                return;
             }
+            var entities = {};
+            var skipEntities = ['uploads', 'media'];
+            response.data.components.forEach(function(c) {
+                if (skipEntities.indexOf(c.entity) === -1 && !entities[c.entity]) entities[c.entity] = true;
+            });
+
+            var html = '';
+            Object.keys(entities).forEach(function(key) {
+                var label = entityLabelsRestore[key] || key;
+                html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="' + key + '" checked /> ' + label + '</label>';
+            });
+            html += '<p style="color:#666; font-size:12px; margin:8px 0 0;">Media is synced from SharePoint/OneDrive after restore.</p>';
+
+            if (!html) {
+                resetRestoreDialog();
+            } else {
+                $list.html(html);
+                $('#restore-select-all').prop('checked', true);
+            }
+            if (callback) callback();
         }).fail(function() {
-            alert('Network error occurred');
-            button.prop('disabled', false).text('Restore');
+            resetRestoreDialog();
+            if (callback) callback();
         });
+    }
+
+    function resetRestoreDialog() {
+        var html = '';
+        html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="database" checked /> Database</label>';
+        html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="mu-plugins" checked /> Must-Use Plugins</label>';
+        html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="plugins" checked /> Plugins</label>';
+        html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="themes" checked /> Themes</label>';
+        html += '<label style="display:block; margin:6px 0;"><input type="checkbox" class="restore-comp" value="others" checked /> Other Content</label>';
+        html += '<p style="color:#666; font-size:12px; margin:8px 0 0;">Media is synced from SharePoint/OneDrive after restore.</p>';
+        $('#restore-component-list').html(html);
+        $('#restore-select-all').prop('checked', true);
+    }
+
+    $('#restore-dialog-confirm').off('click').on('click', function() {
+        var selected = [];
+        $('.restore-comp:checked').each(function() { selected.push($(this).val()); });
+        if (selected.length === 0) {
+            alert('Please select at least one component.');
+            return;
+        }
+        $('#restore-component-dialog').hide();
+
+        if (pendingRestoreBlob) {
+            executeRemoteRestore(pendingRestoreBlob, selected);
+            pendingRestoreBlob = null;
+        } else if (pendingLocalRestoreId) {
+            executeLocalRestore(pendingLocalRestoreId, selected);
+            pendingLocalRestoreId = null;
+        }
     });
+
+    function executeLocalRestore(backupId, restoreTypes) {
+        showRestoreProgress();
+
+        var postData = {
+            action: 'azure_restore_backup',
+            backup_id: backupId,
+            nonce: azure_plugin_ajax.nonce
+        };
+        if (restoreTypes) {
+            postData.restore_types = restoreTypes;
+        }
+
+        $.ajax({
+            url: azure_plugin_ajax.ajax_url,
+            type: 'POST',
+            timeout: 1800000,
+            data: postData,
+            success: function(response) {
+                stopRestorePolling();
+                if (response.success) {
+                    setRestoreComplete('completed', 'Restore completed successfully!');
+                } else {
+                    setRestoreComplete('failed', 'Restore failed: ' + (response.data || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status) {
+                stopRestorePolling();
+                var msg = status === 'timeout'
+                    ? 'The restore is taking longer than expected. It may still be running on the server.'
+                    : 'Network error occurred. The operation may still be running on the server.';
+                setRestoreComplete('failed', msg);
+            }
+        });
+    }
     
     // Handle delete backup
-    $('.delete-backup').click(function() {
+    $(document).on('click', '.delete-backup', function() {
         var backupId = $(this).data('backup-id');
         
         if (!confirm('Are you sure you want to delete this backup? This action cannot be undone.')) {
@@ -618,7 +1027,8 @@ jQuery(document).ready(function($) {
         }
         
         var button = $(this);
-        var row = button.closest('tr');
+        var parentRow = button.closest('tr');
+        var detailRow = $('.backup-detail-row[data-job-id="' + backupId + '"]');
         
         button.prop('disabled', true).text('Deleting...');
         
@@ -628,7 +1038,8 @@ jQuery(document).ready(function($) {
             nonce: azure_plugin_ajax.nonce
         }, function(response) {
             if (response.success) {
-                row.fadeOut(function() { row.remove(); });
+                parentRow.fadeOut(function() { parentRow.remove(); });
+                detailRow.fadeOut(function() { detailRow.remove(); });
             } else {
                 alert('Delete failed: ' + (response.data || 'Unknown error'));
                 button.prop('disabled', false).text('Delete');
@@ -640,7 +1051,7 @@ jQuery(document).ready(function($) {
     });
     
     // Handle view error
-    $('.view-error').click(function() {
+    $(document).on('click', '.view-error', function() {
         var error = $(this).data('error');
         alert('Error Details:\n\n' + error);
     });
@@ -696,6 +1107,207 @@ jQuery(document).ready(function($) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
+    // Sync remote backups from Azure
+    $('.sync-remote-backups').click(function() {
+        var button = $(this);
+        var section = $('#remote-backups-section');
+        var loading = $('#remote-backups-loading');
+        var content = $('#remote-backups-content');
+
+        button.prop('disabled', true);
+        section.show();
+        loading.show();
+        content.html('');
+
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_list_remote_backups',
+            nonce: azure_plugin_ajax.nonce
+        }, function(response) {
+            loading.hide();
+            button.prop('disabled', false);
+
+            if (!response.success) {
+                content.html('<div class="notice notice-error inline"><p>' + (response.data || 'Failed to list remote backups.') + '</p></div>');
+                return;
+            }
+
+            var blobs = response.data;
+            if (!blobs || blobs.length === 0) {
+                content.html('<p>No backups found in Azure Storage.</p>');
+                return;
+            }
+
+            var html = '<table class="wp-list-table widefat fixed striped">';
+            html += '<thead><tr><th>Backup</th><th>Format</th><th>Size</th><th>Last Modified</th><th>Local</th><th>Actions</th></tr></thead><tbody>';
+
+            blobs.forEach(function(blob) {
+                var localBadge = blob.in_local_db
+                    ? '<span class="status-indicator success" style="font-size:12px;">Yes</span>'
+                    : '<span class="status-indicator warning" style="font-size:12px;">No</span>';
+
+                var typeBadge = (blob.type === 'v2')
+                    ? '<span style="background:#0073aa;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Split</span>'
+                    : '<span style="background:#888;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Legacy</span>';
+
+                var components = blob.components ? ' (' + blob.components + ' files)' : '';
+
+                html += '<tr>';
+                html += '<td title="' + escHtml(blob.name) + '">' + escHtml(shortenBlobName(blob.name)) + components + '</td>';
+                html += '<td>' + typeBadge + '</td>';
+                html += '<td>' + formatBytes(blob.size) + '</td>';
+                html += '<td>' + escHtml(blob.modified) + '</td>';
+                html += '<td>' + localBadge + '</td>';
+                html += '<td><button class="button button-small restore-remote-backup" data-blob="' + escHtml(blob.name) + '" data-type="' + (blob.type || 'v1') + '">Restore</button></td>';
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            content.html(html);
+        }).fail(function() {
+            loading.hide();
+            button.prop('disabled', false);
+            content.html('<div class="notice notice-error inline"><p>Network error while connecting to Azure Storage.</p></div>');
+        });
+    });
+
+    // Restore from a remote blob - show component selection for v2 backups
+    var pendingRestoreBlob = null;
+
+    $(document).on('click', '.restore-remote-backup', function() {
+        var blobName = $(this).data('blob');
+        var blobType = $(this).data('type') || 'v1';
+
+        if (!confirm('Are you sure you want to restore from this Azure backup?\n\n' + shortenBlobName(blobName) + '\n\nThis will overwrite selected content and cannot be undone.')) {
+            return;
+        }
+
+        if (blobType === 'v2') {
+            pendingRestoreBlob = blobName;
+            $('#restore-component-dialog').show();
+            return;
+        }
+
+        executeRemoteRestore(blobName, null);
+    });
+
+    $('#restore-dialog-cancel').click(function() {
+        $('#restore-component-dialog').hide();
+        pendingRestoreBlob = null;
+        pendingLocalRestoreId = null;
+    });
+
+    function executeRemoteRestore(blobName, restoreTypes) {
+        showRestoreProgress();
+
+        var postData = {
+            action: 'azure_restore_remote_backup',
+            blob_name: blobName,
+            nonce: azure_plugin_ajax.nonce
+        };
+        if (restoreTypes) {
+            postData.restore_types = restoreTypes;
+        }
+
+        $.ajax({
+            url: azure_plugin_ajax.ajax_url,
+            type: 'POST',
+            timeout: 1800000,
+            data: postData,
+            success: function(response) {
+                stopRestorePolling();
+                if (response.success) {
+                    setRestoreComplete('completed', 'Restore completed successfully!');
+                } else {
+                    setRestoreComplete('failed', 'Restore failed: ' + (response.data || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status) {
+                stopRestorePolling();
+                var msg = status === 'timeout'
+                    ? 'The restore is taking longer than expected. It may still be running on the server.'
+                    : 'Network error occurred. The operation may still be running on the server.';
+                setRestoreComplete('failed', msg);
+            }
+        });
+    }
+
+    function shortenBlobName(name) {
+        var parts = name.split('/');
+        if (parts.length > 2) {
+            return parts.slice(-2).join('/');
+        }
+        return name;
+    }
+
+    function escHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    // --- Restore progress helpers ---
+    var restoreInterval = null;
+
+    function showRestoreProgress() {
+        var $section = $('#restore-progress-section');
+        $section.show();
+        $('#restore-progress-bar').css({width: '0%', background: 'linear-gradient(90deg, #2196f3 0%, #1769aa 100%)'});
+        $('#restore-progress-percent').text('0%');
+        $('#restore-progress-status').text('Status: Initializing...');
+        $('#restore-progress-message').text('Starting restore operation...');
+        $('#restore-progress-actions').hide();
+
+        $('html, body').animate({scrollTop: $section.offset().top - 20}, 500);
+
+        restoreInterval = setInterval(pollRestoreProgress, 3000);
+    }
+
+    function pollRestoreProgress() {
+        $.post(azure_plugin_ajax.ajax_url, {
+            action: 'azure_get_restore_progress'
+        }, function(response) {
+            if (response && response.success && response.data) {
+                var d = response.data;
+                if (d.status === 'idle') return;
+
+                $('#restore-progress-bar').css('width', d.progress + '%');
+                $('#restore-progress-percent').text(d.progress + '%');
+                $('#restore-progress-status').text('Status: ' + d.status);
+                $('#restore-progress-message').text(d.message || '');
+
+                if (d.status === 'completed' || d.status === 'failed') {
+                    stopRestorePolling();
+                    setRestoreComplete(d.status, d.message);
+                }
+            }
+        });
+    }
+
+    function stopRestorePolling() {
+        if (restoreInterval) {
+            clearInterval(restoreInterval);
+            restoreInterval = null;
+        }
+    }
+
+    function setRestoreComplete(status, message) {
+        stopRestorePolling();
+
+        if (status === 'completed') {
+            $('#restore-progress-bar').css({width: '100%', background: 'linear-gradient(90deg, #46b450 0%, #399245 100%)'});
+            $('#restore-progress-percent').text('100%');
+            $('#restore-progress-status').text('Status: Completed');
+            $('#restore-progress-message').text(message);
+        } else {
+            $('#restore-progress-bar').css('background', 'linear-gradient(90deg, #dc3232 0%, #b32d2e 100%)');
+            $('#restore-progress-percent').text('Error');
+            $('#restore-progress-status').text('Status: Failed');
+            $('#restore-progress-message').text(message);
+        }
+
+        $('#restore-progress-actions').show();
+    }
+
     // Cancel all running backups
     $('.cancel-all-backups').click(function() {
         if (!confirm('Are you sure you want to cancel ALL running backup jobs? This will mark them as failed and stop any progress tracking.')) {

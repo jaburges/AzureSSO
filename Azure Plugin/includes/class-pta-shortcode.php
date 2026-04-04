@@ -104,11 +104,32 @@ class Azure_PTA_Shortcode {
     }
     
     /**
-     * Enqueue frontend assets
+     * Enqueue frontend assets only when a PTA shortcode is present.
      */
     public function enqueue_frontend_assets() {
+        global $post;
+        if (!is_a($post, 'WP_Post')) {
+            return;
+        }
+
+        $shortcodes = array('pta-roles-directory', 'pta-department-roles', 'pta-org-chart', 'pta-role-card', 'pta-department-vp', 'pta-open-positions', 'pta-user-roles');
+        $found = false;
+        foreach ($shortcodes as $sc) {
+            if (has_shortcode($post->post_content, $sc)) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            return;
+        }
+
         wp_enqueue_style('pta-roles-frontend', AZURE_PLUGIN_URL . 'css/pta-roles-frontend.css', array(), AZURE_PLUGIN_VERSION);
         wp_enqueue_script('pta-shortcodes', AZURE_PLUGIN_URL . 'assets/pta-shortcodes.js', array('jquery'), AZURE_PLUGIN_VERSION, true);
+
+        if (class_exists('Azure_PTA_Forminator') && Azure_PTA_Forminator::is_configured()) {
+            wp_localize_script('pta-shortcodes', 'ptaSignupConfig', Azure_PTA_Forminator::get_frontend_config());
+        }
     }
     
     /**
@@ -181,7 +202,19 @@ class Azure_PTA_Shortcode {
                 return $status === $atts['status'];
             });
         }
-        
+
+        // Load department O365 group emails for display on role cards
+        $dept_ids = array_unique(wp_list_pluck($roles, 'department_id'));
+        $atts['_dept_emails'] = $this->get_department_group_emails($dept_ids);
+
+        // For leadership structure, build per-role email map using all department emails
+        if ($atts['leadership_structure']) {
+            $all_dept_emails = $this->get_department_group_emails(
+                wp_list_pluck($this->pta_manager->get_departments(false), 'id')
+            );
+            $atts['_role_emails'] = $this->get_leadership_role_emails($roles, $all_dept_emails);
+        }
+
         return $this->render_roles_directory($roles, $atts);
     }
     
@@ -390,12 +423,16 @@ class Azure_PTA_Shortcode {
             return '<p class="pta-no-vp">VP user not found.</p>';
         }
         
+        // Use O365 group email if mapped, otherwise fall back to VP's personal email
+        $dept_emails = $this->get_department_group_emails(array($department->id));
+        $display_email = $dept_emails[$department->id] ?? $vp_user->user_email;
+
         $output = '<div class="pta-department-vp-card">';
         $output .= '<h4>' . esc_html($department->name) . ' VP</h4>';
         $output .= '<div class="pta-vp-name">' . esc_html($vp_user->display_name) . '</div>';
         
-        if ($atts['show_email'] && $vp_user->user_email) {
-            $output .= '<div class="pta-vp-email"><a href="mailto:' . esc_attr($vp_user->user_email) . '">' . esc_html($vp_user->user_email) . '</a></div>';
+        if ($atts['show_email'] && $display_email) {
+            $output .= '<div class="pta-vp-email"><a href="mailto:' . esc_attr($display_email) . '">' . esc_html($display_email) . '</a></div>';
         }
         
         $output .= '</div>';
@@ -566,7 +603,10 @@ class Azure_PTA_Shortcode {
         
         // Original grid/list/cards layout
         $leader_class = $is_leader ? ' pta-leader-card' : '';
-        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . $leader_class . '">';
+        $data_attrs = ' data-role-id="' . esc_attr($role->id) . '"'
+            . ' data-role-name="' . esc_attr($role->name) . '"'
+            . ' data-department-name="' . esc_attr($role->department_name) . '"';
+        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . $leader_class . '"' . $data_attrs . '>';
         
         // Show photo if include_photo is true and role has assignments
         if ($include_photo && !empty($role->assignments)) {
@@ -599,6 +639,13 @@ class Azure_PTA_Shortcode {
                 $output .= '<div class="pta-role-assigned-names">' . implode(', ', $user_names) . '</div>';
             }
         }
+
+        // Show O365 group email for leadership structure roles
+        $role_emails = $atts['_role_emails'] ?? array();
+        $role_email = $role_emails[$role->id] ?? '';
+        if (!empty($role_email)) {
+            $output .= '<div class="pta-role-email"><a href="mailto:' . esc_attr($role_email) . '">' . esc_html($role_email) . '</a></div>';
+        }
         
         if ($atts['show_count']) {
             $output .= '<div class="pta-role-count">' . $role->assigned_count . ' of ' . $role->max_occupants . ' filled</div>';
@@ -610,6 +657,10 @@ class Azure_PTA_Shortcode {
         
         $output .= '<div class="pta-role-department">' . esc_html($role->department_name) . '</div>';
         $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
+
+        // Signup button (only when Forminator is configured and role has openings)
+        $output .= $this->maybe_render_signup_button($role, $status);
+
         $output .= '</div>';
         
         return $output;
@@ -619,7 +670,10 @@ class Azure_PTA_Shortcode {
      * Render team member style card (Team Members plugin inspired)
      */
     private function render_team_card($role, $atts, $status) {
-        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . '">';
+        $data_attrs = ' data-role-id="' . esc_attr($role->id) . '"'
+            . ' data-role-name="' . esc_attr($role->name) . '"'
+            . ' data-department-name="' . esc_attr($role->department_name) . '"';
+        $output = '<div class="pta-role-item pta-status-' . esc_attr($status) . '"' . $data_attrs . '>';
         
         // Get first assigned user for avatar (or show placeholder)
         $assigned_user = null;
@@ -660,9 +714,12 @@ class Azure_PTA_Shortcode {
         if ($atts['show_contact'] && $assigned_user) {
             $output .= '<div class="pta-role-contacts">';
             
-            // Email link
-            if ($assigned_user->user_email) {
-                $output .= '<a href="mailto:' . esc_attr($assigned_user->user_email) . '" class="pta-role-contact-link" title="Email ' . esc_attr($assigned_user->display_name) . '">@</a>';
+            // Prefer role-level O365 email, then department email, then user email
+            $role_emails = $atts['_role_emails'] ?? array();
+            $dept_emails = $atts['_dept_emails'] ?? array();
+            $contact_email = $role_emails[$role->id] ?? $dept_emails[$role->department_id] ?? $assigned_user->user_email;
+            if ($contact_email) {
+                $output .= '<a href="mailto:' . esc_attr($contact_email) . '" class="pta-role-contact-link" title="Email ' . esc_attr($contact_email) . '">@</a>';
             }
             
             // Phone link (if available in user meta)
@@ -678,10 +735,34 @@ class Azure_PTA_Shortcode {
         
         // Status badge
         $output .= '<div class="pta-role-status pta-status-' . esc_attr($status) . '">' . ucfirst($status) . '</div>';
+
+        // Signup button
+        $output .= $this->maybe_render_signup_button($role, $status);
         
         $output .= '</div>'; // Close role item
         
         return $output;
+    }
+
+    /**
+     * Conditionally render a signup button for a role card.
+     */
+    private function maybe_render_signup_button($role, $status) {
+        if (!class_exists('Azure_PTA_Forminator') || !Azure_PTA_Forminator::is_configured()) {
+            return '';
+        }
+
+        $open_only = Azure_Settings::get_setting('pta_forminator_open_roles_only', true);
+        if ($open_only && $status === 'filled') {
+            return '';
+        }
+
+        return '<button type="button" class="pta-signup-btn" '
+            . 'data-role-id="' . esc_attr($role->id) . '" '
+            . 'data-role-name="' . esc_attr($role->name) . '" '
+            . 'data-department-name="' . esc_attr($role->department_name) . '">'
+            . esc_html__('Sign Up', 'azure-plugin')
+            . '</button>';
     }
     
     /**
@@ -761,6 +842,17 @@ class Azure_PTA_Shortcode {
     private function get_org_chart_data($department_filter) {
         $departments = $this->pta_manager->get_departments(true);
         $roles = $this->pta_manager->get_roles(null, true);
+
+        // Sort departments so "Exec Board" appears first
+        usort($departments, function($a, $b) {
+            $a_exec = (strtolower($a->name) === 'exec board') ? 0 : 1;
+            $b_exec = (strtolower($b->name) === 'exec board') ? 0 : 1;
+            if ($a_exec !== $b_exec) return $a_exec - $b_exec;
+            return strcmp($a->name, $b->name);
+        });
+
+        // Pre-load all department group mappings for email display
+        $dept_emails = $this->get_department_group_emails(wp_list_pluck($departments, 'id'));
         
         $org_data = array(
             'departments' => array(),
@@ -784,7 +876,8 @@ class Azure_PTA_Shortcode {
             $org_data['departments'][] = array(
                 'id' => $dept->id,
                 'name' => $dept->name,
-                'vp' => $vp_name
+                'vp' => $vp_name,
+                'email' => $dept_emails[$dept->id] ?? ''
             );
         }
         
@@ -914,6 +1007,93 @@ class Azure_PTA_Shortcode {
         $output .= '</div>';
         return $output;
     }
+
+    /**
+     * Batch-load O365 group emails for an array of department IDs.
+     * Returns [ dept_id => email_string, ... ]
+     */
+    private function get_department_group_emails($dept_ids) {
+        $emails = array();
+
+        if (empty($dept_ids) || !class_exists('Azure_PTA_Groups_Manager')) {
+            return $emails;
+        }
+
+        $groups_manager = new Azure_PTA_Groups_Manager();
+        $all_mappings = $groups_manager->get_group_mappings('department');
+
+        foreach ($all_mappings as $mapping) {
+            if (in_array($mapping->target_id, $dept_ids) && !empty($mapping->mail)) {
+                $emails[$mapping->target_id] = $mapping->mail;
+            }
+        }
+
+        return $emails;
+    }
+
+    /**
+     * Batch-load O365 group emails for an array of role IDs.
+     * Returns [ role_id => email_string, ... ]
+     */
+    private function get_role_group_emails($role_ids) {
+        $emails = array();
+
+        if (empty($role_ids) || !class_exists('Azure_PTA_Groups_Manager')) {
+            return $emails;
+        }
+
+        $groups_manager = new Azure_PTA_Groups_Manager();
+        $all_mappings = $groups_manager->get_group_mappings('role');
+
+        foreach ($all_mappings as $mapping) {
+            if (in_array($mapping->target_id, $role_ids) && !empty($mapping->mail)) {
+                $emails[$mapping->target_id] = $mapping->mail;
+            }
+        }
+
+        return $emails;
+    }
+
+    /**
+     * Build a per-role email map for leadership structure display.
+     * Priority: role-level O365 mapping → VP's department O365 mapping → own department mapping.
+     */
+    private function get_leadership_role_emails($roles, $dept_emails) {
+        $role_emails = array();
+
+        $role_ids = wp_list_pluck($roles, 'id');
+        $direct_role_emails = $this->get_role_group_emails($role_ids);
+
+        $all_departments = $this->pta_manager->get_departments(false);
+        $vp_to_dept = array();
+        foreach ($all_departments as $dept) {
+            if (!empty($dept->vp_user_id)) {
+                $vp_to_dept[$dept->vp_user_id] = $dept->id;
+            }
+        }
+
+        foreach ($roles as $role) {
+            if (!empty($direct_role_emails[$role->id])) {
+                $role_emails[$role->id] = $direct_role_emails[$role->id];
+                continue;
+            }
+
+            if (!empty($role->assignments)) {
+                $assigned_user_id = $role->assignments[0]->user_id;
+                if (isset($vp_to_dept[$assigned_user_id])) {
+                    $vp_dept_id = $vp_to_dept[$assigned_user_id];
+                    if (!empty($dept_emails[$vp_dept_id])) {
+                        $role_emails[$role->id] = $dept_emails[$vp_dept_id];
+                        continue;
+                    }
+                }
+            }
+
+            if (!empty($dept_emails[$role->department_id])) {
+                $role_emails[$role->id] = $dept_emails[$role->department_id];
+            }
+        }
+
+        return $role_emails;
+    }
 }
-
-

@@ -161,18 +161,10 @@ class Azure_Backup_Scheduler {
         try {
             if (class_exists('Azure_Backup')) {
                 $backup = new Azure_Backup();
+                $backup->run_scheduled_backup();
                 
-                $backup_types = Azure_Settings::get_setting('backup_types', array('content', 'media', 'plugins', 'themes', 'database'));
-                $backup_name = 'Scheduled Backup - ' . date('Y-m-d H:i:s');
-                
-                $backup_id = $backup->create_backup($backup_name, $backup_types, true);
-                
-                Azure_Database::log_activity('backup', 'scheduled_backup_completed', 'backup', $backup_id);
-                Azure_Logger::info('Backup Scheduler: Scheduled backup completed successfully');
-                
-                // Send notification
-                $this->send_backup_notification(true, 'Scheduled backup completed successfully', $backup_id);
-                
+                Azure_Logger::info('Backup Scheduler: Scheduled backup initiated successfully');
+                $this->send_backup_notification(true, 'Scheduled backup initiated successfully', null);
             } else {
                 throw new Exception('Backup class not available');
             }
