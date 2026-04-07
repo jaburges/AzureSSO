@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/jaburges/PTATools
  * Update URI: https://github.com/jaburges/PTATools/
  * Description: Complete Microsoft 365 integration for WordPress - SSO authentication with Azure AD claims mapping, automated backup to Azure Blob Storage, Outlook calendar embedding with shared mailbox support, TEC calendar sync, email via Microsoft Graph API, PTA role management with O365 Groups sync, WooCommerce class products with TEC event generation, Newsletter module, and OneDrive media integration.
- * Version: 3.46
+ * Version: 3.47
  * Author: Jamie Burgess
  * License: GPL v2 or later
  * Text Domain: azure-plugin
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('AZURE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AZURE_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('AZURE_PLUGIN_VERSION', '3.46');
+define('AZURE_PLUGIN_VERSION', '3.47');
 
 // Auto-update from GitHub Releases (Update URI header must match hostname: github.com)
 add_filter('update_plugins_github.com', function ($update, array $plugin_data, string $plugin_file, $locales) {
@@ -112,8 +112,7 @@ class AzurePlugin {
             register_activation_hook(__FILE__, array($this, 'activate'));
             register_deactivation_hook(__FILE__, array($this, 'deactivate'));
             
-        } catch (Exception $e) {
-            // Log critical constructor errors only
+        } catch (\Throwable $e) {
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::error('Plugin constructor failed: ' . $e->getMessage(), array(
                     'module' => 'Core',
@@ -122,7 +121,6 @@ class AzurePlugin {
                 ));
             }
             error_log('Azure Plugin: Constructor error - ' . $e->getMessage());
-            throw $e;
         }
     }
     
@@ -223,39 +221,37 @@ class AzurePlugin {
                 'class-diagnostics-api.php' => 'Diagnostics REST API class'
             );
             
-            // Load critical files first - these must succeed
+            // Load critical files first — log errors but never throw/fatal
+            $critical_ok = true;
             foreach ($critical_files as $file => $description) {
                 $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
                 
                 if (!file_exists($file_path)) {
-                    $error_msg = "Critical file not found: {$file_path}";
-                    error_log('Azure Plugin: ' . $error_msg);
-                    throw new Exception($error_msg);
+                    error_log("Azure Plugin: Critical file not found: {$file_path}");
+                    $critical_ok = false;
+                    continue;
                 }
                 
                 try {
                     require_once $file_path;
-                } catch (ParseError $e) {
-                    $error_msg = "Parse error in critical file {$file}: " . $e->getMessage();
-                    error_log('Azure Plugin: ' . $error_msg . ' at ' . $e->getFile() . ':' . $e->getLine());
-                    throw new Exception($error_msg);
-                } catch (Error $e) {
-                    $error_msg = "Fatal error in critical file {$file}: " . $e->getMessage();
-                    error_log('Azure Plugin: ' . $error_msg . ' at ' . $e->getFile() . ':' . $e->getLine());
-                    throw new Exception($error_msg);
-                } catch (Exception $e) {
-                    $error_msg = "Error loading critical file {$file}: " . $e->getMessage();
-                    error_log('Azure Plugin: ' . $error_msg);
-                    throw new Exception($error_msg);
+                } catch (\Throwable $e) {
+                    error_log("Azure Plugin: Error loading critical file {$file}: " . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
+                    $critical_ok = false;
                 }
             }
             
-            // Load optional files - failures are logged but don't stop loading
+            if (!$critical_ok) {
+                add_action('admin_notices', function () {
+                    echo '<div class="notice notice-error"><p><strong>PTA Tools:</strong> One or more core files could not be loaded. Check the PHP error log for details.</p></div>';
+                });
+            }
+            
+            // Load optional files — failures are logged but never stop loading
             foreach ($optional_files as $file => $description) {
                 $file_path = AZURE_PLUGIN_PATH . 'includes/' . $file;
                 
                 if (!file_exists($file_path)) {
-                    if (WP_DEBUG) {
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
                         error_log("Azure Plugin: Optional file not found: {$file_path}");
                     }
                     continue;
@@ -263,12 +259,12 @@ class AzurePlugin {
                 
                 try {
                     require_once $file_path;
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     error_log("Azure Plugin: Error loading optional file {$file}: " . $e->getMessage());
                 }
             }
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::error('Failed to load dependencies: ' . $e->getMessage(), array(
                     'module' => 'Core',
@@ -277,7 +273,6 @@ class AzurePlugin {
                 ));
             }
             error_log('Azure Plugin: load_dependencies failed - ' . $e->getMessage());
-            throw $e;
         }
     }
     
@@ -387,7 +382,7 @@ class AzurePlugin {
                 $this->init_volunteer_components();
             }
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             if (class_exists('Azure_Logger')) {
                 Azure_Logger::error('Plugin init failed: ' . $e->getMessage(), array(
                     'module' => 'Core',
@@ -417,7 +412,7 @@ class AzurePlugin {
                 new Azure_User_Account_Shortcode();
                 Azure_Logger::debug_module('SSO', 'Azure_User_Account_Shortcode initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('SSO init failed: ' . $e->getMessage(), array(
                 'module' => 'SSO',
                 'file' => $e->getFile(),
@@ -444,7 +439,7 @@ class AzurePlugin {
                 Azure_Logger::debug_module('Backup', 'Azure_Backup_Scheduler initialized successfully');
             }
             // Note: Azure_Backup_Storage is not instantiated here - it's created on-demand by other classes
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Backup init failed: ' . $e->getMessage(), array(
                 'module' => 'Backup',
                 'file' => $e->getFile(),
@@ -484,7 +479,7 @@ class AzurePlugin {
                 new Azure_Calendar_EventsShortcode();
                 Azure_Logger::debug_module('Calendar', 'Azure_Calendar_EventsShortcode initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Calendar init failed: ' . $e->getMessage(), array(
                 'module' => 'Calendar',
                 'file' => $e->getFile(),
@@ -512,7 +507,7 @@ class AzurePlugin {
                 new Azure_TEC_Sync_Scheduler();
                 Azure_Logger::debug_module('TEC', 'Azure_TEC_Sync_Scheduler initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('TEC init failed: ' . $e->getMessage(), array(
                 'module' => 'TEC',
                 'file' => $e->getFile(),
@@ -548,7 +543,7 @@ class AzurePlugin {
                 new Azure_Email_Shortcode();
                 Azure_Logger::debug_module('Email', 'Azure_Email_Shortcode initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Email init failed: ' . $e->getMessage(), array(
                 'module' => 'Email',
                 'file' => $e->getFile(),
@@ -599,7 +594,7 @@ class AzurePlugin {
             
             Azure_Logger::debug_module('PTA', 'All PTA components initialized successfully');
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('PTA init failed: ' . $e->getMessage(), array(
                 'module' => 'PTA',
                 'file' => $e->getFile(),
@@ -630,7 +625,7 @@ class AzurePlugin {
             
             Azure_Logger::debug_module('OneDrive', 'All OneDrive Media components initialized successfully');
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('OneDrive Media init failed: ' . $e->getMessage(), array(
                 'module' => 'OneDrive',
                 'file' => $e->getFile(),
@@ -693,7 +688,7 @@ class AzurePlugin {
             
             Azure_Logger::debug_module('Classes', 'All Classes components initialized successfully');
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Classes init failed: ' . $e->getMessage(), array(
                 'module' => 'Classes',
                 'file' => $e->getFile(),
@@ -708,7 +703,7 @@ class AzurePlugin {
             if (class_exists('Azure_Upcoming_Module')) {
                 Azure_Upcoming_Module::get_instance();
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Upcoming Events init failed: ' . $e->getMessage(), array(
                 'module' => 'Upcoming',
                 'file' => $e->getFile(),
@@ -743,7 +738,7 @@ class AzurePlugin {
             
             Azure_Logger::debug_module('Newsletter', 'All Newsletter components initialized successfully');
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Newsletter init failed: ' . $e->getMessage(), array(
                 'module' => 'Newsletter',
                 'file' => $e->getFile(),
@@ -759,7 +754,7 @@ class AzurePlugin {
                 Azure_Auction_Module::get_instance();
                 Azure_Logger::debug_module('Auction', 'Auction Module initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Auction init failed: ' . $e->getMessage(), array(
                 'module' => 'Auction',
                 'file' => $e->getFile(),
@@ -779,7 +774,7 @@ class AzurePlugin {
                 Azure_User_Children::get_instance();
                 Azure_Logger::debug_module('ProductFields', 'User Children Profiles initialized');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Product Fields init failed: ' . $e->getMessage(), array(
                 'module' => 'ProductFields',
                 'file' => $e->getFile(),
@@ -795,7 +790,7 @@ class AzurePlugin {
                 Azure_Donations_Module::get_instance();
                 Azure_Logger::debug_module('Donations', 'Donations Module initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Donations init failed: ' . $e->getMessage(), array(
                 'module' => 'Donations',
                 'file' => $e->getFile(),
@@ -811,7 +806,7 @@ class AzurePlugin {
                 Azure_Volunteer_Signup::get_instance();
                 Azure_Logger::debug_module('Volunteer', 'Volunteer Sign Up Module initialized successfully');
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Azure_Logger::error('Volunteer init failed: ' . $e->getMessage(), array(
                 'module' => 'Volunteer',
                 'file' => $e->getFile(),
@@ -900,29 +895,26 @@ class AzurePlugin {
                 Azure_Logger::info('Creating database tables');
                 Azure_Database::create_tables();
                 Azure_Logger::info('Database tables created successfully');
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 $write_log("❌ **[STEP 6 ERROR]** Failed to create main tables: " . $e->getMessage());
                 Azure_Logger::error('Database table creation failed: ' . $e->getMessage());
-                // Continue activation so plugin still updates; admin can fix DB or re-run activation
             }
             
             // Create PTA database tables
             if (class_exists('Azure_PTA_Database')) {
                 try {
                     Azure_Logger::info('Creating PTA database tables');
-                    Azure_PTA_Database::create_pta_tables();  // Fixed: correct method name
+                    Azure_PTA_Database::create_pta_tables();
                     Azure_Logger::info('PTA database tables created successfully');
                     
-                    // Seed initial data from CSV (only if tables are empty)
                     $write_log("⏳ **[STEP 6b]** Seeding PTA data from CSV");
                     Azure_Logger::info('Seeding PTA initial data from CSV');
-                    Azure_PTA_Database::seed_initial_data(false);  // false = skip if already populated
+                    Azure_PTA_Database::seed_initial_data(false);
                     Azure_Logger::info('PTA initial data seeded successfully');
                     $write_log("✅ **[STEP 6b]** PTA data seeded from CSV");
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     $write_log("❌ **[STEP 6 ERROR]** Failed to create/seed PTA tables: " . $e->getMessage());
                     Azure_Logger::error('Failed to create/seed PTA database tables: ' . $e->getMessage());
-                    // Continue with activation but log the error
                 }
             }
             
@@ -934,10 +926,9 @@ class AzurePlugin {
                     Azure_Newsletter_Module::create_tables();
                     Azure_Logger::info('Newsletter database tables created successfully');
                     $write_log("✅ **[STEP 6c]** Newsletter tables created");
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     $write_log("❌ **[STEP 6c ERROR]** Failed to create Newsletter tables: " . $e->getMessage());
                     Azure_Logger::error('Failed to create Newsletter database tables: ' . $e->getMessage());
-                    // Continue with activation but log the error
                 }
             }
             
@@ -1058,7 +1049,7 @@ class AzurePlugin {
             Azure_Logger::info('Plugin activation completed successfully');
             $write_log("🎉 **[SUCCESS]** Plugin activation completed successfully");
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             $error_msg = 'Failed during activation: ' . $e->getMessage();
             $write_log("❌ **[ERROR]** {$error_msg}");
             $write_log("📍 **[ERROR FILE]** " . $e->getFile() . " line " . $e->getLine());
@@ -1072,20 +1063,11 @@ class AzurePlugin {
                 error_log('Azure Plugin: ' . $error_msg);
             }
             
-            $write_log("🔄 **[ACTION]** Deactivating plugin to prevent broken state");
-            // Deactivate plugin to prevent broken state
-            deactivate_plugins(plugin_basename(__FILE__));
-            wp_die('Azure Plugin activation failed: ' . $error_msg . ' - Check ' . $log_file . ' for detailed logs.');
-            
-        } catch (Error $e) {
-            $error_msg = 'Fatal error during activation: ' . $e->getMessage();
-            $write_log("💀 **[FATAL ERROR]** {$error_msg}");
-            $write_log("📍 **[ERROR FILE]** " . $e->getFile() . " line " . $e->getLine());
-            $write_log("📝 **[ERROR TRACE]** " . $e->getTraceAsString());
-            
-            error_log('Azure Plugin Fatal Error: ' . $error_msg);
-            deactivate_plugins(plugin_basename(__FILE__));
-            wp_die('Azure Plugin fatal error: ' . $error_msg . ' - Check ' . $log_file . ' for detailed logs.');
+            wp_die(
+                'PTA Tools activation failed: ' . esc_html($e->getMessage()) . '<br><br>Check <code>' . esc_html($log_file) . '</code> for detailed logs.<br><br><a href="' . esc_url(admin_url('plugins.php')) . '">Back to Plugins</a>',
+                'Plugin Activation Error',
+                array('back_link' => true)
+            );
         }
     }
     
@@ -1149,7 +1131,7 @@ class AzurePlugin {
 // Initialize the plugin
 try {
     AzurePlugin::get_instance();
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     if (class_exists('Azure_Logger')) {
         Azure_Logger::error('Plugin initialization failed: ' . $e->getMessage(), array(
             'module' => 'Core',

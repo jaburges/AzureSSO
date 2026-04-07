@@ -82,9 +82,19 @@ if (!defined('ABSPATH')) {
                     </div>
                     <div class="module-description">
                         <p>Calendar embed, sync with The Events Calendar, upcoming events, and volunteer sign-ups.</p>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px;">
-                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" class="module-toggle" data-module="volunteer" <?php checked($settings['enable_volunteer'] ?? false); ?> style="margin: 0;" />
+                        <div class="sub-modules">
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="tec_integration" <?php checked($settings['enable_tec_integration'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
+                                Calendar Sync (TEC)
+                            </label>
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="volunteer" <?php checked($settings['enable_volunteer'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
                                 Volunteer Sign Up
                             </label>
                         </div>
@@ -179,22 +189,34 @@ if (!defined('ABSPATH')) {
                         </div>
                     </div>
                     <div class="module-description">
-                        <p>Auction, Classes, Product Fields, and Donations. Enable/disable each within the module.</p>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px;">
-                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" class="module-toggle" data-module="auction" <?php checked($settings['enable_auction'] ?? false); ?> style="margin: 0;" />
+                        <p>Auction, Classes, Product Fields, and Donations.</p>
+                        <div class="sub-modules">
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="auction" <?php checked($settings['enable_auction'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
                                 Auction
                             </label>
-                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" class="module-toggle" data-module="classes" <?php checked($settings['enable_classes'] ?? false); ?> style="margin: 0;" />
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="classes" <?php checked($settings['enable_classes'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
                                 Classes
                             </label>
-                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" class="module-toggle" data-module="product_fields" <?php checked($settings['enable_product_fields'] ?? false); ?> style="margin: 0;" />
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="product_fields" <?php checked($settings['enable_product_fields'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
                                 Product Fields
                             </label>
-                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" class="module-toggle" data-module="donations" <?php checked($settings['enable_donations'] ?? false); ?> style="margin: 0;" />
+                            <label class="sub-module-item">
+                                <label class="switch-mini">
+                                    <input type="checkbox" class="module-toggle" data-module="donations" <?php checked($settings['enable_donations'] ?? false); ?> />
+                                    <span class="slider"></span>
+                                </label>
                                 Donations
                             </label>
                         </div>

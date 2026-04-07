@@ -61,6 +61,8 @@ class Azure_Donations_Module {
         add_action('wp_ajax_nopriv_azure_donations_update_fee', array($this, 'ajax_update_fee'));
         add_action('woocommerce_cart_calculate_fees', array($this, 'apply_donation_fee'));
         add_action('woocommerce_review_order_before_submit', array($this, 'render_checkout_widget'));
+        add_action('woocommerce_after_cart_totals', array($this, 'render_cart_widget'));
+        add_action('wp_footer', array($this, 'render_blocks_checkout_widget'));
         add_action('woocommerce_thankyou', array($this, 'record_donation'), 10, 1);
         add_shortcode('pta-donate', array($this, 'shortcode_donate'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
@@ -163,6 +165,14 @@ class Azure_Donations_Module {
     // ─── Checkout Widget ─────────────────────────────────────────────
 
     public function render_checkout_widget() {
+        $this->render_donation_widget('checkout');
+    }
+
+    public function render_cart_widget() {
+        $this->render_donation_widget('cart');
+    }
+
+    private function render_donation_widget($context = 'checkout') {
         $settings = Azure_Settings::get_all_settings();
         if (empty($settings['enable_donations'])) return;
 
@@ -179,9 +189,10 @@ class Azure_Donations_Module {
         $roundup_active = $session ? $session->get('pta_donation_roundup', false) : false;
         $custom_active  = $session ? floatval($session->get('pta_donation_custom', 0)) : 0;
 
+        $widget_id = 'pta-donations-widget-' . $context;
         $nonce = wp_create_nonce('pta_donations_nonce');
         ?>
-        <div class="pta-donations-checkout-widget" id="pta-donations-widget">
+        <div class="pta-donations-checkout-widget" id="<?php echo esc_attr($widget_id); ?>">
             <div class="pta-donations-header">
                 <span class="dashicons dashicons-heart"></span>
                 <strong><?php echo esc_html($campaign->name); ?></strong>
@@ -193,7 +204,7 @@ class Azure_Donations_Module {
             <?php if ($enable_roundup): ?>
             <div class="pta-donations-row">
                 <label class="pta-donations-toggle">
-                    <input type="checkbox" id="pta-roundup-toggle" <?php checked($roundup_active); ?> />
+                    <input type="checkbox" class="pta-roundup-toggle" <?php checked($roundup_active); ?> />
                     <span><?php _e('Round up my total to the nearest dollar', 'azure-plugin'); ?></span>
                 </label>
             </div>
@@ -211,7 +222,7 @@ class Azure_Donations_Module {
                     <?php endforeach; ?>
                     <div class="pta-donate-custom-wrap">
                         <span>$</span>
-                        <input type="number" id="pta-donate-custom-input" min="0" step="0.01" placeholder="Other"
+                        <input type="number" class="pta-donate-custom-input" min="0" step="0.01" placeholder="Other"
                                value="<?php echo ($custom_active && !in_array($custom_active, $quick_amounts)) ? esc_attr($custom_active) : ''; ?>" />
                     </div>
                 </div>
@@ -224,8 +235,28 @@ class Azure_Donations_Module {
 
         <script>
         jQuery(function($) {
+            var $w = $('#<?php echo esc_js($widget_id); ?>');
             var ajaxUrl = '<?php echo esc_js(admin_url('admin-ajax.php')); ?>';
             var nonce = '<?php echo esc_js($nonce); ?>';
+            var ctx = '<?php echo esc_js($context); ?>';
+
+            function refreshTotals() {
+                if (ctx === 'checkout') {
+                    $(document.body).trigger('update_checkout');
+                } else if (ctx === 'blocks-checkout') {
+                    // Blocks checkout: dispatch a cart update via Store API
+                    if (wp && wp.data && wp.data.dispatch) {
+                        var store = wp.data.dispatch('wc/store/cart');
+                        if (store && store.invalidateResolutionForStore) {
+                            store.invalidateResolutionForStore();
+                        }
+                    }
+                    // Fallback: trigger WC Blocks to refetch cart data
+                    $(document.body).trigger('wc-blocks_added_to_cart');
+                } else {
+                    $('[name="update_cart"]').prop('disabled', false).trigger('click');
+                }
+            }
 
             function updateDonation(type, amount, active) {
                 $.post(ajaxUrl, {
@@ -235,25 +266,25 @@ class Azure_Donations_Module {
                     amount: amount,
                     active: active ? 1 : 0
                 }, function() {
-                    $(document.body).trigger('update_checkout');
+                    refreshTotals();
                 });
             }
 
-            $('#pta-roundup-toggle').on('change', function() {
+            $w.find('.pta-roundup-toggle').on('change', function() {
                 var on = $(this).is(':checked');
                 if (on) {
-                    $('.pta-donate-quick').removeClass('active');
-                    $('#pta-donate-custom-input').val('');
+                    $w.find('.pta-donate-quick').removeClass('active');
+                    $w.find('.pta-donate-custom-input').val('');
                 }
                 updateDonation('roundup', 0, on);
             });
 
-            $('.pta-donate-quick').on('click', function() {
+            $w.find('.pta-donate-quick').on('click', function() {
                 var amt = parseFloat($(this).data('amount'));
                 var wasActive = $(this).hasClass('active');
-                $('.pta-donate-quick').removeClass('active');
-                $('#pta-donate-custom-input').val('');
-                $('#pta-roundup-toggle').prop('checked', false);
+                $w.find('.pta-donate-quick').removeClass('active');
+                $w.find('.pta-donate-custom-input').val('');
+                $w.find('.pta-roundup-toggle').prop('checked', false);
 
                 if (wasActive) {
                     updateDonation('clear', 0, false);
@@ -264,12 +295,12 @@ class Azure_Donations_Module {
             });
 
             var customTimer;
-            $('#pta-donate-custom-input').on('input', function() {
+            $w.find('.pta-donate-custom-input').on('input', function() {
                 clearTimeout(customTimer);
                 var val = parseFloat($(this).val());
                 customTimer = setTimeout(function() {
-                    $('.pta-donate-quick').removeClass('active');
-                    $('#pta-roundup-toggle').prop('checked', false);
+                    $w.find('.pta-donate-quick').removeClass('active');
+                    $w.find('.pta-roundup-toggle').prop('checked', false);
                     if (val > 0) {
                         updateDonation('custom', val, true);
                     } else {
@@ -278,13 +309,75 @@ class Azure_Donations_Module {
                 }, 500);
             });
 
-            $('.pta-donate-clear').on('click', function() {
-                $('.pta-donate-quick').removeClass('active');
-                $('#pta-donate-custom-input').val('');
-                $('#pta-roundup-toggle').prop('checked', false);
+            $w.find('.pta-donate-clear').on('click', function() {
+                $w.find('.pta-donate-quick').removeClass('active');
+                $w.find('.pta-donate-custom-input').val('');
+                $w.find('.pta-roundup-toggle').prop('checked', false);
                 updateDonation('clear', 0, false);
             });
         });
+        </script>
+        <?php
+    }
+
+    /**
+     * Render donation widget for WooCommerce Blocks checkout.
+     * Outputs a hidden container in the footer; JS relocates it into the order summary.
+     */
+    public function render_blocks_checkout_widget() {
+        if (!is_checkout()) return;
+        if (!function_exists('has_block') || !has_block('woocommerce/checkout')) return;
+
+        $settings = Azure_Settings::get_all_settings();
+        if (empty($settings['enable_donations'])) return;
+
+        $campaign = self::get_default_campaign();
+        if (!$campaign) return;
+
+        $enable_roundup = !empty($settings['donations_enable_roundup']);
+        $enable_custom  = !empty($settings['donations_enable_custom']);
+        if (!$enable_roundup && !$enable_custom) return;
+
+        echo '<div id="pta-donations-blocks-staging" style="display:none;">';
+        $this->render_donation_widget('blocks-checkout');
+        echo '</div>';
+        ?>
+        <script>
+        (function() {
+            function placeDonationWidget() {
+                var staging = document.getElementById('pta-donations-blocks-staging');
+                if (!staging) return;
+                var widget = staging.firstElementChild;
+                if (!widget) return;
+
+                var target = document.querySelector('.wc-block-components-totals-coupon')
+                          || document.querySelector('.wc-block-components-totals-item');
+                if (target) {
+                    target.parentNode.insertBefore(widget, target);
+                    staging.remove();
+                    return true;
+                }
+                return false;
+            }
+
+            if (document.readyState === 'complete') {
+                if (!placeDonationWidget()) {
+                    var attempts = 0;
+                    var iv = setInterval(function() {
+                        if (placeDonationWidget() || ++attempts > 40) clearInterval(iv);
+                    }, 250);
+                }
+            } else {
+                window.addEventListener('load', function() {
+                    if (!placeDonationWidget()) {
+                        var attempts = 0;
+                        var iv = setInterval(function() {
+                            if (placeDonationWidget() || ++attempts > 40) clearInterval(iv);
+                        }, 250);
+                    }
+                });
+            }
+        })();
         </script>
         <?php
     }
@@ -478,12 +571,13 @@ class Azure_Donations_Module {
     public function enqueue_frontend_assets() {
         $post = get_post();
         $has_shortcode = $post && has_shortcode($post->post_content ?? '', 'pta-donate');
-        if (!is_checkout() && !$has_shortcode) return;
+        if (!is_checkout() && !is_cart() && !$has_shortcode) return;
 
+        wp_enqueue_style('dashicons');
         wp_enqueue_style(
             'pta-donations-frontend',
             AZURE_PLUGIN_URL . 'css/donations-frontend.css',
-            array(),
+            array('dashicons'),
             AZURE_PLUGIN_VERSION
         );
     }

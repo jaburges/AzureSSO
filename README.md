@@ -2,7 +2,7 @@
 
 A comprehensive WordPress plugin that integrates Microsoft Azure/Microsoft 365 with WordPress and WooCommerce. Single sign-on, calendar sync, email, backups, PTA organizational management, OneDrive media, **Classes**, **Event Tickets**, **Newsletter**, **Auction**, **Product Fields**, **Donations**, and **Volunteer Sign Up** modules—all from one unified plugin (also known as **Microsoft WP**).
 
-**Current (v3.46):** UI polish — fixed dashicon alignment across all admin tabs and headings; donation shortcode buttons now display in a compact single row with visible text on all themes.
+**Current (v3.47):** Stability & cache — graceful error handling (catch Throwable), cache-safe login shortcode via AJAX, donations widget on cart + Blocks checkout, sub-module toggle switches, WooCommerce-optional guards.
 
 ---
 
@@ -1687,7 +1687,14 @@ This plugin integrates and enhances functionality from multiple Microsoft servic
 
 ## 📊 **Version History**
 
-### **Version 3.46** (Current — March 2026)
+### **Version 3.47** (Current — April 2026)
+- **Stability**: All `catch (Exception)` upgraded to `catch (\Throwable)` across core, logger, and module init — prevents uncaught `Error`/`ParseError` from crashing the site
+- **Graceful degradation**: Plugin no longer self-deactivates on missing files; shows admin notice instead. WooCommerce-optional guards prevent fatals when WC is absent
+- **Login shortcode**: `[user-account-dropdown]` now cache-safe — renders placeholder, then fetches logged-in state via AJAX to work with full-page caching (W3TC/Redis/AFD)
+- **Donations**: Widget now appears on cart page and WooCommerce Blocks checkout (auto-relocates via JS); context-aware refresh for classic, Blocks, and cart
+- **Admin UI**: Sub-module toggles (Calendar Sync, Volunteer, Auction, Classes, Product Fields, Donations) converted from checkboxes to mini toggle switches on main settings page
+
+### **Version 3.46** (March 2026)
 - **UI**: Fixed dashicon alignment in admin tab bars, page headings, and action row buttons — removed conflicting CSS properties that fought with flex layout
 - **Donations**: Shortcode amount buttons now display in a compact single row with explicit text color, fixing invisible text on themes that override button styles
 

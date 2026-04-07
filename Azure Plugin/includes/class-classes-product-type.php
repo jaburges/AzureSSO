@@ -961,6 +961,10 @@ class Azure_Classes_Product_Type {
 /**
  * Custom Product Class for "Class" type
  */
+if (!class_exists('WC_Product')) {
+    return;
+}
+
 class WC_Product_Class extends WC_Product {
     
     public function __construct($product = 0) {

@@ -23,12 +23,13 @@ if (!defined('ABSPATH')) {
 class Azure_User_Account_Shortcode {
     
     public function __construct() {
-        // Register shortcodes
         add_shortcode('user-account-dropdown', array($this, 'account_dropdown_shortcode'));
-        add_shortcode('user-account-menu', array($this, 'account_dropdown_shortcode')); // Alias
+        add_shortcode('user-account-menu', array($this, 'account_dropdown_shortcode'));
         
-        // Enqueue frontend assets
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
+        
+        add_action('wp_ajax_azure_account_state', array($this, 'ajax_account_state'));
+        add_action('wp_ajax_nopriv_azure_account_state', array($this, 'ajax_account_state'));
     }
     
     /**
@@ -52,6 +53,11 @@ class Azure_User_Account_Shortcode {
     
     /**
      * User account dropdown shortcode
+     *
+     * Always renders the logged-out placeholder so the HTML is safe for
+     * full-page caching (W3TC / Redis / AFD).  A small inline script
+     * detects the WordPress auth cookie and fetches the real user state
+     * via admin-ajax, then swaps the UI.
      */
     public function account_dropdown_shortcode($atts) {
         $atts = shortcode_atts(array(
@@ -62,218 +68,23 @@ class Azure_User_Account_Shortcode {
             'show_addresses' => 'false',
             'show_payment_methods' => 'false',
             'show_store_credit' => 'false',
-            'collapsed' => 'true', // Start collapsed
-            'style' => 'default', // default, minimal, card
+            'collapsed' => 'true',
+            'style' => 'default',
         ), $atts);
-        
-        // Convert string booleans to actual booleans
-        $show_avatar = filter_var($atts['show_avatar'], FILTER_VALIDATE_BOOLEAN);
-        $show_orders = filter_var($atts['show_orders'], FILTER_VALIDATE_BOOLEAN);
-        $show_downloads = filter_var($atts['show_downloads'], FILTER_VALIDATE_BOOLEAN);
-        $show_addresses = filter_var($atts['show_addresses'], FILTER_VALIDATE_BOOLEAN);
-        $show_payment_methods = filter_var($atts['show_payment_methods'], FILTER_VALIDATE_BOOLEAN);
-        $show_store_credit = filter_var($atts['show_store_credit'], FILTER_VALIDATE_BOOLEAN);
-        $collapsed = filter_var($atts['collapsed'], FILTER_VALIDATE_BOOLEAN);
-        $avatar_size = intval($atts['avatar_size']);
-        $style = sanitize_text_field($atts['style']);
-        
-        // Check if user is logged in
-        if (!is_user_logged_in()) {
-            return $this->render_logged_out_state();
-        }
-        
-        $current_user = wp_get_current_user();
-        $user_display_name = $current_user->display_name;
-        
-        // Build menu items
-        $menu_items = $this->get_menu_items($atts);
-        
-        // Get avatar
-        $avatar_html = '';
-        if ($show_avatar) {
-            $avatar_html = get_avatar($current_user->ID, $avatar_size, '', $user_display_name, array(
-                'class' => 'user-account-avatar'
-            ));
-        }
-        
-        // Generate unique ID for this instance
+
+        $style      = sanitize_text_field($atts['style']);
+        $login_url  = wp_login_url(home_url($_SERVER['REQUEST_URI']));
+        $ajax_url   = admin_url('admin-ajax.php');
         $dropdown_id = 'user-account-dropdown-' . wp_rand(1000, 9999);
-        
-        // Build output
+
         ob_start();
         ?>
-        <div class="user-account-dropdown-wrapper style-<?php echo esc_attr($style); ?>" id="<?php echo esc_attr($dropdown_id); ?>" style="position: relative; display: inline-block; z-index: 9999;">
-            <div class="user-account-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="<?php echo esc_attr($dropdown_id); ?>-menu" onclick="azureToggleAccountMenu('<?php echo esc_js($dropdown_id); ?>')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
-                <?php if ($show_avatar): ?>
-                    <?php echo $avatar_html; ?>
-                <?php endif; ?>
-                <span class="user-account-name"><?php echo esc_html($user_display_name); ?></span>
-                <span class="user-account-arrow" style="transition: transform 0.2s ease;">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </span>
-            </div>
-            
-            <div class="user-account-menu" id="<?php echo esc_attr($dropdown_id); ?>-menu" style="display: none; position: absolute; top: 100%; right: 0; min-width: 200px; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; margin-top: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10000;">
-                <ul class="user-account-menu-list" style="list-style: none; margin: 0; padding: 8px 0;">
-                    <?php foreach ($menu_items as $item): ?>
-                        <li class="user-account-menu-item" style="margin: 0; padding: 0;">
-                            <a href="<?php echo esc_url($item['url']); ?>" class="user-account-menu-link" style="display: flex; align-items: center; gap: 12px; padding: 10px 16px; color: #24292e; text-decoration: none;">
-                                <?php if (!empty($item['icon'])): ?>
-                                    <span class="menu-icon" style="display: flex; width: 20px; height: 20px; color: #6a737d;"><?php echo $item['icon']; ?></span>
-                                <?php endif; ?>
-                                <span class="menu-text"><?php echo esc_html($item['label']); ?></span>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
-        </div>
-        
-        <script>
-        function azureToggleAccountMenu(id) {
-            var wrapper = document.getElementById(id);
-            if (!wrapper) return;
-            
-            var toggle = wrapper.querySelector('.user-account-toggle');
-            var menu = document.getElementById(id + '-menu');
-            
-            if (menu.style.display === 'none' || menu.style.display === '') {
-                menu.style.display = 'block';
-                toggle.setAttribute('aria-expanded', 'true');
-                toggle.classList.add('is-open');
-            } else {
-                menu.style.display = 'none';
-                toggle.setAttribute('aria-expanded', 'false');
-                toggle.classList.remove('is-open');
-            }
-        }
-        
-        // Close when clicking outside
-        document.addEventListener('click', function(e) {
-            var dropdowns = document.querySelectorAll('.user-account-dropdown-wrapper');
-            dropdowns.forEach(function(wrapper) {
-                if (!wrapper.contains(e.target)) {
-                    var menu = wrapper.querySelector('.user-account-menu');
-                    var toggle = wrapper.querySelector('.user-account-toggle');
-                    if (menu) menu.style.display = 'none';
-                    if (toggle) {
-                        toggle.setAttribute('aria-expanded', 'false');
-                        toggle.classList.remove('is-open');
-                    }
-                }
-            });
-        });
-        </script>
-        <?php
-        return ob_get_clean();
-    }
-    
-    /**
-     * Get menu items based on settings
-     */
-    private function get_menu_items($atts) {
-        $items = array();
-        $wc_active = class_exists('WooCommerce');
-        $my_account_url = $wc_active ? wc_get_page_permalink('myaccount') : admin_url('profile.php');
-        
-        // Dashboard
-        $items[] = array(
-            'label' => __('Dashboard', 'azure-plugin'),
-            'url' => $my_account_url,
-            'icon' => $this->get_icon('dashboard')
-        );
-        
-        // Orders (WooCommerce)
-        if (filter_var($atts['show_orders'], FILTER_VALIDATE_BOOLEAN) && $wc_active) {
-            $items[] = array(
-                'label' => __('Orders', 'azure-plugin'),
-                'url' => wc_get_endpoint_url('orders', '', $my_account_url),
-                'icon' => $this->get_icon('orders')
-            );
-        }
-        
-        // Store Credit (if enabled)
-        if (filter_var($atts['show_store_credit'], FILTER_VALIDATE_BOOLEAN) && $wc_active) {
-            $items[] = array(
-                'label' => __('Store Credit', 'azure-plugin'),
-                'url' => wc_get_endpoint_url('store-credit', '', $my_account_url),
-                'icon' => $this->get_icon('credit')
-            );
-        }
-        
-        // Downloads (WooCommerce)
-        if (filter_var($atts['show_downloads'], FILTER_VALIDATE_BOOLEAN) && $wc_active) {
-            $items[] = array(
-                'label' => __('Downloads', 'azure-plugin'),
-                'url' => wc_get_endpoint_url('downloads', '', $my_account_url),
-                'icon' => $this->get_icon('downloads')
-            );
-        }
-        
-        // Addresses (WooCommerce)
-        if (filter_var($atts['show_addresses'], FILTER_VALIDATE_BOOLEAN) && $wc_active) {
-            $items[] = array(
-                'label' => __('Addresses', 'azure-plugin'),
-                'url' => wc_get_endpoint_url('edit-address', '', $my_account_url),
-                'icon' => $this->get_icon('addresses')
-            );
-        }
-        
-        // Payment Methods (WooCommerce)
-        if (filter_var($atts['show_payment_methods'], FILTER_VALIDATE_BOOLEAN) && $wc_active) {
-            $items[] = array(
-                'label' => __('Payment Methods', 'azure-plugin'),
-                'url' => wc_get_endpoint_url('payment-methods', '', $my_account_url),
-                'icon' => $this->get_icon('payment')
-            );
-        }
-        
-        // Account Details
-        $items[] = array(
-            'label' => __('Account Details', 'azure-plugin'),
-            'url' => $wc_active ? wc_get_endpoint_url('edit-account', '', $my_account_url) : admin_url('profile.php'),
-            'icon' => $this->get_icon('account')
-        );
-        
-        // Logout
-        $items[] = array(
-            'label' => __('Log Out', 'azure-plugin'),
-            'url' => wp_logout_url(home_url()),
-            'icon' => $this->get_icon('logout')
-        );
-        
-        return $items;
-    }
-    
-    /**
-     * Get SVG icon
-     */
-    private function get_icon($type) {
-        $icons = array(
-            'dashboard' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-            'orders' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
-            'credit' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
-            'downloads' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-            'addresses' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
-            'payment' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
-            'account' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-            'logout' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
-        );
-        
-        return isset($icons[$type]) ? $icons[$type] : '';
-    }
-    
-    /**
-     * Render logged out state
-     */
-    private function render_logged_out_state() {
-        $login_url = wp_login_url(get_permalink());
-        
-        ob_start();
-        ?>
-        <div class="user-account-dropdown-wrapper logged-out">
+        <div class="user-account-dropdown-wrapper logged-out style-<?php echo esc_attr($style); ?>"
+             id="<?php echo esc_attr($dropdown_id); ?>"
+             data-ajax="<?php echo esc_url($ajax_url); ?>"
+             style="position:relative;display:inline-block;z-index:9999;">
+
+            <!-- Logged-out state (default / cache-safe) -->
             <a href="<?php echo esc_url($login_url); ?>" class="user-account-login-link">
                 <span class="user-account-login-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -285,8 +96,109 @@ class Azure_User_Account_Shortcode {
                 <span><?php _e('Log In', 'azure-plugin'); ?></span>
             </a>
         </div>
+
+        <script>
+        (function(){
+            if (window._azureAcctInit) return;
+            window._azureAcctInit = true;
+
+            var hasAuth = document.cookie.split(';').some(function(c){
+                return c.trim().indexOf('wordpress_logged_in_') === 0;
+            });
+            if (!hasAuth) return;
+
+            var wrappers = document.querySelectorAll('.user-account-dropdown-wrapper.logged-out');
+            if (!wrappers.length) return;
+
+            var ajaxUrl = wrappers[0].getAttribute('data-ajax');
+            if (!ajaxUrl) return;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', ajaxUrl, true);
+            xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function(){
+                if (xhr.readyState !== 4 || xhr.status !== 200) return;
+                try { var d = JSON.parse(xhr.responseText); } catch(e){ return; }
+                if (!d || !d.logged_in) return;
+
+                wrappers.forEach(function(w){
+                    var id = w.id;
+                    var menuId = id + '-menu';
+                    var items = '';
+                    (d.menu || []).forEach(function(m){
+                        if (!m.url) return;
+                        items += '<li style="margin:0;padding:0;">'
+                            + '<a href="' + m.url + '" style="display:flex;align-items:center;gap:12px;padding:10px 16px;color:#24292e;text-decoration:none;">'
+                            + '<span>' + m.label + '</span></a></li>';
+                    });
+
+                    w.className = w.className.replace('logged-out','logged-in');
+                    w.innerHTML =
+                        '<div class="user-account-toggle" role="button" tabindex="0" aria-expanded="false"'
+                        + ' aria-controls="' + menuId + '"'
+                        + ' onclick="azureToggleAccountMenu(\'' + id + '\')"'
+                        + ' style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;">'
+                        + '<img src="' + (d.avatar||'') + '" width="32" height="32" class="user-account-avatar" style="border-radius:50%;" />'
+                        + '<span class="user-account-name">' + d.display_name + '</span>'
+                        + '<span class="user-account-arrow" style="transition:transform .2s ease;">'
+                        + '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+                        + '</span></div>'
+                        + '<div class="user-account-menu" id="' + menuId + '" style="display:none;position:absolute;top:100%;right:0;min-width:200px;background:#fff;border:1px solid #e1e4e8;border-radius:8px;margin-top:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:10000;">'
+                        + '<ul style="list-style:none;margin:0;padding:8px 0;">' + items + '</ul></div>';
+                });
+            };
+            xhr.send('action=azure_account_state');
+        })();
+
+        function azureToggleAccountMenu(id) {
+            var w = document.getElementById(id);
+            if (!w) return;
+            var t = w.querySelector('.user-account-toggle');
+            var m = w.querySelector('.user-account-menu');
+            if (!m) return;
+            var open = m.style.display === 'none' || m.style.display === '';
+            m.style.display = open ? 'block' : 'none';
+            t.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        document.addEventListener('click', function(e){
+            document.querySelectorAll('.user-account-dropdown-wrapper.logged-in').forEach(function(w){
+                if (!w.contains(e.target)) {
+                    var m = w.querySelector('.user-account-menu');
+                    var t = w.querySelector('.user-account-toggle');
+                    if (m) m.style.display = 'none';
+                    if (t) t.setAttribute('aria-expanded','false');
+                }
+            });
+        });
+        </script>
         <?php
         return ob_get_clean();
+    }
+    
+    /**
+     * AJAX handler: return current user state for cache-busting
+     */
+    public function ajax_account_state() {
+        if (!is_user_logged_in()) {
+            wp_send_json(array('logged_in' => false));
+        }
+
+        $user = wp_get_current_user();
+        $wc   = class_exists('WooCommerce');
+        $acct = $wc ? wc_get_page_permalink('myaccount') : admin_url('profile.php');
+
+        wp_send_json(array(
+            'logged_in'    => true,
+            'display_name' => $user->display_name,
+            'avatar'       => get_avatar_url($user->ID, array('size' => 40)),
+            'menu'         => array(
+                array('label' => __('Dashboard', 'azure-plugin'),       'url' => $acct),
+                array('label' => __('Orders', 'azure-plugin'),          'url' => $wc ? wc_get_endpoint_url('orders', '', $acct) : ''),
+                array('label' => __('Account Details', 'azure-plugin'), 'url' => $wc ? wc_get_endpoint_url('edit-account', '', $acct) : admin_url('profile.php')),
+                array('label' => __('Log Out', 'azure-plugin'),         'url' => wp_logout_url(home_url())),
+            ),
+        ));
     }
 }
 

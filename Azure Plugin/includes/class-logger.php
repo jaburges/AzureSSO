@@ -157,12 +157,11 @@ class Azure_Logger {
         
         self::write_to_file($log_entry);
         
-        // Also log to database for activity tracking (but don't let it break logging)
         try {
             self::log_to_database($level, $module, $message, $context);
-        } catch (Exception $e) {
-            // Silently fail to prevent database issues from breaking logging
+        } catch (\Throwable $e) {
             error_log('Azure Logger: Database logging failed - ' . $e->getMessage());
+            self::$db_logging_disabled = true;
         }
     }
     
@@ -197,7 +196,7 @@ class Azure_Logger {
             }
             
             @file_put_contents(self::$log_file, $content, FILE_APPEND | LOCK_EX);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             // Silently fail
         }
     }
@@ -232,7 +231,7 @@ class Azure_Logger {
                 // Clean up old backups (keep only last 5)
                 self::cleanup_old_backups();
                 
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 error_log('Azure Logger: Failed to rotate log file - ' . $e->getMessage());
             }
         }
@@ -313,7 +312,7 @@ class Azure_Logger {
                 ));
             }
             
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             self::error('Failed to run scheduled cleanup: ' . $e->getMessage(), array(
                 'module' => 'Logger'
             ));
@@ -438,7 +437,7 @@ class Azure_Logger {
                     $wpdb->query("DELETE FROM {$activity_table}");
                 }
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             error_log('Azure Logger: Failed to clear database logs - ' . $e->getMessage());
         }
         
